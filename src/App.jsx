@@ -405,9 +405,9 @@ export default function App() {
 
   return (
     <div className="app">
-      <Sidebar role={role} current={page.name} irA={irA} abierto={menuAbierto} onClose={() => setMenuAbierto(false)} />
+      <Sidebar role={role} current={page.name} irA={irA} onChangeRole={cambiarRol} abierto={menuAbierto} onClose={() => setMenuAbierto(false)} />
       <div className="main">
-        <Header role={role} onChangeRole={cambiarRol} data={data} irA={irA} onMenu={() => setMenuAbierto(true)} />
+        <Header role={role} current={page.name} data={data} irA={irA} onMenu={() => setMenuAbierto(true)} />
         <main className="content">{renderPage()}</main>
       </div>
       <ToastStack toasts={toasts} onClose={cerrarToast} />

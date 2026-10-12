@@ -1,18 +1,28 @@
 import { useEffect, useRef, useState } from 'react'
-import { LISTA_ROLES, ROLES } from '../data/roles.js'
+import { ROLES } from '../data/roles.js'
 import Icon from './Icon.jsx'
-import Avatar from './Avatar.jsx'
 import StatusBadge from './StatusBadge.jsx'
 
 const ICONO_AVISO = { aviso: 'alert-triangle', error: 'alert-circle', info: 'info' }
 
-// Barra superior: menú móvil, buscador global, selector de rol, notificaciones y usuario actual
-export default function Header({ role, onChangeRole, data, irA, onMenu }) {
+// Títulos de las pantallas de detalle de una orden (no están en el menú)
+const TITULOS_ORDEN = { detalle: 'Detalle de la orden', aprobacion: 'Aprobación de diseño', historial: 'Historial de la orden' }
+
+// Barra superior: menú móvil, título de la pantalla, buscador global, notificaciones y rol activo.
+// El selector de rol vive ahora en la barra lateral (Contexto de trabajo).
+export default function Header({ role, current, data, irA, onMenu }) {
   const actual = ROLES[role]
   const [busqueda, setBusqueda] = useState('')
   const [verNotif, setVerNotif] = useState(false)
   const [leidas, setLeidas] = useState({}) // { rol: true } cuando ya se marcaron como leídas
   const caja = useRef(null)
+
+  // Título y módulo de la pantalla actual (las pantallas de orden cuelgan de "Órdenes" o "Inicio")
+  const esDeOrden = Object.keys(TITULOS_ORDEN).includes(current)
+  const tienePedidos = actual.menu.some((m) => m.page === 'pedidos')
+  const itemMenu = actual.menu.find((m) => m.page === (esDeOrden ? (tienePedidos ? 'pedidos' : 'inicio') : current))
+  const titulo = esDeOrden ? TITULOS_ORDEN[current] : itemMenu?.label || 'ORVEX'
+  const grupo = itemMenu?.grupo
 
   // Cierra los paneles al hacer clic fuera
   useEffect(() => {
@@ -47,6 +57,11 @@ export default function Header({ role, onChangeRole, data, irA, onMenu }) {
     <header className="topbar" ref={caja}>
       <button className="icon-btn menu-btn" onClick={onMenu} aria-label="Abrir menú"><Icon nombre="menu" /></button>
 
+      <div className="topbar-title">
+        <span className="topbar-crumb">ORVEX{grupo ? ` · ${grupo}` : ''}</span>
+        <div className="topbar-heading">{titulo}</div>
+      </div>
+
       {actual.buscador && (
         <div className="search-global">
           <Icon nombre="search" tamano={17} />
@@ -77,14 +92,6 @@ export default function Header({ role, onChangeRole, data, irA, onMenu }) {
 
       <span className="toolbar-spacer" />
 
-      <label className="role-switch">
-        <Icon nombre="users" tamano={16} />
-        <span>Vista actual:</span>
-        <select value={role} onChange={(e) => onChangeRole(e.target.value)} aria-label="Vista actual (rol)">
-          {LISTA_ROLES.map((r) => <option key={r.id} value={r.id}>{r.nombre}</option>)}
-        </select>
-      </label>
-
       <div className="notif">
         <button className="icon-btn" onClick={() => setVerNotif(!verNotif)} aria-label={`Notificaciones (${sinLeer} sin leer)`}>
           <Icon nombre="bell" />
@@ -106,13 +113,11 @@ export default function Header({ role, onChangeRole, data, irA, onMenu }) {
         )}
       </div>
 
-      <div className="user-chip">
-        <Avatar nombre={actual.usuario.nombre} />
-        <div>
-          <strong>{actual.usuario.nombre}</strong>
-          <small>{actual.usuario.cargo}</small>
-        </div>
-      </div>
+      <span className="role-tag" title="Vista actual (se cambia desde la barra lateral)">
+        <Icon nombre="user" tamano={14} />
+        {actual.nombre}
+      </span>
+
     </header>
     <div className="ruler" aria-hidden="true" />
     </>
