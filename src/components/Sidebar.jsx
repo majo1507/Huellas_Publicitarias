@@ -1,0 +1,75 @@
+import { ROLES } from '../data/roles.js'
+import Icon from './Icon.jsx'
+import Avatar from './Avatar.jsx'
+
+// Pantallas de detalle de una orden: se resaltan bajo "Órdenes" (o "Inicio" si el rol no tiene esa opción)
+const pantallasDeOrden = ['detalle', 'aprobacion', 'historial']
+
+// Marca de ORVEX
+function Marca() {
+  return (
+    <div className="brand">
+      <svg viewBox="0 0 40 40" width="38" height="38" aria-hidden="true">
+        <defs>
+          <linearGradient id="orvexGrad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#60a5fa" />
+            <stop offset="1" stopColor="#2563eb" />
+          </linearGradient>
+        </defs>
+        <rect width="40" height="40" rx="11" fill="url(#orvexGrad)" />
+        <circle cx="20" cy="20" r="9" fill="none" stroke="#fff" strokeWidth="3.4" />
+        <path d="M13 29 L27 11" stroke="#bfe0ff" strokeWidth="3.4" strokeLinecap="round" />
+      </svg>
+      <div>
+        <strong>ORVEX</strong>
+        <small>Huellas Publicidad</small>
+      </div>
+    </div>
+  )
+}
+
+// Barra lateral: el menú depende del rol y está organizado por módulos
+export default function Sidebar({ role, current, irA, abierto, onClose }) {
+  const { menu, usuario } = ROLES[role]
+  const tienePedidos = menu.some((m) => m.page === 'pedidos')
+  const paginaActiva = pantallasDeOrden.includes(current) ? (tienePedidos ? 'pedidos' : 'inicio') : current
+  const grupos = [...new Set(menu.map((m) => m.grupo))]
+
+  return (
+    <>
+      {abierto && <div className="sidebar-overlay" onClick={onClose} />}
+      <aside className={abierto ? 'sidebar open' : 'sidebar'} aria-label="Menú principal">
+        <Marca />
+
+        <nav>
+          {grupos.map((grupo) => (
+            <div key={grupo} className="nav-group">
+              <span className="nav-group-title">{grupo}</span>
+              {menu.filter((m) => m.grupo === grupo).map((item) => (
+                <button
+                  key={item.page}
+                  className={item.page === paginaActiva ? 'nav-item active' : 'nav-item'}
+                  aria-current={item.page === paginaActiva ? 'page' : undefined}
+                  onClick={() => { irA(item.page); onClose() }}
+                >
+                  <Icon nombre={item.icono} tamano={19} />
+                  <span>{item.label}</span>
+                </button>
+              ))}
+            </div>
+          ))}
+        </nav>
+
+        <div className="sidebar-user">
+          <Avatar nombre={usuario.nombre} />
+          <div>
+            <strong>{usuario.nombre}</strong>
+            <small>{usuario.cargo}</small>
+          </div>
+        </div>
+        <p className="sidebar-footer">ORVEX · Huellas Publicidad</p>
+        <span className="strip" aria-hidden="true" />
+      </aside>
+    </>
+  )
+}
