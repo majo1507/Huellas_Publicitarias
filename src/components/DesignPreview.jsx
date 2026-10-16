@@ -24,7 +24,7 @@ export default function DesignPreview({ order, version, grande = false, classNam
 
   // Sello o indicador de versión en la esquina
   const TagVersion = () => (
-    <g transform="translate(6, 6)">
+    <g className="design-vtag" transform="translate(6, 6)">
       <rect width="32" height="18" rx="4" fill="#0b1a30" opacity="0.82" />
       <text x="16" y="13" fontSize="10" fontWeight="700" fill="#ffffff" textAnchor="middle" fontFamily="sans-serif">
         v{v}

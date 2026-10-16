@@ -17,8 +17,8 @@ export default function ColumnChart({ datos, serieA = 'Recibidas', serieB = 'Ent
         ))}
       </div>
       <ul className="legend legend-inline">
-        <li><span className="legend-dot" style={{ background: '#2563eb' }} />{serieA}</li>
-        <li><span className="legend-dot" style={{ background: '#9fd0f8' }} />{serieB}</li>
+        <li><span className="legend-dot legend-dot-a" />{serieA}</li>
+        <li><span className="legend-dot legend-dot-b" />{serieB}</li>
       </ul>
     </div>
   )
