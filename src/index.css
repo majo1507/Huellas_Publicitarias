@@ -2695,46 +2695,7 @@ input:focus, select:focus, textarea:focus {
    Inspirados e integrados desde el prototipo operativo de producción
    ========================================================================== */
 
-/* 1. Tira de calibración CMYK en el borde del Sidebar */
-.strip {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  right: 0;
-  width: 6px;
-  background: repeating-linear-gradient(
-    to bottom,
-    #00A3DA 0 14px,
-    #E5256F 14px 28px,
-    #F7D200 28px 42px,
-    #171717 42px 56px,
-    #8AD3EE 56px 70px,
-    #F39BBA 70px 84px,
-    #FAE88E 84px 98px,
-    #8A8A8A 98px 112px
-  );
-  z-index: 20;
-  pointer-events: none;
-}
-
-/* 2. Regla milimétrica técnica de medición debajo del Header */
-.ruler {
-  height: 9px;
-  position: sticky;
-  top: 64px;
-  z-index: 19;
-  background-color: var(--surface);
-  background-image: 
-    repeating-linear-gradient(90deg, #94a3b8 0 1px, transparent 1px 8px),
-    repeating-linear-gradient(90deg, var(--navy-900) 0 1px, transparent 1px 40px);
-  background-size: 100% 4px, 100% 9px;
-  background-repeat: no-repeat;
-  background-position: left bottom, left bottom;
-  border-bottom: 1px solid var(--border-color);
-  opacity: 0.85;
-}
-
-/* 3. Marcas de corte (Crop marks) para ficha técnica de orden */
+/* Marcas de corte (Crop marks) para ficha técnica de orden */
 .crop {
   position: relative;
   margin: 10px;

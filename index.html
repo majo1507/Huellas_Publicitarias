@@ -1,9 +1,31 @@
 <!doctype html>
-<html lang="es">
+<html lang="es" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ORVEX · Huellas Publicidad</title>
+    <meta name="color-scheme" content="dark light" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      html[data-theme='dark'] { background: #060d1b; color-scheme: dark; }
+      html[data-theme='light'] { background: #e8eef7; color-scheme: light; }
+    </style>
+    <script>
+      // El modo oscuro es la apariencia inicial por defecto; conserva la preferencia en localStorage.
+      (function () {
+        var tema = 'dark';
+        try {
+          var guardado = localStorage.getItem('orvex-theme');
+          if (guardado === 'light' || guardado === 'dark') tema = guardado;
+        } catch (e) {}
+        document.documentElement.setAttribute('data-theme', tema);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

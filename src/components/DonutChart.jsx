@@ -2,17 +2,14 @@ import { useId } from 'react'
 
 // Gráfico de dona volumétrico (SVG). items: [{ label, value, color }]. color: azul | celeste | verde | amarillo | rojo | gris | marino
 // Cada color tiene un degradado (claro → oscuro) para dar volumen; los datos y la leyenda no cambian.
-const COLORES = {
-  azul: '#2563eb', celeste: '#7cc0f5', verde: '#2fa36b', amarillo: '#e0a526', rojo: '#d9534f', gris: '#a9b6c9', marino: '#12305f',
-}
 const DEGRADADOS = {
   azul: ['#60a5fa', '#1d4ed8'],
-  celeste: ['#bae6fd', '#38a3e8'],
-  verde: ['#6ee7a8', '#15803d'],
+  celeste: ['#67e8f9', '#0891b2'],
+  verde: ['#6ee7a8', '#0d9488'],
   amarillo: ['#fcd34d', '#d97706'],
   rojo: ['#fca5a5', '#dc2626'],
-  gris: ['#dbe4f0', '#8da0b9'],
-  marino: ['#3b5fa0', '#0b1a30'],
+  gris: ['#cbd5e1', '#64748b'],
+  marino: ['#818cf8', '#1e3a8a'],
 }
 
 export default function DonutChart({ items, centro, subtitulo }) {
@@ -49,8 +46,8 @@ export default function DonutChart({ items, centro, subtitulo }) {
         </defs>
 
         {/* Pista del anillo con efecto hundido */}
-        <circle cx="70" cy="70" r={radio} fill="none" stroke="#e3ecf8" strokeWidth="19" />
-        <circle cx="70" cy="70" r={radio + 9} fill="none" stroke="#ffffff" strokeWidth="1.5" opacity="0.9" />
+        <circle cx="70" cy="70" r={radio} fill="none" className="donut-track" strokeWidth="19" />
+        <circle cx="70" cy="70" r={radio + 9} fill="none" className="donut-ring-edge" strokeWidth="1.5" opacity="0.9" />
 
         {/* Capa de profundidad: sombra desplazada y difuminada */}
         <g transform="translate(0 6)" filter={`url(#${uid}-sombra)`} opacity="0.38">
@@ -58,23 +55,29 @@ export default function DonutChart({ items, centro, subtitulo }) {
             <circle
               key={`s-${i.label}`}
               cx="70" cy="70" r={radio} fill="none"
-              stroke="#1e3a8a" strokeWidth="17" strokeLinecap="round"
+              stroke="#0f2038" strokeWidth="17" strokeLinecap="round"
               strokeDasharray={`${dibujado} ${largo - dibujado}`} strokeDashoffset={offset}
               transform="rotate(-90 70 70)"
             />
           ))}
         </g>
 
-        {/* Segmentos con degradado */}
-        {arcos.map(({ i, dibujado, offset }) => (
-          <circle
-            key={i.label}
-            cx="70" cy="70" r={radio} fill="none"
-            stroke={`url(#${uid}-${DEGRADADOS[i.color] ? i.color : 'azul'})`} strokeWidth="18" strokeLinecap="round"
-            strokeDasharray={`${dibujado} ${largo - dibujado}`} strokeDashoffset={offset}
-            transform="rotate(-90 70 70)"
-          />
-        ))}
+        {/* Segmentos con degradado y tooltip */}
+        {arcos.map(({ i, dibujado, offset }) => {
+          const pct = total > 0 ? Math.round((i.value / total) * 100) : 0
+          return (
+            <circle
+              key={i.label}
+              cx="70" cy="70" r={radio} fill="none"
+              className="donut-segment"
+              stroke={`url(#${uid}-${DEGRADADOS[i.color] ? i.color : 'azul'})`} strokeWidth="18" strokeLinecap="round"
+              strokeDasharray={`${dibujado} ${largo - dibujado}`} strokeDashoffset={offset}
+              transform="rotate(-90 70 70)"
+            >
+              <title>{`${i.label}: ${i.value} (${pct}%)`}</title>
+            </circle>
+          )
+        })}
 
         {/* Reflejo superior de cada segmento */}
         {arcos.map(({ i, dibujado, offset }) => (
@@ -84,6 +87,7 @@ export default function DonutChart({ items, centro, subtitulo }) {
             stroke="#ffffff" strokeOpacity="0.38" strokeWidth="3" strokeLinecap="round"
             strokeDasharray={`${Math.max(dibujado - 6, 0.5)} ${largo - Math.max(dibujado - 6, 0.5)}`} strokeDashoffset={offset - 3}
             transform="rotate(-90 70 70)"
+            pointerEvents="none"
           />
         ))}
 
@@ -93,17 +97,17 @@ export default function DonutChart({ items, centro, subtitulo }) {
         <text x="70" y="85" textAnchor="middle" className="donut-caption" style={subtitulo && subtitulo.length > 9 ? { fontSize: '7.4px', letterSpacing: 0 } : undefined}>{subtitulo}</text>
       </svg>
       <ul className="legend">
-        {items.map((i) => (
-          <li key={i.label}>
-            <span className="legend-dot" style={{ background: `linear-gradient(145deg, ${(DEGRADADOS[i.color] || DEGRADADOS.azul)[0]}, ${(DEGRADADOS[i.color] || DEGRADADOS.azul)[1]})` }} />
-            {i.label}
-            <strong>{i.value}</strong>
-          </li>
-        ))}
+        {items.map((i) => {
+          const pct = total > 0 ? Math.round((i.value / total) * 100) : 0
+          return (
+            <li key={i.label} title={`${i.label}: ${i.value} (${pct}%)`}>
+              <span className="legend-dot" style={{ background: `linear-gradient(145deg, ${(DEGRADADOS[i.color] || DEGRADADOS.azul)[0]}, ${(DEGRADADOS[i.color] || DEGRADADOS.azul)[1]})` }} />
+              <span className="legend-label">{i.label}</span>
+              <strong>{i.value}</strong>
+            </li>
+          )
+        })}
       </ul>
     </div>
   )
 }
-
-// Se exporta para quien necesite el color plano de una serie
-export { COLORES }

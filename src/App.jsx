@@ -71,7 +71,16 @@ export default function App() {
   // Rol simulado (sin autenticación real): define menú, dashboard y acciones disponibles
   const [role, setRole] = useState('cliente')
   const [menuAbierto, setMenuAbierto] = useState(false)
+  const [sidebarColapsado, setSidebarColapsado] = useState(false)
   const [toasts, setToasts] = useState([])
+
+  function toggleMenu() {
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches) {
+      setMenuAbierto((prev) => !prev)
+    } else {
+      setSidebarColapsado((prev) => !prev)
+    }
+  }
 
   // Carga inicial de datos
   useEffect(() => {
@@ -404,10 +413,26 @@ export default function App() {
   }
 
   return (
-    <div className="app">
-      <Sidebar role={role} current={page.name} irA={irA} onChangeRole={cambiarRol} abierto={menuAbierto} onClose={() => setMenuAbierto(false)} />
+    <div className={`app${sidebarColapsado ? ' app-sidebar-collapsed' : ''}`}>
+      <Sidebar
+        role={role}
+        current={page.name}
+        irA={irA}
+        onChangeRole={cambiarRol}
+        abierto={menuAbierto}
+        colapsado={sidebarColapsado}
+        onClose={() => setMenuAbierto(false)}
+      />
       <div className="main">
-        <Header role={role} current={page.name} data={data} irA={irA} onMenu={() => setMenuAbierto(true)} />
+        <Header
+          role={role}
+          current={page.name}
+          data={data}
+          irA={irA}
+          colapsado={sidebarColapsado}
+          abierto={menuAbierto}
+          onMenu={toggleMenu}
+        />
         <main className="content">{renderPage()}</main>
       </div>
       <ToastStack toasts={toasts} onClose={cerrarToast} />

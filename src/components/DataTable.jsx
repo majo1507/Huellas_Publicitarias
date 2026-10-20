@@ -3,12 +3,6 @@ import Icon from './Icon.jsx'
 import EmptyState from './EmptyState.jsx'
 
 // Tabla reutilizable con buscador, filtros, orden por columnas y paginación.
-//
-// columnas : [{ clave, titulo, render?: (fila) => nodo, ordenar?: true, valor?: (fila) => valorParaOrdenar }]
-// filas    : lista de registros
-// buscar   : (fila) => texto donde se busca lo que escribe el usuario
-// filtros  : [{ titulo: 'Estado', valor: (fila) => 'Diseño', opciones: ['Diseño', ...] }]
-// tarjeta  : (fila) => nodo. Si se indica, aparece el botón para alternar entre tabla y tarjetas.
 export default function DataTable({
   columnas, filas, buscar, filtros = [], porPagina = 8, tarjeta, acciones,
   vacioTitulo = 'No hay registros', vacioTexto = 'Prueba cambiando los filtros o la búsqueda.', placeholder = 'Buscar...',
@@ -76,14 +70,14 @@ export default function DataTable({
             {f.opciones.map((o) => <option key={o} value={o}>{o}</option>)}
           </select>
         ))}
-        {hayFiltros && <button className="btn btn-ghost btn-sm" onClick={limpiar}>Limpiar filtros</button>}
+        {hayFiltros && <button className="btn btn-ghost btn-sm" onClick={limpiar}><Icon nombre="x" tamano={14} /> Limpiar filtros</button>}
         <span className="toolbar-spacer" />
         <span className="toolbar-count">{resultado.length} {resultado.length === 1 ? 'resultado' : 'resultados'}</span>
         {acciones}
         {tarjeta && (
           <div className="view-toggle" role="group" aria-label="Tipo de vista">
-            <button className={vista === 'tabla' ? 'active' : ''} onClick={() => setVista('tabla')} aria-label="Vista de tabla"><Icon nombre="list2" tamano={16} /></button>
-            <button className={vista === 'tarjetas' ? 'active' : ''} onClick={() => setVista('tarjetas')} aria-label="Vista de tarjetas"><Icon nombre="grid" tamano={16} /></button>
+            <button className={vista === 'tabla' ? 'active' : ''} onClick={() => setVista('tabla')} aria-label="Vista de tabla" title="Vista de tabla"><Icon nombre="list2" tamano={16} /></button>
+            <button className={vista === 'tarjetas' ? 'active' : ''} onClick={() => setVista('tarjetas')} aria-label="Vista de tarjetas" title="Vista de tarjetas"><Icon nombre="grid" tamano={16} /></button>
           </div>
         )}
       </div>
@@ -104,8 +98,12 @@ export default function DataTable({
               <tr>
                 {columnas.map((c) => (
                   <th key={c.clave} className={c.ordenar ? 'sortable' : ''} onClick={c.ordenar ? () => cambiarOrden(c.clave) : undefined}>
-                    {c.titulo}
-                    {c.ordenar && orden?.clave === c.clave && <Icon nombre={orden.asc ? 'chevron-down' : 'chevron-right'} tamano={12} className="sort-icon" />}
+                    <span className="th-content">
+                      {c.titulo}
+                      {c.ordenar && orden?.clave === c.clave && (
+                        <Icon nombre={orden.asc ? 'chevron-up' : 'chevron-down'} tamano={13} className="sort-icon" />
+                      )}
+                    </span>
                   </th>
                 ))}
               </tr>
@@ -123,7 +121,7 @@ export default function DataTable({
 
       {resultado.length > porPagina && (
         <div className="pagination">
-          <span>Página {paginaActual} de {totalPaginas}</span>
+          <span>Página <strong>{paginaActual}</strong> de <strong>{totalPaginas}</strong></span>
           <div className="pagination-buttons">
             <button className="btn btn-sm" disabled={paginaActual === 1} onClick={() => setPagina(paginaActual - 1)}>
               <Icon nombre="chevron-left" tamano={14} /> Anterior

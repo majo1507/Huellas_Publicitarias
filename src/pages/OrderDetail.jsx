@@ -390,7 +390,7 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
                   </div>
                   <div className="stack" style={{ gap: '6px' }}>
                     {c.mensajes.map((m, i) => (
-                      <div key={i} className="sm" style={{ padding: '6px 10px', background: '#ffffff', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-light)' }}>
+                      <div key={i} className="sm" style={{ padding: '6px 10px', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-light)' }}>
                         <span className="mut" style={{ fontWeight: 600 }}>{m.de === 'usuario' ? c.responsable : c.cliente} ({m.hora}): </span>
                         {m.texto}
                       </div>

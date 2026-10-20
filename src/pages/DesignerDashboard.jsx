@@ -30,12 +30,11 @@ export default function DesignerDashboard({ data, irA }) {
 
   const columnas = [
     { clave: 'id', titulo: 'Orden', ordenar: true, render: (o) => <strong>{o.id}</strong> },
-    { clave: 'producto', titulo: 'Producto', ordenar: true },
+    { clave: 'producto', titulo: 'Producto', ordenar: true, render: (o) => <div><strong>{o.producto}</strong><small className="cell-sub">{o.cliente}</small></div> },
     { clave: 'tarea', titulo: 'Tarea pendiente' },
-    { clave: 'disenoEstado', titulo: 'Estado del diseño', render: (o) => <StatusBadge estado={o.disenoEstado} /> },
+    { clave: 'disenoEstado', titulo: 'Estado', render: (o) => <StatusBadge estado={o.disenoEstado} /> },
     { clave: 'fechaEntrega', titulo: 'Entrega', ordenar: true },
-    { clave: 'prioridad', titulo: 'Prioridad', render: (o) => <StatusBadge estado={o.prioridad} /> },
-    { clave: 'abrir', titulo: '', render: (o) => <button className="btn btn-soft btn-sm" onClick={() => irA('disenos', o.id)}>Abrir orden <Icon nombre="arrow-right" tamano={14} /></button> },
+    { clave: 'abrir', titulo: 'Acción', render: (o) => <button className="btn btn-soft btn-sm" onClick={() => irA('disenos', o.id)}><Icon nombre="eye" tamano={14} /> Abrir</button> },
   ]
 
   return (

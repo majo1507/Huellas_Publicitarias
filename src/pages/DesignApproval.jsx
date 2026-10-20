@@ -3,11 +3,10 @@ import PageHeader from '../components/PageHeader.jsx'
 import Panel from '../components/Panel.jsx'
 import StatusBadge from '../components/StatusBadge.jsx'
 import Modal from '../components/Modal.jsx'
-import Alert from '../components/Alert.jsx'
 import EmptyState from '../components/EmptyState.jsx'
 import Icon from '../components/Icon.jsx'
 import DesignPreview from '../components/DesignPreview.jsx'
-import { etiquetaDiseno, ultimaVersion, puedeAvanzar } from '../utils/format.js'
+import { etiquetaDiseno, ultimaVersion } from '../utils/format.js'
 
 const STAMPS = {
   Aprobado: { cls: 'stamp-apr', txt: 'APROBADO' },
@@ -23,7 +22,7 @@ export default function DesignApproval({ order, actions, irA, role }) {
   const [pidiendoCambios, setPidiendoCambios] = useState(false)
   const [confirmandoAprobacion, setConfirmandoAprobacion] = useState(false)
   const [versionSeleccionada, setVersionSeleccionada] = useState(null)
-  const [nombreDecisor, setNombreDecisor] = useState('')
+  const [nombreDecisor] = useState('')
 
   if (!order) {
     return <EmptyState icono="check-circle" titulo="Selecciona un pedido" texto="Elige un pedido para revisar la aprobación de su diseño." />
@@ -34,7 +33,6 @@ export default function DesignApproval({ order, actions, irA, role }) {
   const ultima = ultimaVersion(order)
   const versionActual = versionSeleccionada || ultima
   const puedeResponder = order.disenoEstado === 'Enviado' && (esCliente || role === 'coordinador')
-  const regla = puedeAvanzar(order)
   const estaAprobado = order.disenoEstado === 'Aprobado' || ultima?.estado === 'Aprobada'
   const stamp = STAMPS[order.disenoEstado] || STAMPS.Pendiente
 
@@ -57,16 +55,16 @@ export default function DesignApproval({ order, actions, irA, role }) {
 
       {/* Regla de negocio destacada con candado */}
       <div className={`ban ${estaAprobado ? 'gr' : 'am'}`} style={{ marginBottom: '20px' }}>
-        <Icon nombre="lock" tamano={18} />
+        <Icon nombre={estaAprobado ? 'check-circle' : 'lock'} tamano={18} />
         <div>
           <strong>Regla de producción:</strong> Ninguna orden puede pasar a impresión sin la aprobación documentada del cliente.
           {estaAprobado ? (
-            <span style={{ display: 'block', marginTop: '2px', color: 'var(--state-green)' }}>
-              ✓ Regla cumplida: diseño aprobado por el cliente. Autorizado para taller.
+            <span className="ban-sub ok">
+              Regla cumplida: diseño aprobado por el cliente. Autorizado para taller.
             </span>
           ) : (
-            <span style={{ display: 'block', marginTop: '2px', color: 'var(--state-amber)' }}>
-              ⚠ Pendiente de aprobación: la producción se encuentra bloqueada.
+            <span className="ban-sub warn">
+              Pendiente de aprobación: el paso a impresión se encuentra bloqueado.
             </span>
           )}
         </div>
@@ -84,7 +82,7 @@ export default function DesignApproval({ order, actions, irA, role }) {
                   className={(versionActual?.numero === v.numero) ? 'on' : ''}
                   onClick={() => setVersionSeleccionada(v)}
                 >
-                  Versión {v.numero}
+                  <Icon nombre="layers" tamano={14} /> Versión {v.numero}
                 </button>
               ))}
             </div>
@@ -94,16 +92,22 @@ export default function DesignApproval({ order, actions, irA, role }) {
             <DesignPreview order={order} version={versionActual} grande />
           </div>
 
-          {/* Flujo de etapas de aprobación */}
-          <div style={{ marginTop: '16px' }}>
-            <div className="sm mut" style={{ marginBottom: '6px' }}>Flujo de aprobación:</div>
-            <div className="flowst">
-              <span className={`o ${order.disenoEstado === 'En proceso' ? 'on' : ''}`}>BORRADOR</span>
-              <span className="arr">→</span>
-              <span className={`o ${order.disenoEstado === 'Enviado' ? 'on' : ''}`}>PENDIENTE</span>
-              <span className="arr">→</span>
-              <span className={`o ${order.disenoEstado === 'Aprobado' ? 'on' : ''}`} style={order.disenoEstado === 'Aprobado' ? { color: 'var(--state-green)' } : {}}>APROBADO</span>
-              <span className={`o ${order.disenoEstado === 'Requiere cambios' ? 'on' : ''}`} style={order.disenoEstado === 'Requiere cambios' ? { color: 'var(--state-red)' } : {}}>RECHAZADO</span>
+          {/* Flujo de etapas de aprobación (sin flechas de texto decorativas) */}
+          <div className="flowst-wrap">
+            <span className="sm mut">Estado en el ciclo de aprobación</span>
+            <div className="flowst" role="list">
+              <span role="listitem" className={`o ${order.disenoEstado === 'En proceso' || order.disenoEstado === 'Pendiente' ? 'on' : ''}`}>
+                <Icon nombre="pen" tamano={13} /> Borrador
+              </span>
+              <span role="listitem" className={`o ${order.disenoEstado === 'Enviado' ? 'on' : ''}`}>
+                <Icon nombre="send" tamano={13} /> En revisión
+              </span>
+              <span role="listitem" className={`o ${order.disenoEstado === 'Aprobado' ? 'on ok' : ''}`}>
+                <Icon nombre="check-circle" tamano={13} /> Aprobado
+              </span>
+              <span role="listitem" className={`o ${order.disenoEstado === 'Requiere cambios' ? 'on err' : ''}`}>
+                <Icon nombre="alert-circle" tamano={13} /> Con cambios
+              </span>
             </div>
           </div>
 
@@ -127,12 +131,12 @@ export default function DesignApproval({ order, actions, irA, role }) {
 
             {esCoordinador && order.estado === 'Aprobación' && (
               <button
-                className={estaAprobado ? 'btn btn-primary' : 'btn lock'}
+                className={estaAprobado ? 'btn btn-primary' : 'btn btn-locked'}
                 disabled={!estaAprobado}
                 onClick={() => actions.advanceStage(order.id)}
                 title={estaAprobado ? 'Enviar orden a taller de producción' : 'Bloqueado hasta que el diseño esté aprobado'}
               >
-                <Icon nombre={estaAprobado ? 'arrow-right' : 'lock'} tamano={16} />
+                <Icon nombre={estaAprobado ? 'printer' : 'lock'} tamano={16} />
                 {estaAprobado ? 'Enviar a producción' : 'Producción bloqueada'}
               </button>
             )}
@@ -152,15 +156,15 @@ export default function DesignApproval({ order, actions, irA, role }) {
             </dl>
 
             {versionActual?.comentario && (
-              <div style={{ marginTop: '14px', paddingTop: '10px', borderTop: '1px solid var(--border-light)' }}>
-                <strong>Observaciones registradas:</strong>
-                <p className="comment-text" style={{ marginTop: '4px' }}>“{versionActual.comentario}”</p>
+              <div className="comment-box" style={{ marginTop: '14px' }}>
+                <strong>Observaciones del cliente</strong>
+                <p>“{versionActual.comentario}”</p>
               </div>
             )}
           </Panel>
 
-          <Panel titulo="Trazabilidad del diseño" icono="clock">
-            <div className="stack" style={{ gap: '8px' }}>
+          <Panel titulo="Trazabilidad de versiones" icono="clock">
+            <div className="stack" style={{ gap: '10px' }}>
               {order.versiones.map((v) => (
                 <div key={v.numero} className="version-item-card">
                   <div className="row" style={{ justifyContent: 'space-between' }}>
@@ -168,6 +172,7 @@ export default function DesignApproval({ order, actions, irA, role }) {
                     <StatusBadge estado={v.estado} />
                   </div>
                   <div className="sm mut">{v.fecha} · {v.disenador}</div>
+                  {v.comentario && <p className="comment-text">“{v.comentario}”</p>}
                 </div>
               ))}
             </div>

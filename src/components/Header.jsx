@@ -2,15 +2,16 @@ import { useEffect, useRef, useState } from 'react'
 import { ROLES } from '../data/roles.js'
 import Icon from './Icon.jsx'
 import StatusBadge from './StatusBadge.jsx'
+import ThemeToggle from './ThemeToggle.jsx'
 
 const ICONO_AVISO = { aviso: 'alert-triangle', error: 'alert-circle', info: 'info' }
 
 // Títulos de las pantallas de detalle de una orden (no están en el menú)
 const TITULOS_ORDEN = { detalle: 'Detalle de la orden', aprobacion: 'Aprobación de diseño', historial: 'Historial de la orden' }
 
-// Barra superior: menú móvil, título de la pantalla, buscador global, notificaciones y rol activo.
+// Barra superior: botón de menú lateral, título de la pantalla, buscador global, notificaciones y rol activo.
 // El selector de rol vive ahora en la barra lateral (Contexto de trabajo).
-export default function Header({ role, current, data, irA, onMenu }) {
+export default function Header({ role, current, data, irA, colapsado = false, abierto = false, onMenu }) {
   const actual = ROLES[role]
   const [busqueda, setBusqueda] = useState('')
   const [verNotif, setVerNotif] = useState(false)
@@ -53,9 +54,16 @@ export default function Header({ role, current, data, irA, onMenu }) {
   }
 
   return (
-    <>
     <header className="topbar" ref={caja}>
-      <button className="icon-btn menu-btn" onClick={onMenu} aria-label="Abrir menú"><Icon nombre="menu" /></button>
+      <button
+        className={`icon-btn menu-btn${colapsado ? ' is-collapsed' : ''}`}
+        onClick={onMenu}
+        aria-label={colapsado ? 'Expandir menú lateral' : 'Contraer o abrir menú lateral'}
+        aria-expanded={!colapsado || abierto}
+        title={colapsado ? 'Expandir menú lateral' : 'Contraer menú lateral'}
+      >
+        <Icon nombre="menu" />
+      </button>
 
       <div className="topbar-title">
         <span className="topbar-crumb">ORVEX{grupo ? ` · ${grupo}` : ''}</span>
@@ -92,6 +100,8 @@ export default function Header({ role, current, data, irA, onMenu }) {
 
       <span className="toolbar-spacer" />
 
+      <ThemeToggle />
+
       <div className="notif">
         <button className="icon-btn" onClick={() => setVerNotif(!verNotif)} aria-label={`Notificaciones (${sinLeer} sin leer)`}>
           <Icon nombre="bell" />
@@ -119,7 +129,5 @@ export default function Header({ role, current, data, irA, onMenu }) {
       </span>
 
     </header>
-    <div className="ruler" aria-hidden="true" />
-    </>
   )
 }

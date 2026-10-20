@@ -29,35 +29,35 @@ function Marca() {
 }
 
 // Barra lateral: perfil / selector de rol + menú agrupado por módulos (depende del rol)
-export default function Sidebar({ role, current, irA, onChangeRole, abierto, onClose }) {
+export default function Sidebar({ role, current, irA, onChangeRole, abierto, colapsado = false, onClose }) {
   const { menu, usuario } = ROLES[role]
   const tienePedidos = menu.some((m) => m.page === 'pedidos')
   const paginaActiva = pantallasDeOrden.includes(current) ? (tienePedidos ? 'pedidos' : 'inicio') : current
   const grupos = [...new Set(menu.map((m) => m.grupo))]
+  const clasesSidebar = ['sidebar', colapsado ? 'collapsed' : '', abierto ? 'open' : ''].filter(Boolean).join(' ')
 
   return (
     <>
       {abierto && <div className="sidebar-overlay" onClick={onClose} />}
-      <aside className={abierto ? 'sidebar open' : 'sidebar'} aria-label="Menú principal">
+      <aside className={clasesSidebar} aria-label="Menú principal">
         <Marca />
 
         <section className="context-card" aria-label="Contexto de trabajo">
-          <span className="context-label">Contexto de trabajo</span>
-          <div className="context-user">
+          <div className="context-user" title={`${usuario.nombre} · ${usuario.cargo}`}>
             <Avatar nombre={usuario.nombre} />
             <div>
               <strong>{usuario.nombre}</strong>
               <small>{usuario.cargo}</small>
             </div>
           </div>
-          <label className="role-select">
-            <span>Vista actual (rol)</span>
+          <label className="role-select" title={`Cambiar rol activo (${ROLES[role].nombre})`}>
+            <span className="sr-only">Vista actual (rol)</span>
             <div className="role-select-box">
-              <Icon nombre="users" tamano={16} />
+              <Icon nombre="users" tamano={15} />
               <select value={role} onChange={(e) => onChangeRole(e.target.value)} aria-label="Vista actual (rol)">
                 {LISTA_ROLES.map((r) => <option key={r.id} value={r.id}>{r.nombre}</option>)}
               </select>
-              <Icon nombre="chevron-down" tamano={16} />
+              <Icon nombre="chevron-down" tamano={15} />
             </div>
           </label>
         </section>
@@ -71,6 +71,8 @@ export default function Sidebar({ role, current, irA, onChangeRole, abierto, onC
                   key={item.page}
                   className={item.page === paginaActiva ? 'nav-item active' : 'nav-item'}
                   aria-current={item.page === paginaActiva ? 'page' : undefined}
+                  data-tooltip={item.label}
+                  title={colapsado ? item.label : undefined}
                   onClick={() => { irA(item.page); onClose() }}
                 >
                   <span className="nav-icon"><Icon nombre={item.icono} tamano={18} /></span>
@@ -82,7 +84,6 @@ export default function Sidebar({ role, current, irA, onChangeRole, abierto, onC
         </nav>
 
         <p className="sidebar-footer">ORVEX · Huellas Publicidad</p>
-        <span className="strip" aria-hidden="true" />
       </aside>
     </>
   )
