@@ -20,7 +20,6 @@ const FILTROS = [
   ['Rechazados', 'Requiere cambios'],
 ]
 
-// Map de sello de estado
 const STAMPS = {
   Aprobado: { cls: 'stamp-apr', txt: 'APROBADO' },
   Aprobada: { cls: 'stamp-apr', txt: 'APROBADO' },
@@ -31,12 +30,18 @@ const STAMPS = {
   Pendiente: { cls: 'stamp-pen', txt: 'PENDIENTE' },
 }
 
-export default function DesignWorkspace({ order, data, actions, irA }) {
+export default function DesignWorkspace({ order, data, actions, irA, role }) {
   const [filtro, setFiltro] = useState(null)
   const [modoVista, setModoVista] = useState('galeria') // 'galeria' | 'tabla'
   const [rechazando, setRechazando] = useState(false)
   const [enviando, setEnviando] = useState(false)
+  const [observacionesEnvio, setObservacionesEnvio] = useState('')
   const [versionSeleccionada, setVersionSeleccionada] = useState(null)
+
+  // Estado para creación de nueva versión con archivo y notas (HU-11)
+  const [modalNuevaVersion, setModalNuevaVersion] = useState(false)
+  const [nombreArchivo, setNombreArchivo] = useState('')
+  const [notasDisenador, setNotasDisenador] = useState('')
 
   // Sin orden seleccionada: lista y galería de diseños
   if (!order) {
@@ -98,26 +103,21 @@ export default function DesignWorkspace({ order, data, actions, irA }) {
                 const u = ultimaVersion(o)
                 const stamp = STAMPS[o.disenoEstado] || STAMPS.Pendiente
                 return (
-                  <article
-                    key={o.id}
-                    className="dc2"
-                    onClick={() => irA('disenos', o.id)}
-                    role="button"
-                    tabIndex={0}
-                  >
-                    <div className="dc2-preview">
+                  <article key={o.id} className="dc" onClick={() => irA('disenos', o.id)} style={{ cursor: 'pointer' }}>
+                    <div className="dc-th">
                       <DesignPreview order={o} version={u} />
+                      <span className={`stamp ${stamp.cls}`}>{stamp.txt}</span>
                     </div>
-                    <div className="in">
-                      <div className="dc2-head">
-                        <strong>{o.id}</strong>
-                        <span className={`stamp ${stamp.cls}`}>{stamp.txt}</span>
+                    <div className="dc-body">
+                      <div className="row" style={{ justifyContent: 'space-between', marginBottom: '4px' }}>
+                        <span className="sm mut">{o.id}</span>
+                        <StatusBadge estado={o.disenoEstado} />
                       </div>
-                      <div className="dc2-title">{o.producto}</div>
-                      <div className="sm mut">{o.cliente}</div>
-                      <div className="dc2-foot">
-                        <span>{u ? `Versión ${u.numero}` : 'Borrador'}</span>
-                        <span>Entrega: {o.fechaEntrega}</span>
+                      <h3 style={{ fontSize: '14px', margin: '0 0 2px' }}>{o.producto}</h3>
+                      <p className="sm mut ell" style={{ margin: '0 0 8px' }}>{o.cliente}</p>
+                      <div className="row" style={{ justifyContent: 'space-between', fontSize: '12px' }}>
+                        <span className="mut">{o.versiones.length} {o.versiones.length === 1 ? 'versión' : 'versiones'}</span>
+                        <span className="link-inline">Ver mesa →</span>
                       </div>
                     </div>
                   </article>
@@ -130,23 +130,32 @@ export default function DesignWorkspace({ order, data, actions, irA }) {
             columnas={columnas}
             filas={lista}
             buscar={(o) => `${o.id} ${o.cliente} ${o.producto}`}
-            placeholder="Buscar por orden, cliente o producto"
-            porPagina={8}
-            vacioTitulo="No hay diseños en este estado"
-            vacioTexto="Prueba con otro filtro."
+            placeholder="Buscar por orden, cliente o producto..."
+            vacioTitulo="No se encontraron diseños"
           />
         )}
       </div>
     )
   }
 
-  // Con orden seleccionada: Espacio de trabajo del diseño
+  // Vista de mesa de diseño para una orden específica
   const ultima = ultimaVersion(order)
   const versionActual = versionSeleccionada || ultima
-  const puedeCrear = !ultima || ultima.estado === 'Rechazada'
-  const puedeEnviar = ultima?.estado === 'En proceso'
-  const esperando = ultima?.estado === 'Enviada'
   const stamp = STAMPS[order.disenoEstado] || STAMPS.Pendiente
+
+  const puedeCrear = order.disenoEstado !== 'Enviado'
+  const puedeEnviar = order.versiones.length > 0 && order.disenoEstado === 'En proceso'
+  const esperando = order.disenoEstado === 'Enviado'
+
+  function handleCrearVersionSubmit(e) {
+    e.preventDefault()
+    const archivo = nombreArchivo.trim() || `Arte_Final_${order.id}_v${order.versiones.length + 1}.pdf`
+    actions.designNewVersion(order.id, archivo, notasDisenador.trim())
+    setModalNuevaVersion(false)
+    setNombreArchivo('')
+    setNotasDisenador('')
+    setVersionSeleccionada(null)
+  }
 
   return (
     <div>
@@ -170,12 +179,12 @@ export default function DesignWorkspace({ order, data, actions, irA }) {
       )}
       {order.disenoEstado === 'Aprobado' && (
         <Alert tipo="exito" titulo="Diseño aprobado">
-          El cliente aprobó la versión {ultima?.numero}. La orden ya puede programarse para producción.
+          El cliente aprobó formalmente la versión {ultima?.numero}. La orden se encuentra habilitada para impresión en taller.
         </Alert>
       )}
       {esperando && (
         <Alert tipo="aviso" titulo="En espera de aprobación">
-          El diseño se encuentra en revisión con el cliente. Puedes simular su respuesta para la presentación.
+          El diseño se encuentra en revisión formal con el cliente.
         </Alert>
       )}
 
@@ -188,7 +197,7 @@ export default function DesignWorkspace({ order, data, actions, irA }) {
               {order.versiones.map((v) => (
                 <button
                   key={v.numero}
-                  className={(versionActual?.numero === v.numero) ? 'on' : ''}
+                  className={versionActual?.numero === v.numero ? 'on' : ''}
                   onClick={() => setVersionSeleccionada(v)}
                 >
                   Versión {v.numero} ({v.estado})
@@ -201,30 +210,34 @@ export default function DesignWorkspace({ order, data, actions, irA }) {
             <DesignPreview order={order} version={versionActual} grande />
           </div>
 
-          <div className="actions" style={{ marginTop: '20px' }}>
+          <div className="actions" style={{ marginTop: '20px', flexWrap: 'wrap', gap: '8px' }}>
             <button
               className="btn btn-primary"
               disabled={!puedeCrear}
               onClick={() => {
-                actions.designNewVersion(order.id)
-                setVersionSeleccionada(null)
+                setNombreArchivo('')
+                setNotasDisenador('')
+                setModalNuevaVersion(true)
               }}
             >
               <Icon nombre="plus" tamano={16} />
-              {order.versiones.length === 0 ? 'Crear versión 1' : 'Crear nueva versión'}
+              {order.versiones.length === 0 ? 'Crear versión 1 con archivo' : 'Crear nueva versión'}
             </button>
 
             <button
               className="btn btn-success"
               disabled={!puedeEnviar}
-              onClick={() => setEnviando(true)}
+              onClick={() => {
+                setObservacionesEnvio('')
+                setEnviando(true)
+              }}
             >
               <Icon nombre="send" tamano={16} /> Enviar diseño al cliente
             </button>
 
             {esperando && (
               <>
-                <button className="btn" onClick={() => actions.designApprove(order.id)}>
+                <button className="btn btn-soft" onClick={() => actions.designApprove(order.id, 'Aprobación simulada por coordinador')}>
                   <Icon nombre="check" tamano={15} /> Simular aprobación
                 </button>
                 <button className="btn btn-danger" onClick={() => setRechazando(true)}>
@@ -254,7 +267,7 @@ export default function DesignWorkspace({ order, data, actions, irA }) {
             </div>
           </Panel>
 
-          <Panel titulo="Historial de versiones" icono="clock">
+          <Panel titulo="Historial de versiones y archivos" icono="clock">
             {order.versiones.length === 0 ? (
               <p className="sm mut">Aún no hay versiones creadas.</p>
             ) : (
@@ -266,6 +279,17 @@ export default function DesignWorkspace({ order, data, actions, irA }) {
                       <StatusBadge estado={v.estado} />
                     </div>
                     <div className="sm mut">{v.fecha} · {v.disenador}</div>
+                    {v.archivoNombre && (
+                      <div className="sm" style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--blue-600)' }}>
+                        <Icon nombre="file-text" tamano={14} />
+                        <span>{v.archivoNombre}</span>
+                      </div>
+                    )}
+                    {v.observacionesDisenador && (
+                      <p className="sm mut" style={{ margin: '4px 0 0' }}>
+                        <strong>Nota técnica:</strong> {v.observacionesDisenador}
+                      </p>
+                    )}
                     {v.comentario && <p className="comment-text">“{v.comentario}”</p>}
                   </div>
                 ))}
@@ -275,28 +299,96 @@ export default function DesignWorkspace({ order, data, actions, irA }) {
         </div>
       </div>
 
+      {/* MODAL HU-11: Crear nueva versión con selector de archivo y observaciones */}
+      {modalNuevaVersion && (
+        <div className="modal-backdrop" onClick={() => setModalNuevaVersion(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Nueva versión de diseño">
+            <div className="modal-head">
+              <span className="modal-icon modal-icon-primary"><Icon nombre="pen" tamano={20} /></span>
+              <div>
+                <h2>Crear versión {order.versiones.length + 1} de diseño</h2>
+                <p>Orden {order.id} · {order.producto}</p>
+              </div>
+              <button className="icon-btn" onClick={() => setModalNuevaVersion(false)} aria-label="Cerrar"><Icon nombre="x" /></button>
+            </div>
+
+            <form onSubmit={handleCrearVersionSubmit} className="modal-body">
+              <div className="form-grid" style={{ gridTemplateColumns: '1fr', gap: '14px' }}>
+                <div className="field full">
+                  <label className="field-label" htmlFor="fileInput">
+                    Archivo de arte o propuesta (PDF, AI, PSD, PNG, JPG)
+                  </label>
+                  <input
+                    id="fileInput"
+                    type="file"
+                    accept=".pdf,.ai,.psd,.png,.jpg,.jpeg"
+                    onChange={(e) => {
+                      const file = e.target.files[0]
+                      if (file) setNombreArchivo(file.name)
+                    }}
+                    style={{ padding: '6px 8px' }}
+                  />
+                  {nombreArchivo && (
+                    <span className="sm" style={{ color: 'var(--state-green)', marginTop: '4px', display: 'block' }}>
+                      Archivo cargado: <strong>{nombreArchivo}</strong>
+                    </span>
+                  )}
+                  <span className="field-hint">
+                    En este prototipo se asocia el nombre del archivo seleccionado. La carga persistente se integrará con el bucket en Cloud Storage / S3 desde el backend.
+                  </span>
+                </div>
+
+                <div className="field full">
+                  <label className="field-label" htmlFor="notasDiseno">
+                    Observaciones y notas del diseñador
+                  </label>
+                  <textarea
+                    id="notasDiseno"
+                    rows="3"
+                    value={notasDisenador}
+                    onChange={(e) => setNotasDisenador(e.target.value)}
+                    placeholder="Describe los cambios realizados, fuentes tipográficas, modo de color CMYK o resolución..."
+                  />
+                </div>
+              </div>
+
+              <div className="modal-foot" style={{ marginTop: '20px', padding: 0, background: 'none', border: 'none' }}>
+                <button type="button" className="btn" onClick={() => setModalNuevaVersion(false)}>Cancelar</button>
+                <button type="submit" className="btn btn-primary">
+                  <Icon nombre="check" tamano={15} /> Crear versión en borrador
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL HU-11: Enviar diseño para aprobación del cliente */}
       {enviando && (
         <Modal
-          titulo="Enviar diseño al cliente"
+          titulo="Enviar propuesta de diseño al cliente"
+          subtitulo={`Orden ${order.id} · Versión ${ultima?.numero}`}
           icono="send"
-          mensaje={`Se notificará al cliente ${order.cliente} con la propuesta de diseño para su revisión y aprobación formal.`}
-          textoBoton="Confirmar y enviar"
+          mensaje={`Se notificará al cliente ${order.cliente} con el arte gráfico v${ultima?.numero} para su revisión formal. La orden avanzará a la etapa de Aprobación.`}
+          textoBoton="Confirmar y enviar al cliente"
           tipoBoton="success"
           onClose={() => setEnviando(false)}
           onConfirm={() => {
-            actions.designSend(order.id)
+            actions.designSend(order.id, observacionesEnvio)
             setEnviando(false)
           }}
         />
       )}
 
+      {/* MODAL HU-12: Solicitar cambios al diseño */}
       {rechazando && (
         <Modal
           titulo="Solicitar cambios al diseño"
+          subtitulo={`Orden ${order.id} · Versión ${ultima?.numero}`}
           icono="edit"
-          etiqueta="Observaciones y ajustes requeridos"
+          etiqueta="Observaciones y ajustes requeridos por el cliente"
           minimo={5}
-          textoBoton="Registrar observaciones"
+          textoBoton="Registrar solicitud de cambios"
           tipoBoton="danger"
           onClose={() => setRechazando(false)}
           onConfirm={(texto) => {

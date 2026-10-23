@@ -31,11 +31,26 @@ const MODULOS_MATRIZ = [
   { mod: 'Usuarios y seguridad', permisos: { Comercial: 'Sin acceso', Diseñador: 'Sin acceso', Coordinador: 'Sin acceso', Operario: 'Sin acceso', Gerencia: 'Edita', Postventa: 'Sin acceso' } },
 ]
 
-export default function Users({ data, actions }) {
-  const [modalNuevo, setModalNuevo] = useState(false)
+const CARGO_SUGERIDO = {
+  Comercial: 'Ejecutiva comercial',
+  Diseñador: 'Diseñador gráfico',
+  Coordinador: 'Coordinador de producción',
+  Operario: 'Operario de taller',
+  Postventa: 'Atención postventa',
+  Gerencia: 'Gerente general',
+}
+
+export default function Users({ data, actions, usuarioActual }) {
+  const [modalFormulario, setModalFormulario] = useState(false)
+  const [usuarioEditando, setUsuarioEditando] = useState(null) // null = creando, objeto = editando
+  const [usuarioADesactivar, setUsuarioADesactivar] = useState(null)
+
+  // Campos del formulario
   const [nombre, setNombre] = useState('')
   const [correo, setCorreo] = useState('')
+  const [cargo, setCargo] = useState('')
   const [rol, setRol] = useState('Comercial')
+  const [errores, setErrores] = useState({})
 
   const filas = data.users.map((u) => ({
     ...u,
@@ -43,29 +58,126 @@ export default function Users({ data, actions }) {
     tareas: data.tasks.filter((t) => t.responsable === u.nombre && t.estado !== 'Finalizada').length,
   }))
 
-  function handleGuardarUsuario(e) {
-    e.preventDefault()
-    if (!nombre.trim() || !correo.trim()) return
-
-    const nuevo = {
-      id: `U${data.users.length + 1}`,
-      nombre: nombre.trim(),
-      correo: correo.trim(),
-      cargo: rol === 'Comercial' ? 'Ejecutiva comercial' : rol === 'Diseñador' ? 'Diseñador gráfico' : rol === 'Operario' ? 'Operario de taller' : rol,
-      rol,
-      estado: 'Activo',
-    }
-
-    if (actions.addUser) {
-      actions.addUser(nuevo)
-    } else {
-      data.users.push(nuevo)
-      actions.notify(`Usuario ${nuevo.nombre} agregado al equipo.`)
-    }
-
-    setModalNuevo(false)
+  function abrirNuevo() {
+    setUsuarioEditando(null)
     setNombre('')
     setCorreo('')
+    setCargo(CARGO_SUGERIDO['Comercial'])
+    setRol('Comercial')
+    setErrores({})
+    setModalFormulario(true)
+  }
+
+  function abrirEdicion(u) {
+    setUsuarioEditando(u)
+    setNombre(u.nombre)
+    setCorreo(u.correo)
+    setCargo(u.cargo)
+    setRol(u.rol)
+    setErrores({})
+    setModalFormulario(true)
+  }
+
+  function handleRolChange(nuevoRol) {
+    setRol(nuevoRol)
+    if (!usuarioEditando || !cargo.trim()) {
+      setCargo(CARGO_SUGERIDO[nuevoRol] || nuevoRol)
+    }
+  }
+
+  function validar() {
+    const err = {}
+    if (!nombre.trim()) {
+      err.nombre = 'El nombre completo es obligatorio.'
+    } else if (nombre.trim().length < 3) {
+      err.nombre = 'El nombre debe tener al menos 3 caracteres.'
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!correo.trim()) {
+      err.correo = 'El correo institucional es obligatorio.'
+    } else if (!emailRegex.test(correo.trim())) {
+      err.correo = 'El formato del correo es inválido (ej. usuario@huellas.co).'
+    } else {
+      // Comprobar duplicidad de correo (excluyendo el usuario actual al editar)
+      const correoExiste = data.users.some(
+        (u) =>
+          u.correo.toLowerCase() === correo.trim().toLowerCase() &&
+          (!usuarioEditando || u.id !== usuarioEditando.id)
+      )
+      if (correoExiste) {
+        err.correo = 'Este correo ya está registrado por otro usuario.'
+      }
+    }
+
+    if (!cargo.trim()) {
+      err.cargo = 'El cargo es obligatorio.'
+    }
+
+    if (!rol) {
+      err.rol = 'Selecciona un rol válido.'
+    }
+
+    setErrores(err)
+    return Object.keys(err).length === 0
+  }
+
+  function handleGuardar(e) {
+    e.preventDefault()
+    if (!validar()) return
+
+    if (usuarioEditando) {
+      // Edición de usuario existente
+      actions.updateUser(usuarioEditando.id, {
+        nombre: nombre.trim(),
+        correo: correo.trim(),
+        cargo: cargo.trim(),
+        rol,
+      })
+      actions.notify(`Usuario ${nombre.trim()} actualizado correctamente.`, 'exito')
+    } else {
+      // Creación de nuevo usuario
+      const nuevo = {
+        id: `U${data.users.length + 1}`,
+        nombre: nombre.trim(),
+        correo: correo.trim(),
+        cargo: cargo.trim(),
+        rol,
+        estado: 'Activo',
+      }
+      actions.addUser(nuevo)
+      actions.notify(`Usuario ${nuevo.nombre} agregado al equipo.`, 'exito')
+    }
+
+    setModalFormulario(false)
+  }
+
+  function esUsuarioActual(u) {
+    if (!usuarioActual) return false
+    return (
+      (usuarioActual.correo && u.correo.toLowerCase() === usuarioActual.correo.toLowerCase()) ||
+      (usuarioActual.nombre && u.nombre.toLowerCase() === usuarioActual.nombre.toLowerCase())
+    )
+  }
+
+  function handleToggleEstado(u) {
+    if (u.estado === 'Activo') {
+      if (esUsuarioActual(u)) {
+        actions.notify('No puedes desactivar tu propia cuenta activa en esta sesión.', 'error')
+        return
+      }
+      setUsuarioADesactivar(u)
+    } else {
+      actions.toggleUserStatus(u.id)
+      actions.notify(`Usuario ${u.nombre} reactivado con éxito.`, 'exito')
+    }
+  }
+
+  function confirmarDesactivacion() {
+    if (!usuarioADesactivar) return
+    actions.toggleUserStatus(usuarioADesactivar.id)
+    actions.notify(`Usuario ${usuarioADesactivar.nombre} desactivado del sistema.`, 'aviso')
+    setUsuarioADesactivar(null)
   }
 
   const columnas = [
@@ -84,10 +196,58 @@ export default function Users({ data, actions }) {
       ),
     },
     { clave: 'cargo', titulo: 'Cargo', ordenar: true },
-    { clave: 'rol', titulo: 'Rol en ORVEX', render: (u) => <StatusBadge estado="Solicitud" texto={u.rol} /> },
+    {
+      clave: 'rol',
+      titulo: 'Rol en ORVEX',
+      ordenar: true,
+      render: (u) => <StatusBadge estado="Solicitud" texto={u.rol} />,
+    },
     { clave: 'ordenes', titulo: 'Órdenes a cargo', ordenar: true },
     { clave: 'tareas', titulo: 'Tareas activas', ordenar: true },
-    { clave: 'estado', titulo: 'Estado', render: (u) => <StatusBadge estado={u.estado} /> },
+    {
+      clave: 'estado',
+      titulo: 'Estado',
+      ordenar: true,
+      render: (u) => (
+        <StatusBadge estado={u.estado === 'Activo' ? 'Activo' : 'Pausada'} texto={u.estado} />
+      ),
+    },
+    {
+      clave: 'acciones',
+      titulo: 'Acciones',
+      render: (u) => {
+        const esPropio = esUsuarioActual(u)
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <button
+              className="btn btn-soft btn-sm"
+              onClick={() => abrirEdicion(u)}
+              title={`Editar datos de ${u.nombre}`}
+            >
+              <Icon nombre="edit" tamano={13} /> Editar
+            </button>
+            {u.estado === 'Activo' ? (
+              <button
+                className="btn btn-ghost btn-sm danger-text"
+                disabled={esPropio}
+                onClick={() => handleToggleEstado(u)}
+                title={esPropio ? 'No puedes desactivar tu propia cuenta activa' : `Desactivar a ${u.nombre}`}
+              >
+                <Icon nombre="x-circle" tamano={13} /> Desactivar
+              </button>
+            ) : (
+              <button
+                className="btn btn-soft btn-sm"
+                onClick={() => handleToggleEstado(u)}
+                title={`Reactivar a ${u.nombre}`}
+              >
+                <Icon nombre="check" tamano={13} /> Activar
+              </button>
+            )}
+          </div>
+        )
+      },
+    },
   ]
 
   return (
@@ -97,15 +257,20 @@ export default function Users({ data, actions }) {
         subtitulo="Gestión del equipo interno, responsabilidades y matriz de permisos por perfil."
         icono="shield"
         acciones={
-          <button className="btn btn-primary" onClick={() => setModalNuevo(true)}>
-            <Icon nombre="plus" tamano={15} /> Invitar nuevo usuario
+          <button className="btn btn-primary" onClick={abrirNuevo}>
+            <Icon nombre="plus" tamano={15} /> Registrar usuario
           </button>
         }
       />
 
       <div className="kpis">
         <StatCard titulo="Usuarios registrados" valor={data.users.length} icono="users" />
-        <StatCard titulo="Usuarios activos" valor={data.users.filter((u) => u.estado === 'Activo').length} icono="check-circle" color="verde" />
+        <StatCard
+          titulo="Usuarios activos"
+          valor={data.users.filter((u) => u.estado === 'Activo').length}
+          icono="check-circle"
+          color="verde"
+        />
         <StatCard titulo="Perfiles del sistema" valor={ROLES_INFO.length} icono="shield" />
       </div>
 
@@ -126,13 +291,16 @@ export default function Users({ data, actions }) {
       <DataTable
         columnas={columnas}
         filas={filas}
-        buscar={(u) => `${u.nombre} ${u.cargo} ${u.correo} ${u.rol}`}
+        buscar={(u) => `${u.nombre} ${u.cargo} ${u.correo} ${u.rol} ${u.estado}`}
         placeholder="Buscar usuario por nombre, cargo o correo..."
-        filtros={[{ titulo: 'Rol', valor: (u) => u.rol, opciones: [...new Set(data.users.map((u) => u.rol))] }]}
+        filtros={[
+          { titulo: 'Rol', valor: (u) => u.rol, opciones: [...new Set(data.users.map((u) => u.rol))] },
+          { titulo: 'Estado', valor: (u) => u.estado, opciones: ['Activo', 'Inactivo'] },
+        ]}
         vacioTitulo="No se encontraron usuarios"
       />
 
-      {/* Matriz de permisos inspirada en el HTML */}
+      {/* Matriz de permisos */}
       <div className="card p" style={{ marginTop: '24px' }}>
         <h3 style={{ marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Icon nombre="shield" tamano={17} /> Matriz de permisos por rol
@@ -174,50 +342,75 @@ export default function Users({ data, actions }) {
         </div>
       </div>
 
-      {/* Modal para invitar usuario */}
-      {modalNuevo && (
-        <div className="modal-backdrop" onClick={() => setModalNuevo(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Nuevo usuario">
+      {/* Modal para Crear / Editar usuario */}
+      {modalFormulario && (
+        <div className="modal-backdrop" onClick={() => setModalFormulario(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={usuarioEditando ? 'Editar usuario' : 'Nuevo usuario'}>
             <div className="modal-head">
-              <span className="modal-icon modal-icon-primary"><Icon nombre="users" tamano={20} /></span>
+              <span className="modal-icon modal-icon-primary">
+                <Icon nombre={usuarioEditando ? 'edit' : 'users'} tamano={20} />
+              </span>
               <div>
-                <h2>Invitar usuario al sistema</h2>
-                <p>Asigna un rol y correo institucional para la plataforma.</p>
+                <h2>{usuarioEditando ? `Editar usuario: ${usuarioEditando.nombre}` : 'Registrar usuario en el sistema'}</h2>
+                <p>{usuarioEditando ? 'Actualiza los datos personales, cargo o rol.' : 'Asigna un rol y correo institucional para la plataforma.'}</p>
               </div>
-              <button className="icon-btn" onClick={() => setModalNuevo(false)}><Icon nombre="x" /></button>
+              <button className="icon-btn" onClick={() => setModalFormulario(false)} aria-label="Cerrar">
+                <Icon nombre="x" />
+              </button>
             </div>
 
-            <form onSubmit={handleGuardarUsuario} className="modal-body">
+            <form onSubmit={handleGuardar} className="modal-body" noValidate>
               <div className="form-grid">
-                <div className="field full">
+                <div className={`field full ${errores.nombre ? 'has-error' : ''}`}>
                   <label className="field-label" htmlFor="userNombre">Nombre completo</label>
                   <input
                     id="userNombre"
                     value={nombre}
-                    onChange={(e) => setNombre(e.target.value)}
+                    onChange={(e) => {
+                      setNombre(e.target.value)
+                      if (errores.nombre) setErrores((prev) => ({ ...prev, nombre: '' }))
+                    }}
                     placeholder="Ej. Julián Soto"
-                    required
+                    autoFocus
                   />
+                  {errores.nombre && <span className="field-error">{errores.nombre}</span>}
                 </div>
 
-                <div className="field">
+                <div className={`field ${errores.correo ? 'has-error' : ''}`}>
                   <label className="field-label" htmlFor="userCorreo">Correo institucional</label>
                   <input
                     id="userCorreo"
                     type="email"
                     value={correo}
-                    onChange={(e) => setCorreo(e.target.value)}
+                    onChange={(e) => {
+                      setCorreo(e.target.value)
+                      if (errores.correo) setErrores((prev) => ({ ...prev, correo: '' }))
+                    }}
                     placeholder="usuario@huellas.co"
-                    required
                   />
+                  {errores.correo && <span className="field-error">{errores.correo}</span>}
                 </div>
 
-                <div className="field">
-                  <label className="field-label" htmlFor="userRol">Rol operativo</label>
+                <div className={`field ${errores.cargo ? 'has-error' : ''}`}>
+                  <label className="field-label" htmlFor="userCargo">Cargo laboral</label>
+                  <input
+                    id="userCargo"
+                    value={cargo}
+                    onChange={(e) => {
+                      setCargo(e.target.value)
+                      if (errores.cargo) setErrores((prev) => ({ ...prev, cargo: '' }))
+                    }}
+                    placeholder="Ej. Impresor gran formato"
+                  />
+                  {errores.cargo && <span className="field-error">{errores.cargo}</span>}
+                </div>
+
+                <div className={`field full ${errores.rol ? 'has-error' : ''}`}>
+                  <label className="field-label" htmlFor="userRol">Rol operativo en ORVEX</label>
                   <select
                     id="userRol"
                     value={rol}
-                    onChange={(e) => setRol(e.target.value)}
+                    onChange={(e) => handleRolChange(e.target.value)}
                   >
                     <option value="Comercial">Comercial / Recepción</option>
                     <option value="Diseñador">Diseñador gráfico</option>
@@ -226,18 +419,33 @@ export default function Users({ data, actions }) {
                     <option value="Postventa">Atención postventa</option>
                     <option value="Gerencia">Gerencia general</option>
                   </select>
+                  {errores.rol && <span className="field-error">{errores.rol}</span>}
                 </div>
               </div>
 
               <div className="modal-foot" style={{ marginTop: '20px', padding: 0, background: 'none', border: 'none' }}>
-                <button type="button" className="btn" onClick={() => setModalNuevo(false)}>Cancelar</button>
+                <button type="button" className="btn" onClick={() => setModalFormulario(false)}>Cancelar</button>
                 <button type="submit" className="btn btn-primary">
-                  <Icon nombre="check" tamano={15} /> Crear usuario
+                  <Icon nombre="check" tamano={15} /> {usuarioEditando ? 'Guardar cambios' : 'Crear usuario'}
                 </button>
               </div>
             </form>
           </div>
         </div>
+      )}
+
+      {/* Modal de confirmación para desactivar usuario */}
+      {usuarioADesactivar && (
+        <Modal
+          titulo="Desactivar usuario"
+          subtitulo={usuarioADesactivar.nombre}
+          icono="alert-triangle"
+          tipoBoton="danger"
+          mensaje={`¿Estás seguro de desactivar al usuario ${usuarioADesactivar.nombre} (${usuarioADesactivar.correo})? El usuario no podrá acceder al sistema ni se le podrán asignar nuevas órdenes mientras esté inactivo.`}
+          textoBoton="Desactivar usuario"
+          onClose={() => setUsuarioADesactivar(null)}
+          onConfirm={confirmarDesactivacion}
+        />
       )}
     </div>
   )

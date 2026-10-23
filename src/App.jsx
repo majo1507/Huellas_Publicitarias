@@ -26,9 +26,10 @@ import Production from './pages/Production.jsx'
 import Tasks from './pages/Tasks.jsx'
 import Reports from './pages/Reports.jsx'
 import Users from './pages/Users.jsx'
+import Login from './pages/Login.jsx'
 import { ROLES } from './data/roles.js'
 import { api } from './services/api.js'
-import { formatearFecha, formatearHora, puedeAvanzar } from './utils/format.js'
+import { formatearFecha, formatearHora, puedeAvanzar, validarCierreOrden } from './utils/format.js'
 
 // Dashboard (opción "Inicio") que corresponde a cada rol
 const dashboards = {
@@ -41,10 +42,20 @@ const dashboards = {
   gerencia: ManagementDashboard,
 }
 
-// Crea un evento para el historial de una orden con la fecha y hora actuales
-function crearEvento(actividad, responsable, estado = 'Completado', interno = false) {
+// Crea un evento para el historial de una orden con la fecha y hora actuales (HU-19)
+function crearEvento(actividad, responsable, estado = 'Completado', interno = false, extra = {}) {
   const ahora = new Date()
-  return { fecha: formatearFecha(ahora), hora: formatearHora(ahora), actividad, responsable, estado, interno }
+  return {
+    fecha: formatearFecha(ahora),
+    hora: formatearHora(ahora),
+    actividad,
+    responsable,
+    estado,
+    interno,
+    estadoAnterior: extra.estadoAnterior || null,
+    nuevoEstado: extra.nuevoEstado || null,
+    motivo: extra.motivo || extra.observaciones || null,
+  }
 }
 
 // Reemplaza la última versión del diseño por una versión modificada
@@ -53,8 +64,6 @@ function cambiarUltimaVersion(versiones, cambios) {
 }
 
 export default function App() {
-  // TODOS los roles trabajan sobre estos mismos datos (viven en memoria, se pierden al recargar).
-  // Se cargan con src/services/api.js, que hoy devuelve datos simulados y mañana llamará a la API REST.
   const [orders, setOrders] = useState([])
   const [requests, setRequests] = useState([])
   const [tasks, setTasks] = useState([])
@@ -68,8 +77,34 @@ export default function App() {
 
   // page.name indica la pantalla actual; page.orderId la orden seleccionada
   const [page, setPage] = useState({ name: 'inicio', orderId: null })
-  // Rol simulado (sin autenticación real): define menú, dashboard y acciones disponibles
-  const [role, setRole] = useState('cliente')
+
+  // Usuario autenticado (HU-02)
+  const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      if (sessionStorage.getItem('orvex_auth_logged_out') === 'true') return null
+      const guardado = sessionStorage.getItem('orvex_auth_user')
+      if (guardado) return JSON.parse(guardado)
+      return {
+        nombre: ROLES.coordinador.usuario.nombre,
+        correo: 'carlos.gomez@huellas.co',
+        cargo: ROLES.coordinador.usuario.cargo,
+        rol: 'coordinador',
+      }
+    } catch {
+      return null
+    }
+  })
+
+  // Rol activo (controla vistas, menús y permisos)
+  const [role, setRole] = useState(() => {
+    try {
+      if (sessionStorage.getItem('orvex_auth_logged_out') === 'true') return 'coordinador'
+      return sessionStorage.getItem('orvex_auth_role') || 'coordinador'
+    } catch {
+      return 'coordinador'
+    }
+  })
+
   const [menuAbierto, setMenuAbierto] = useState(false)
   const [sidebarColapsado, setSidebarColapsado] = useState(false)
   const [toasts, setToasts] = useState([])
@@ -90,8 +125,13 @@ export default function App() {
     api.cargarTodo()
       .then((d) => {
         if (cancelado) return
-        setOrders(d.orders); setRequests(d.requests); setTasks(d.tasks)
-        setCases(d.cases); setClients(d.clients); setUsers(d.users); setComms(d.comms || [])
+        setOrders(d.orders)
+        setRequests(d.requests)
+        setTasks(d.tasks)
+        setCases(d.cases)
+        setClients(d.clients)
+        setUsers(d.users)
+        setComms(d.comms || [])
         setCargando(false)
       })
       .catch((e) => {
@@ -102,13 +142,11 @@ export default function App() {
     return () => { cancelado = true }
   }, [intento])
 
-  // Cada vez que se cambia de pantalla se vuelve arriba
   useEffect(() => { window.scrollTo(0, 0) }, [page])
 
-  const usuario = ROLES[role].usuario.nombre // quien realiza las acciones (se guarda en el historial)
+  const usuario = currentUser?.nombre || ROLES[role]?.usuario?.nombre || 'Usuario'
   const data = { orders, requests, tasks, cases, clients, users, comms }
 
-  // Mensajes de éxito / error / aviso
   function notify(texto, tipo = 'exito') {
     const id = Date.now() + Math.random()
     setToasts((prev) => [...prev, { id, texto, tipo }])
@@ -116,20 +154,82 @@ export default function App() {
   }
   const cerrarToast = (id) => setToasts((prev) => prev.filter((t) => t.id !== id))
 
-  const irA = (name, orderId = null) => setPage({ name, orderId })
+  // Navegación con protección de rutas según rol (HU-02 y HU-07)
+  const irA = (name, orderId = null) => {
+    const paginasComunes = ['inicio', 'detalle', 'aprobacion', 'historial', 'disenos']
+    const itemMenu = ROLES[role]?.menu.find((m) => m.page === name)
+    if (!itemMenu && !paginasComunes.includes(name)) {
+      notify(`Acceso restringido: tu rol (${ROLES[role]?.nombre || role}) no tiene acceso a "${name}".`, 'aviso')
+      setPage({ name: 'inicio', orderId: null })
+      return
+    }
+    setPage({ name, orderId })
+  }
 
-  // Al cambiar de rol se vuelve al inicio de esa interfaz
+  // Inicio de sesión (HU-02)
+  function handleLogin(usuarioElegido, rolElegido) {
+    setCurrentUser(usuarioElegido)
+    setRole(rolElegido)
+    try {
+      sessionStorage.removeItem('orvex_auth_logged_out')
+      sessionStorage.setItem('orvex_auth_user', JSON.stringify(usuarioElegido))
+      sessionStorage.setItem('orvex_auth_role', rolElegido)
+    } catch {}
+    setPage({ name: 'inicio', orderId: null })
+    notify(`Bienvenido/a, ${usuarioElegido.nombre}. Sesión activa como ${ROLES[rolElegido].nombre}.`, 'exito')
+  }
+
+  // Cierre de sesión (HU-02)
+  function handleLogout() {
+    setCurrentUser(null)
+    try {
+      sessionStorage.setItem('orvex_auth_logged_out', 'true')
+      sessionStorage.removeItem('orvex_auth_user')
+    } catch {}
+    notify('Sesión cerrada correctamente.', 'info')
+  }
+
+  // Cambio de rol simulado (sincroniza usuario y contexto)
   function cambiarRol(nuevoRol) {
     setRole(nuevoRol)
-    irA('inicio')
+    const nuevoUsuario = {
+      nombre: ROLES[nuevoRol]?.usuario?.nombre || 'Usuario',
+      correo: `${nuevoRol}@huellas.co`,
+      cargo: ROLES[nuevoRol]?.usuario?.cargo || nuevoRol,
+      rol: nuevoRol,
+    }
+    setCurrentUser(nuevoUsuario)
+    try {
+      sessionStorage.removeItem('orvex_auth_logged_out')
+      sessionStorage.setItem('orvex_auth_user', JSON.stringify(nuevoUsuario))
+      sessionStorage.setItem('orvex_auth_role', nuevoRol)
+    } catch {}
+    setPage({ name: 'inicio', orderId: null })
     notify(`Vista cambiada a: ${ROLES[nuevoRol].nombre}`, 'info')
   }
 
-  const selectedOrder = orders.find((o) => o.id === page.orderId)
-  const tituloMenu = ROLES[role].menu.find((m) => m.page === page.name)?.label || 'Módulo'
+  // Gestión de usuarios (HU-01)
+  function addUser(nuevo) {
+    setUsers((prev) => [...prev, nuevo])
+  }
 
-  // Modifica una orden y agrega (opcionalmente) un evento al historial.
-  // "cambios" puede ser un objeto o una función que recibe la orden actual.
+  function updateUser(id, cambios) {
+    setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, ...cambios } : u)))
+  }
+
+  function toggleUserStatus(id) {
+    setUsers((prev) =>
+      prev.map((u) => {
+        if (u.id !== id) return u
+        const nuevoEstado = u.estado === 'Activo' ? 'Inactivo' : 'Activo'
+        return { ...u, estado: nuevoEstado }
+      })
+    )
+  }
+
+  const selectedOrder = orders.find((o) => o.id === page.orderId)
+  const tituloMenu = ROLES[role]?.menu.find((m) => m.page === page.name)?.label || 'Módulo'
+
   function updateOrder(id, cambios, evento) {
     setOrders((prev) =>
       prev.map((o) => {
@@ -140,76 +240,125 @@ export default function App() {
     )
   }
 
-  // ---------------- Solicitudes ----------------
+  // ---------------- Solicitudes (HU-03, HU-04, HU-05, HU-06) ----------------
   function addRequest(form) {
     const numero = String(requests.length + 1).padStart(4, '0')
     const id = `SOL-2026-${numero}`
-    const nueva = { ...form, id, fechaSolicitud: formatearFecha(), estado: 'Pendiente', ordenId: null, motivoRechazo: '' }
+    const nueva = {
+      ...form,
+      id,
+      fechaSolicitud: formatearFecha(),
+      estado: 'Pendiente',
+      ordenId: null,
+      motivoRechazo: '',
+    }
     setRequests([...requests, nueva])
     irA('solicitudes')
-    notify(`Solicitud ${id} registrada. Quedó pendiente de envío a validación.`)
+    notify(`Solicitud ${id} registrada con éxito. Quedó pendiente de envío a validación.`, 'exito')
   }
 
-  const updateRequest = (id, cambios) => setRequests((prev) => prev.map((s) => (s.id === id ? { ...s, ...cambios } : s)))
+  const updateRequest = (id, cambios) =>
+    setRequests((prev) => prev.map((s) => (s.id === id ? { ...s, ...cambios } : s)))
 
   function sendToValidation(id) {
     updateRequest(id, { estado: 'En validación' })
-    notify(`Solicitud ${id} enviada a validación.`)
+    notify(`Solicitud ${id} enviada a validación del coordinador.`)
   }
 
+  // Devolver solicitud para corrección (HU-05)
+  function returnRequest(id, motivo) {
+    updateRequest(id, { estado: 'Devuelta para corrección', motivoRechazo: motivo })
+    notify(`Solicitud ${id} devuelta al área comercial para corrección.`, 'aviso')
+  }
+
+  // Rechazar solicitud definitivamente (HU-05)
   function rejectRequest(id, motivo) {
     updateRequest(id, { estado: 'Rechazada', motivoRechazo: motivo })
-    notify(`Solicitud ${id} rechazada.`, 'aviso')
+    notify(`Solicitud ${id} rechazada formalmente.`, 'aviso')
   }
 
-  // El coordinador valida la solicitud y se genera la orden de producción
+  // Validar solicitud y generar orden de producción (HU-06)
   function validateRequest(id) {
     const s = requests.find((r) => r.id === id)
-    const cliente = clients.find((c) => c.id === s.clienteId)
+    if (!s) {
+      notify('Solicitud no encontrada.', 'error')
+      return false
+    }
+
+    // Regla HU-06: Prevenir órdenes duplicadas y estados no válidos
+    if (s.ordenId || s.estado === 'Aprobada') {
+      notify(`La solicitud ${id} ya generó una orden previamente (${s.ordenId}). No se permiten órdenes duplicadas.`, 'error')
+      return false
+    }
+    if (s.estado !== 'En validación') {
+      notify(`La solicitud ${id} debe encontrarse en estado "En validación" para ser aprobada.`, 'aviso')
+      return false
+    }
+
+    const cliente = clients.find((c) => c.id === s.clienteId) || {
+      nombre: s.cliente,
+      direccion: 'Sede comercial',
+      ciudad: 'Bogotá',
+      contacto: s.cliente,
+    }
     const ordenId = `OP-2026-${String(orders.length + 1).padStart(4, '0')}`
+
     const nueva = {
       id: ordenId,
+      solicitudId: s.id,
       clienteId: s.clienteId,
       cliente: s.cliente,
       producto: s.producto,
-      cantidad: s.cantidad,
+      cantidad: Number(s.cantidad),
       material: s.material,
       dimensiones: s.dimensiones,
-      colores: 'Por definir',
-      acabados: 'Por definir',
+      colores: 'Por definir en pre-prensa',
+      acabados: 'Corte y empaque estándar',
       fechaSolicitud: s.fechaSolicitud,
       fechaEntrega: s.fechaEntrega,
       estado: 'Diseño',
       disenoEstado: 'Pendiente',
       responsable: 'María López',
       disenador: 'María López',
-      presupuesto: s.presupuesto,
-      costoInterno: Math.round(s.presupuesto * 0.6),
-      requerimientos: s.requerimientos,
-      observaciones: s.observaciones,
-      entrega: { direccion: `${cliente.direccion}, ${cliente.ciudad}`, metodo: 'Domicilio', contacto: cliente.contacto },
+      presupuesto: Number(s.presupuesto) || 0,
+      costoInterno: Math.round((Number(s.presupuesto) || 0) * 0.6),
+      requerimientos: s.requerimientos || 'Sin especificaciones adicionales',
+      observaciones: s.observaciones || '',
+      entrega: {
+        direccion: cliente.direccion ? `${cliente.direccion}, ${cliente.ciudad || 'Bogotá'}` : 'Dirección en sede comercial',
+        metodo: 'Domicilio',
+        contacto: cliente.contacto || s.cliente,
+      },
       versiones: [],
       historial: [
-        crearEvento('Solicitud creada', 'Ana Martínez'),
-        crearEvento('Orden generada', usuario),
-        crearEvento('Actividad asignada: diseño a María López', usuario, 'Completado', true),
+        crearEvento(`Solicitud ${s.id} registrada en comercial`, 'Ana Martínez'),
+        crearEvento(`Orden generada desde solicitud ${s.id}`, usuario),
+        crearEvento('Actividad asignada: propuesta gráfica a María López', usuario, 'Completado', true),
       ],
     }
+
     setOrders([...orders, nueva])
-    updateRequest(id, { estado: 'Aprobada', ordenId })
-    notify(`Solicitud validada. Se generó la orden ${ordenId} y se asignó a diseño.`)
+    updateRequest(id, { estado: 'Aprobada', ordenId, motivoRechazo: '' })
+    notify(`Solicitud validada. Se generó la orden ${ordenId} y se asignó a diseño.`, 'exito')
+    return true
   }
 
   // ---------------- Flujo de la orden ----------------
-  // Pasa la orden a la siguiente etapa. REGLA: no se puede pasar a Impresión sin diseño aprobado.
   function advanceStage(id) {
     const order = orders.find((o) => o.id === id)
     const regla = puedeAvanzar(order)
 
     if (!regla.ok) {
       if (regla.bloqueada) {
-        // Se registra el intento en el historial y se explica el motivo
-        updateOrder(id, {}, crearEvento(`Avance bloqueado: se intentó pasar a ${regla.siguiente} sin diseño aprobado`, usuario, 'Pendiente'))
+        updateOrder(
+          id,
+          {},
+          crearEvento(`Avance bloqueado: se intentó pasar a ${regla.siguiente} sin diseño aprobado`, usuario, 'Pendiente', false, {
+            estadoAnterior: order.estado,
+            nuevoEstado: regla.siguiente,
+            motivo: regla.motivo,
+          })
+        )
         notify(regla.motivo, 'error')
       } else {
         notify(regla.motivo, 'info')
@@ -217,8 +366,59 @@ export default function App() {
       return false
     }
 
-    updateOrder(id, { estado: regla.siguiente }, crearEvento(`Etapa cambiada a ${regla.siguiente}`, usuario, 'En proceso'))
+    updateOrder(
+      id,
+      { estado: regla.siguiente },
+      crearEvento(`Etapa cambiada a ${regla.siguiente}`, usuario, 'En proceso', false, {
+        estadoAnterior: order.estado,
+        nuevoEstado: regla.siguiente,
+      })
+    )
     notify(`La orden ${id} avanzó a ${regla.siguiente}.`)
+    return true
+  }
+
+  // ---------------- Registro de entregas y evidencias (HU-17) ----------------
+  function registerDelivery(ordenId, datosEntrega) {
+    const orden = orders.find((o) => o.id === ordenId)
+    if (!orden) return false
+
+    const nuevaInfoEntrega = {
+      ...orden.entrega,
+      contacto: datosEntrega.contacto || orden.cliente,
+      documento: datosEntrega.documento || '',
+      cargo: datosEntrega.cargo || 'Recepción cliente',
+      telefono: datosEntrega.telefono || '',
+      fechaReal: datosEntrega.fechaReal || formatearFecha(),
+      conformidad: datosEntrega.conformidad || 'Conforme',
+      observaciones: datosEntrega.observaciones || '',
+      evidencia: datosEntrega.evidencia || (orden.entrega?.evidencia || null),
+    }
+
+    const estadoAnterior = orden.estado
+    const nuevoEstado = 'Entrega'
+
+    updateOrder(
+      ordenId,
+      {
+        estado: nuevoEstado,
+        entrega: nuevaInfoEntrega,
+      },
+      crearEvento(
+        `Entrega formal registrada a ${datosEntrega.contacto}${datosEntrega.documento ? ` (Doc: ${datosEntrega.documento})` : ''}`,
+        usuario,
+        'Completado',
+        false,
+        {
+          estadoAnterior,
+          nuevoEstado,
+          motivo: `Conformidad: ${datosEntrega.conformidad}`,
+          observaciones: datosEntrega.observaciones,
+        }
+      )
+    )
+
+    notify(`Entrega de ${ordenId} registrada con éxito. Acta/evidencia asociada a la orden.`, 'exito')
     return true
   }
 
@@ -261,12 +461,12 @@ export default function App() {
     notify(`Se solicitaron cambios al diseño de ${id}.`, 'aviso')
   }
 
-  // ---------------- Actividades de producción ----------------
+  // ---------------- Actividades de taller (HU-08 y HU-10) ----------------
   const updateTask = (id, cambios) => setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...cambios } : t)))
 
-  // accion: 'iniciar' | 'pausar' | 'finalizar'
   function taskAction(id, accion) {
     const t = tasks.find((x) => x.id === id)
+    if (!t) return
     const nuevoEstado = { iniciar: 'En proceso', pausar: 'Pausada', finalizar: 'Finalizada' }[accion]
     const verbo = { iniciar: 'iniciada', pausar: 'pausada', finalizar: 'finalizada' }[accion]
     updateTask(id, { estado: nuevoEstado })
@@ -274,9 +474,9 @@ export default function App() {
     notify(`Tarea "${t.actividad}" ${verbo}.`, accion === 'pausar' ? 'aviso' : 'exito')
   }
 
-  // tipo: 'notas' (observación) | 'incidencias'
   function addTaskNote(id, tipo, texto) {
     const t = tasks.find((x) => x.id === id)
+    if (!t) return
     const registro = { fecha: formatearFecha(), hora: formatearHora(), texto, autor: usuario }
     updateTask(id, { [tipo]: [...t[tipo], registro] })
     const etiqueta = tipo === 'incidencias' ? 'Incidencia' : 'Observación'
@@ -284,17 +484,207 @@ export default function App() {
     notify(`${etiqueta} registrada.`, tipo === 'incidencias' ? 'aviso' : 'exito')
   }
 
+  // Asignación y cambio de responsable con trazabilidad completa (HU-08 y HU-10)
   function assignTask(id, responsable) {
     const t = tasks.find((x) => x.id === id)
+    if (!t) return
+    const anterior = t.responsable || 'Sin asignar'
+    if (anterior === responsable) return
+
     updateTask(id, { responsable })
-    updateOrder(t.ordenId, {}, crearEvento(`Actividad "${t.actividad}" asignada a ${responsable}`, usuario, 'Completado', true))
-    notify(`Actividad asignada a ${responsable}.`)
+    updateOrder(
+      t.ordenId,
+      {},
+      crearEvento(`Actividad "${t.actividad}": responsable reasignado de ${anterior} a ${responsable}`, usuario, 'Completado', true)
+    )
+    notify(`Actividad "${t.actividad}" asignada a ${responsable}.`, 'exito')
   }
 
-  // ---------------- Postventa ----------------
+  function updateTaskProgress(taskId, nuevoEstado, nuevoPct) {
+    setTasks((prev) =>
+      prev.map((t) => {
+        if (t.id !== taskId) return t
+        return {
+          ...t,
+          estado: nuevoEstado,
+          pct: nuevoPct,
+        }
+      })
+    )
+
+    const t = tasks.find((x) => x.id === taskId)
+    if (t?.ordenId) {
+      updateOrder(
+        t.ordenId,
+        {},
+        crearEvento(`Avance en actividad "${t.actividad}": ${nuevoEstado} (${nuevoPct}%)`, usuario, nuevoEstado, true)
+      )
+    }
+    notify(`Actividad "${t?.actividad || ''}" actualizada a ${nuevoEstado} (${nuevoPct}%).`)
+  }
+
+  // ---------------- Postventa (HU-18) ----------------
+  function createCase(nuevoCaso) {
+    const num = cases.length + 1
+    const nuevoId = `CAS-${String(num).padStart(3, '0')}`
+    const ordenAsociada = orders.find((o) => o.id === nuevoCaso.ordenId)
+    const casoCompleto = {
+      id: nuevoId,
+      fecha: formatearFecha(),
+      estado: 'Abierto',
+      responsable: nuevoCaso.responsable || null,
+      calificacion: null,
+      solucion: null,
+      ...nuevoCaso,
+      cliente: nuevoCaso.cliente || ordenAsociada?.cliente || 'Cliente',
+    }
+
+    setCases((prev) => [casoCompleto, ...prev])
+
+    if (nuevoCaso.ordenId) {
+      updateOrder(
+        nuevoCaso.ordenId,
+        {},
+        crearEvento(
+          `Caso de postventa ${nuevoId} registrado (${nuevoCaso.tipo}): ${nuevoCaso.descripcion}`,
+          usuario,
+          'Pendiente',
+          false,
+          {
+            motivo: `Clasificación: ${nuevoCaso.tipo}`,
+            observaciones: nuevoCaso.descripcion,
+          }
+        )
+      )
+    }
+
+    notify(`Caso de postventa ${nuevoId} registrado con éxito.`, 'exito')
+    return nuevoId
+  }
+
   function updateCase(id, cambios, mensaje) {
-    setCases((prev) => prev.map((c) => (c.id === id ? { ...c, ...cambios } : c)))
+    setCases((prev) =>
+      prev.map((c) => {
+        if (c.id !== id) return c
+        return { ...c, ...cambios }
+      })
+    )
+
+    const caso = cases.find((c) => c.id === id)
+    if (caso?.ordenId && cambios.estado) {
+      updateOrder(
+        caso.ordenId,
+        {},
+        crearEvento(
+          `Caso postventa ${id}: ${cambios.estado}${cambios.solucion ? ` - Solución: ${cambios.solucion}` : ''}`,
+          usuario,
+          cambios.estado === 'Resuelto' ? 'Completado' : 'Pendiente',
+          false,
+          {
+            estadoAnterior: caso.estado,
+            nuevoEstado: cambios.estado,
+            motivo: cambios.solucion || null,
+          }
+        )
+      )
+    }
+
     if (mensaje) notify(mensaje)
+  }
+
+  // ---------------- Cierre y reapertura de órdenes (HU-20) ----------------
+  function closeOrder(id, motivo = 'Cierre formal de producción y entrega') {
+    const orden = orders.find((o) => o.id === id)
+    if (!orden) return false
+
+    const validacion = validarCierreOrden(orden, tasks, cases)
+    if (!validacion.puedeCerrar) {
+      notify(`No se puede cerrar la orden ${id}: existen requisitos pendientes.`, 'error')
+      return false
+    }
+
+    const estadoAnterior = orden.estado
+    updateOrder(
+      id,
+      {
+        estado: 'Cerrada',
+        cerradoPor: usuario,
+        fechaCierre: formatearFecha(),
+        motivoCierre: motivo,
+      },
+      crearEvento(`Orden cerrada formalmente por ${usuario}`, usuario, 'Completado', false, {
+        estadoAnterior,
+        nuevoEstado: 'Cerrada',
+        motivo,
+      })
+    )
+
+    notify(`La orden ${id} ha sido cerrada formalmente.`, 'exito')
+    return true
+  }
+
+  function reopenOrder(id, motivo = 'Reapertura para gestión postventa') {
+    const orden = orders.find((o) => o.id === id)
+    if (!orden) return false
+
+    const estadoAnterior = orden.estado
+    updateOrder(
+      id,
+      {
+        estado: 'Postventa',
+        reabiertoPor: usuario,
+        fechaReapertura: formatearFecha(),
+      },
+      crearEvento(`Orden reabierta por ${usuario} a etapa Postventa`, usuario, 'En proceso', false, {
+        estadoAnterior,
+        nuevoEstado: 'Postventa',
+        motivo,
+      })
+    )
+
+    notify(`La orden ${id} ha sido reabierta a Postventa.`, 'aviso')
+    return true
+  }
+
+  // ---------------- Clonación de órdenes para reimpresión (Requerimiento Funcional) ----------------
+  function cloneOrder(id, motivo = 'Reimpresión o reposición de producto') {
+    const ordenOriginal = orders.find((o) => o.id === id)
+    if (!ordenOriginal) return null
+
+    const nuevoNumero = orders.length + 1
+    const nuevoId = `ORD-2024-${String(nuevoNumero).padStart(3, '0')}`
+    const entregaCalculada = new Date()
+    entregaCalculada.setDate(entregaCalculada.getDate() + 4)
+
+    const nuevaOrden = {
+      ...ordenOriginal,
+      id: nuevoId,
+      fechaSolicitud: formatearFecha(),
+      fechaEntrega: formatearFecha(entregaCalculada),
+      estado: 'Impresión',
+      disenoEstado: 'Aprobado',
+      esReimpresion: true,
+      ordenOriginalId: id,
+      historial: [
+        crearEvento(
+          `Orden clonada a partir de ${id} para reimpresión. Motivo: ${motivo}`,
+          usuario,
+          'Completado'
+        ),
+      ],
+      entrega: {
+        ...ordenOriginal.entrega,
+        contacto: ordenOriginal.entrega?.contacto || ordenOriginal.cliente,
+        fechaReal: null,
+        conformidad: null,
+        evidencia: null,
+      },
+    }
+
+    setOrders((prev) => [nuevaOrden, ...prev])
+    notify(`Orden clonada con éxito: ${nuevoId} (Reimpresión de ${id}).`, 'exito')
+    irA('detalle', nuevoId)
+    return nuevoId
   }
 
   // ---------------- Comunicaciones ----------------
@@ -321,42 +711,35 @@ export default function App() {
     notify(`Respuesta enviada a ${comm?.cliente || 'cliente'}.`)
   }
 
-  // ---------------- Tareas con avance ----------------
-  function updateTaskProgress(taskId, nuevoEstado, nuevoPct) {
-    setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id !== taskId) return t
-        return {
-          ...t,
-          estado: nuevoEstado,
-          pct: nuevoPct,
-        }
-      })
-    )
-
-    const t = tasks.find((x) => x.id === taskId)
-    if (t?.ordenId) {
-      updateOrder(
-        t.ordenId,
-        {},
-        crearEvento(`Avance en actividad "${t.actividad}": ${nuevoEstado} (${nuevoPct}%)`, usuario, nuevoEstado, true)
-      )
-    }
-    notify(`Actividad "${t?.actividad || ''}" actualizada a ${nuevoEstado} (${nuevoPct}%).`)
-  }
-
-  // Todas las acciones que pueden ejecutar las pantallas
   const actions = {
-    addRequest, sendToValidation, validateRequest, rejectRequest,
+    addRequest,
+    sendToValidation,
+    returnRequest,
+    rejectRequest,
+    validateRequest,
     advanceStage,
-    designNewVersion, designSend, designApprove, designReject,
-    taskAction, addTaskNote, assignTask, updateTaskProgress,
+    registerDelivery,
+    designNewVersion,
+    designSend,
+    designApprove,
+    designReject,
+    taskAction,
+    addTaskNote,
+    assignTask,
+    updateTaskProgress,
     sendCommMessage,
+    createCase,
     updateCase,
+    closeOrder,
+    reopenOrder,
+    cloneOrder,
+    addUser,
+    updateUser,
+    toggleUserStatus,
     notify,
   }
 
-  const props = { data, actions, irA, role, order: selectedOrder }
+  const props = { data, actions, irA, role, order: selectedOrder, usuarioActual: currentUser }
 
   function renderPage() {
     switch (page.name) {
@@ -412,6 +795,16 @@ export default function App() {
     )
   }
 
+  // Pantalla de inicio de sesión si no hay usuario autenticado (HU-02)
+  if (!currentUser) {
+    return (
+      <>
+        <Login onLogin={handleLogin} />
+        <ToastStack toasts={toasts} onClose={cerrarToast} />
+      </>
+    )
+  }
+
   return (
     <div className={`app${sidebarColapsado ? ' app-sidebar-collapsed' : ''}`}>
       <Sidebar
@@ -422,6 +815,7 @@ export default function App() {
         abierto={menuAbierto}
         colapsado={sidebarColapsado}
         onClose={() => setMenuAbierto(false)}
+        onLogout={handleLogout}
       />
       <div className="main">
         <Header
@@ -432,6 +826,7 @@ export default function App() {
           colapsado={sidebarColapsado}
           abierto={menuAbierto}
           onMenu={toggleMenu}
+          onLogout={handleLogout}
         />
         <main className="content">{renderPage()}</main>
       </div>

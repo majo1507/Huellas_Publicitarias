@@ -10,14 +10,21 @@ import { OPERARIOS } from '../data/mockData.js'
 import { ROLES } from '../data/roles.js'
 
 export default function Tasks({ data, actions, irA, role }) {
-  const [pestaña, setPestaña] = useState('todas') // 'todas' | 'mis' | 'Pendiente' | 'En proceso' | 'Finalizada' | 'Pausada'
+  const [pestaña, setPestaña] = useState('todas')
   const [tareaSeleccionada, setTareaSeleccionada] = useState(null)
   const [nuevoEstado, setNuevoEstado] = useState('')
   const [nuevoPct, setNuevoPct] = useState(0)
   const [errorModal, setErrorModal] = useState('')
 
+  // Modal HU-15: Registro de incidencia
+  const [modalIncidencia, setModalIncidencia] = useState(null)
+
   const usuarioActual = ROLES[role]?.usuario?.nombre || 'Carlos Ruiz'
   const orden = (ordenId) => data.orders.find((o) => o.id === ordenId)
+  const puedeReasignar = ['coordinador', 'gerencia'].includes(role)
+  const listaResponsables = data.users?.length
+    ? data.users.filter((u) => u.estado === 'Activo' && u.rol !== 'Cliente').map((u) => u.nombre)
+    : OPERARIOS
 
   // Filtrado por pestaña
   const filtradas = data.tasks.filter((t) => {
@@ -38,10 +45,11 @@ export default function Tasks({ data, actions, irA, role }) {
   function abrirModalEdicion(t) {
     setTareaSeleccionada(t)
     setNuevoEstado(t.estado)
-    setNuevoPct(t.pct || (t.estado === 'Finalizada' ? 100 : t.estado === 'En proceso' ? 50 : 0))
+    setNuevoPct(t.pct !== undefined ? t.pct : (t.estado === 'Finalizada' ? 100 : t.estado === 'En proceso' ? 50 : 0))
     setErrorModal('')
   }
 
+  // Actualización de estado y avance con validación estricta de coherencia (HU-14)
   function handleGuardarAvance(e) {
     e.preventDefault()
     if (!tareaSeleccionada) return
@@ -58,8 +66,25 @@ export default function Tasks({ data, actions, irA, role }) {
       }
     }
 
-    const pctFinal = nuevoEstado === 'Finalizada' ? 100 : nuevoPct
-    actions.updateTaskProgress(tareaSeleccionada.id, nuevoEstado, pctFinal)
+    // Regla HU-14: Validación de coherencia estado vs avance (0 a 100%)
+    if (nuevoPct < 0 || nuevoPct > 100) {
+      setErrorModal('El porcentaje de avance debe estar entre 0% y 100%.')
+      return
+    }
+    if (nuevoEstado === 'Pendiente' && nuevoPct !== 0) {
+      setErrorModal('Una actividad en estado Pendiente debe tener exactamente 0% de avance.')
+      return
+    }
+    if (nuevoEstado === 'Finalizada' && nuevoPct !== 100) {
+      setErrorModal('Una actividad Finalizada debe registrar el 100% de avance.')
+      return
+    }
+    if ((nuevoEstado === 'En proceso' || nuevoEstado === 'Pausada') && (nuevoPct <= 0 || nuevoPct >= 100)) {
+      setErrorModal('Una actividad En proceso o Pausada debe tener un avance entre 1% y 99%.')
+      return
+    }
+
+    actions.updateTaskProgress(tareaSeleccionada.id, nuevoEstado, nuevoPct)
     setTareaSeleccionada(null)
   }
 
@@ -83,7 +108,14 @@ export default function Tasks({ data, actions, irA, role }) {
       ordenar: true,
       render: (t) => (
         <div>
-          <strong>{t.actividad}</strong>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <strong>{t.actividad}</strong>
+            {t.incidencias?.length > 0 && (
+              <span className="badge badge-rojo" style={{ fontSize: '10px', padding: '1px 5px' }} title={`${t.incidencias.length} incidencia(s) registrada(s)`}>
+                {t.incidencias.length} inc.
+              </span>
+            )}
+          </div>
           <small className="cell-sub">{t.producto} · Etapa: {t.etapa}</small>
         </div>
       ),
@@ -97,11 +129,12 @@ export default function Tasks({ data, actions, irA, role }) {
           <select
             className="inline-select"
             value={t.responsable}
-            disabled={t.estado === 'Finalizada'}
+            disabled={t.estado === 'Finalizada' || !puedeReasignar}
             aria-label={`Responsable de ${t.actividad}`}
             onChange={(e) => actions.assignTask(t.id, e.target.value)}
+            title={!puedeReasignar ? 'Solo el coordinador o gerencia pueden reasignar responsables' : undefined}
           >
-            {OPERARIOS.map((n) => <option key={n}>{n}</option>)}
+            {listaResponsables.map((n) => <option key={n} value={n}>{n}</option>)}
           </select>
         </span>
       ),
@@ -120,11 +153,20 @@ export default function Tasks({ data, actions, irA, role }) {
     { clave: 'estado', titulo: 'Estado', render: (t) => <StatusBadge estado={t.estado} /> },
     {
       clave: 'acciones',
-      titulo: '',
+      titulo: 'Acciones',
       render: (t) => (
-        <button className="btn btn-sm" onClick={() => abrirModalEdicion(t)}>
-          <Icon nombre="edit" tamano={13} /> Gestionar
-        </button>
+        <div style={{ display: 'flex', gap: '4px' }}>
+          <button className="btn btn-sm" onClick={() => abrirModalEdicion(t)} title="Gestionar estado y avance">
+            <Icon nombre="edit" tamano={13} /> Gestionar
+          </button>
+          <button
+            className="btn btn-ghost btn-sm danger-text"
+            onClick={() => setModalIncidencia(t)}
+            title="Registrar incidencia técnica"
+          >
+            <Icon nombre="alert-triangle" tamano={13} />
+          </button>
+        </div>
       ),
     },
   ]
@@ -137,36 +179,21 @@ export default function Tasks({ data, actions, irA, role }) {
         icono="list"
       />
 
-      {/* Pestañas inspiradas en el HTML */}
+      {/* Pestañas de estado */}
       <div className="tabs" role="tablist">
-        <button
-          className={pestaña === 'todas' ? 'on' : ''}
-          onClick={() => setPestaña('todas')}
-        >
+        <button className={pestaña === 'todas' ? 'on' : ''} onClick={() => setPestaña('todas')}>
           Todas <span className="pill">{data.tasks.length}</span>
         </button>
-        <button
-          className={pestaña === 'mis' ? 'on' : ''}
-          onClick={() => setPestaña('mis')}
-        >
+        <button className={pestaña === 'mis' ? 'on' : ''} onClick={() => setPestaña('mis')}>
           Mis tareas <span className="pill">{data.tasks.filter((t) => t.responsable === usuarioActual).length}</span>
         </button>
-        <button
-          className={pestaña === 'Pendiente' ? 'on' : ''}
-          onClick={() => setPestaña('Pendiente')}
-        >
+        <button className={pestaña === 'Pendiente' ? 'on' : ''} onClick={() => setPestaña('Pendiente')}>
           Pendientes <span className="pill">{data.tasks.filter((t) => t.estado === 'Pendiente').length}</span>
         </button>
-        <button
-          className={pestaña === 'En proceso' ? 'on' : ''}
-          onClick={() => setPestaña('En proceso')}
-        >
+        <button className={pestaña === 'En proceso' ? 'on' : ''} onClick={() => setPestaña('En proceso')}>
           En proceso <span className="pill">{data.tasks.filter((t) => t.estado === 'En proceso').length}</span>
         </button>
-        <button
-          className={pestaña === 'Finalizada' ? 'on' : ''}
-          onClick={() => setPestaña('Finalizada')}
-        >
+        <button className={pestaña === 'Finalizada' ? 'on' : ''} onClick={() => setPestaña('Finalizada')}>
           Finalizadas <span className="pill">{data.tasks.filter((t) => t.estado === 'Finalizada').length}</span>
         </button>
       </div>
@@ -178,20 +205,21 @@ export default function Tasks({ data, actions, irA, role }) {
         buscar={(t) => `${t.ordenId} ${t.actividad} ${t.producto} ${t.responsable}`}
         placeholder="Buscar por actividad, orden o responsable..."
         filtros={[
+          { titulo: 'Estado', valor: (t) => t.estado, opciones: ['Pendiente', 'En proceso', 'Pausada', 'Finalizada'] },
           { titulo: 'Prioridad', valor: (t) => t.prioridad, opciones: ['Alta', 'Media', 'Baja'] },
-          { titulo: 'Responsable', valor: (t) => t.responsable, opciones: OPERARIOS },
+          { titulo: 'Responsable', valor: (t) => t.responsable, opciones: [...new Set(data.tasks.map((t) => t.responsable))] },
         ]}
-        vacioTitulo="No hay actividades en esta vista"
+        vacioTitulo="No se encontraron actividades"
       />
 
-      {/* Modal interactivo de avance de tarea */}
+      {/* MODAL HU-14: Gestión de estado y avance porcentual coherente */}
       {tareaSeleccionada && (
         <div className="modal-backdrop" onClick={() => setTareaSeleccionada(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Gestionar tarea">
+          <div className="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Gestionar actividad">
             <div className="modal-head">
               <span className="modal-icon modal-icon-primary"><Icon nombre="list" tamano={20} /></span>
               <div>
-                <h2>{tareaSeleccionada.actividad}</h2>
+                <h2>Gestionar: {tareaSeleccionada.actividad}</h2>
                 <p>Orden {tareaSeleccionada.ordenId} · Responsable: {tareaSeleccionada.responsable}</p>
               </div>
               <button className="icon-btn" onClick={() => setTareaSeleccionada(null)}><Icon nombre="x" /></button>
@@ -226,8 +254,12 @@ export default function Tasks({ data, actions, irA, role }) {
                     id="taskEstado"
                     value={nuevoEstado}
                     onChange={(e) => {
-                      setNuevoEstado(e.target.value)
+                      const est = e.target.value
+                      setNuevoEstado(est)
                       setErrorModal('')
+                      if (est === 'Pendiente') setNuevoPct(0)
+                      else if (est === 'Finalizada') setNuevoPct(100)
+                      else if (nuevoPct <= 0 || nuevoPct >= 100) setNuevoPct(50)
                     }}
                   >
                     <option value="Pendiente">Pendiente</option>
@@ -249,10 +281,28 @@ export default function Tasks({ data, actions, irA, role }) {
                     step="5"
                     value={nuevoPct}
                     onChange={(e) => setNuevoPct(Number(e.target.value))}
-                    disabled={nuevoEstado === 'Finalizada'}
+                    disabled={nuevoEstado === 'Finalizada' || nuevoEstado === 'Pendiente'}
                   />
+                  <span className="field-hint">
+                    {nuevoEstado === 'Pendiente' ? '0% obligatorio' : nuevoEstado === 'Finalizada' ? '100% al completar' : 'Entre 1% y 99%'}
+                  </span>
                 </div>
               </div>
+
+              {/* Registro histórico de notas e incidencias previas */}
+              {(tareaSeleccionada.notas?.length > 0 || tareaSeleccionada.incidencias?.length > 0) && (
+                <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid var(--border-light)' }}>
+                  <strong className="sm" style={{ display: 'block', marginBottom: '8px' }}>Registro de observaciones e incidencias:</strong>
+                  {[
+                    ...tareaSeleccionada.notas.map((n) => ({ ...n, tipo: 'Observación' })),
+                    ...tareaSeleccionada.incidencias.map((n) => ({ ...n, tipo: 'Incidencia' })),
+                  ].map((r, i) => (
+                    <p key={i} className={r.tipo === 'Incidencia' ? 'note note-error' : 'note'} style={{ margin: '4px 0' }}>
+                      <strong>{r.tipo}</strong> ({r.fecha} {r.hora} - {r.autor}): {r.texto}
+                    </p>
+                  ))}
+                </div>
+              )}
 
               <div className="modal-foot" style={{ marginTop: '20px', padding: 0, background: 'none', border: 'none' }}>
                 <button type="button" className="btn" onClick={() => setTareaSeleccionada(null)}>Cancelar</button>
@@ -261,6 +311,25 @@ export default function Tasks({ data, actions, irA, role }) {
             </form>
           </div>
         </div>
+      )}
+
+      {/* MODAL HU-15: Registro de incidencia técnica */}
+      {modalIncidencia && (
+        <Modal
+          titulo="Registrar incidencia técnica"
+          subtitulo={`${modalIncidencia.id} · ${modalIncidencia.actividad} (Orden ${modalIncidencia.ordenId})`}
+          icono="alert-triangle"
+          tipoBoton="danger"
+          etiqueta="Describe la falla, problema de insumos o contratiempo ocurrido"
+          ayuda="Quedará documentado en la auditoría y trazabilidad de la orden."
+          minimo={10}
+          textoBoton="Registrar incidencia"
+          onClose={() => setModalIncidencia(null)}
+          onConfirm={(texto) => {
+            actions.addTaskNote(modalIncidencia.id, 'incidencias', texto)
+            setModalIncidencia(null)
+          }}
+        />
       )}
     </div>
   )

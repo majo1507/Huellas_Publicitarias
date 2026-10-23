@@ -11,6 +11,8 @@ const colores = {
   Entrega: 'verde',
   Entregado: 'verde',
   Postventa: 'gris',
+  Cerrada: 'gris',
+  Cerrado: 'gris',
   // Diseño
   Aprobado: 'verde',
   Aprobada: 'verde',
@@ -20,6 +22,7 @@ const colores = {
   'Pendiente de aprobación': 'amarillo',
   'Requiere cambios': 'rojo',
   Rechazada: 'rojo',
+  'Devuelta para corrección': 'amarillo',
   // Historial, tareas y solicitudes
   Completado: 'verde',
   'En proceso': 'azul',

@@ -29,7 +29,7 @@ function Marca() {
 }
 
 // Barra lateral: perfil / selector de rol + menú agrupado por módulos (depende del rol)
-export default function Sidebar({ role, current, irA, onChangeRole, abierto, colapsado = false, onClose }) {
+export default function Sidebar({ role, current, irA, onChangeRole, abierto, colapsado = false, onClose, onLogout }) {
   const { menu, usuario } = ROLES[role]
   const tienePedidos = menu.some((m) => m.page === 'pedidos')
   const paginaActiva = pantallasDeOrden.includes(current) ? (tienePedidos ? 'pedidos' : 'inicio') : current
@@ -83,6 +83,20 @@ export default function Sidebar({ role, current, irA, onChangeRole, abierto, col
           ))}
         </nav>
 
+        {onLogout && (
+          <div style={{ padding: '0 12px 8px' }}>
+            <button
+              type="button"
+              className="nav-item"
+              style={{ width: '100%', color: 'var(--text-muted)' }}
+              onClick={onLogout}
+              title="Cerrar sesión"
+            >
+              <span className="nav-icon"><Icon nombre="log-out" tamano={18} /></span>
+              <span>Cerrar sesión</span>
+            </button>
+          </div>
+        )}
         <p className="sidebar-footer">ORVEX · Huellas Publicidad</p>
       </aside>
     </>

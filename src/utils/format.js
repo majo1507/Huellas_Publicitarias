@@ -11,6 +11,7 @@ const DIA_MS = 86400000
 
 // "10/10/2026" -> objeto Date
 export function parseFecha(texto) {
+  if (!texto) return new Date()
   const [dia, mes, anio] = texto.split('/').map(Number)
   return new Date(anio, mes - 1, dia)
 }
@@ -34,8 +35,8 @@ export function formatoCOP(valor) {
 export const iniciales = (nombre = '') =>
   nombre.split(' ').filter(Boolean).slice(0, 2).map((p) => p[0]).join('').toUpperCase()
 
-// Una orden está activa mientras no haya sido entregada
-export const estaActiva = (orden) => orden.estado !== 'Entrega' && orden.estado !== 'Postventa'
+// Una orden está activa mientras no haya sido entregada o cerrada
+export const estaActiva = (orden) => orden.estado !== 'Entrega' && orden.estado !== 'Postventa' && orden.estado !== 'Cerrada'
 
 export function diasParaEntrega(orden) {
   return Math.round((parseFecha(orden.fechaEntrega) - FECHA_DEMO) / DIA_MS)
@@ -58,6 +59,7 @@ export function prioridadOrden(orden) {
 
 // Texto corto sobre el plazo de entrega: "Faltan 7 días", "2 días de retraso"...
 export function textoPlazo(orden) {
+  if (orden.estado === 'Cerrada') return 'Orden cerrada'
   if (!estaActiva(orden)) return 'Entregada'
   const d = diasParaEntrega(orden)
   if (d < 0) return `${-d} ${-d === 1 ? 'día' : 'días'} de retraso`
@@ -65,8 +67,9 @@ export function textoPlazo(orden) {
   return `Faltan ${d} ${d === 1 ? 'día' : 'días'}`
 }
 
-// Porcentaje de avance según la etapa (Solicitud = 0%, Entrega = 100%)
+// Porcentaje de avance según la etapa (Solicitud = 0%, Entrega/Cerrada = 100%)
 export function progreso(orden) {
+  if (orden.estado === 'Cerrada') return 100
   const posicion = ETAPAS.indexOf(orden.estado)
   return Math.round((Math.min(posicion, 6) / 6) * 100)
 }
@@ -77,23 +80,71 @@ export function etiquetaDiseno(estado) {
 }
 
 // Última versión de diseño de una orden (o undefined si aún no hay)
-export const ultimaVersion = (orden) => orden.versiones[orden.versiones.length - 1]
+export const ultimaVersion = (orden) => orden.versiones?.[orden.versiones.length - 1]
 
-// REGLA DE NEGOCIO: una orden no puede pasar a Impresión (ni a etapas posteriores)
-// si no tiene una aprobación de diseño registrada.
+// REGLA DE NEGOCIO (HU-13): una orden no puede pasar a Impresión (ni a etapas posteriores)
+// si la última versión vigente de diseño no está explícitamente aprobada.
 export function puedeAvanzar(orden) {
+  if (orden.estado === 'Cerrada') {
+    return { ok: false, bloqueada: true, siguiente: null, motivo: 'La orden está cerrada formalmente y no admite más avances.' }
+  }
   const siguiente = ETAPAS[ETAPAS.indexOf(orden.estado) + 1]
   if (!siguiente) return { ok: false, bloqueada: false, siguiente: null, motivo: 'La orden ya completó todo el flujo.' }
-  const aprobado = orden.disenoEstado === 'Aprobado' && orden.versiones.some((v) => v.estado === 'Aprobada')
+  const ultima = ultimaVersion(orden)
+  const aprobado = orden.disenoEstado === 'Aprobado' && Boolean(ultima && ultima.estado === 'Aprobada')
   if (ETAPAS.indexOf(siguiente) >= ETAPAS.indexOf('Impresión') && !aprobado) {
     return {
       ok: false,
       bloqueada: true,
       siguiente,
-      motivo: 'El pedido no puede pasar a impresión porque el diseño aún no ha sido aprobado.',
+      motivo: 'El pedido no puede pasar a impresión porque el diseño vigente aún no ha sido aprobado.',
     }
   }
   return { ok: true, bloqueada: false, siguiente, motivo: '' }
+}
+
+// REGLA DE NEGOCIO (HU-20): Validación exhaustiva para el cierre de una orden.
+// Verifica que se hayan completado todas las etapas, finalizado todas las actividades,
+// registrado la entrega con acta de conformidad y que no existan casos de postventa abiertos.
+export function validarCierreOrden(orden, tareas = [], casos = []) {
+  const impedimentos = []
+
+  // 1. Debe estar en etapa de Entrega o Postventa
+  if (!['Entrega', 'Postventa'].includes(orden.estado)) {
+    impedimentos.push(`La orden se encuentra en etapa "${orden.estado}". Solo pueden cerrarse órdenes que hayan completado la entrega (etapas Entrega o Postventa).`)
+  }
+
+  // 2. Diseño vigente debe estar aprobado
+  const ultima = ultimaVersion(orden)
+  if (orden.disenoEstado !== 'Aprobado' || !ultima || ultima.estado !== 'Aprobada') {
+    impedimentos.push('El diseño de la orden no cuenta con versión vigente aprobada.')
+  }
+
+  // 3. Actividades de taller finalizadas al 100%
+  const tareasDeOrden = tareas.filter((t) => t.ordenId === orden.id)
+  const tareasIncompletas = tareasDeOrden.filter((t) => t.estado !== 'Finalizada')
+  if (tareasIncompletas.length > 0) {
+    const nombres = tareasIncompletas.map((t) => `"${t.actividad}" (${t.estado}, ${t.pct || 0}%)`).join(', ')
+    impedimentos.push(`Existen ${tareasIncompletas.length} actividad(es) de taller pendientes de finalizar: ${nombres}.`)
+  }
+
+  // 4. Datos de recepción y entrega registrados
+  const tieneContacto = Boolean(orden.entrega?.contacto && orden.entrega.contacto.trim().length > 0)
+  if (!tieneContacto) {
+    impedimentos.push('Falta registrar los datos del receptor en el acta de entrega.')
+  }
+
+  // 5. Casos de postventa abiertos o en trámite
+  const casosPendientes = casos.filter((c) => c.ordenId === orden.id && c.estado !== 'Resuelto')
+  if (casosPendientes.length > 0) {
+    const ids = casosPendientes.map((c) => `${c.id} (${c.tipo} - ${c.estado})`).join(', ')
+    impedimentos.push(`Existen ${casosPendientes.length} caso(s) de postventa sin resolver: ${ids}.`)
+  }
+
+  return {
+    puedeCerrar: impedimentos.length === 0,
+    impedimentos,
+  }
 }
 
 // "05/10/2026" + "14:30" -> Date

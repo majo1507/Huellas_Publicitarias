@@ -11,7 +11,7 @@ const TITULOS_ORDEN = { detalle: 'Detalle de la orden', aprobacion: 'Aprobación
 
 // Barra superior: botón de menú lateral, título de la pantalla, buscador global, notificaciones y rol activo.
 // El selector de rol vive ahora en la barra lateral (Contexto de trabajo).
-export default function Header({ role, current, data, irA, colapsado = false, abierto = false, onMenu }) {
+export default function Header({ role, current, data, irA, colapsado = false, abierto = false, onMenu, onLogout }) {
   const actual = ROLES[role]
   const [busqueda, setBusqueda] = useState('')
   const [verNotif, setVerNotif] = useState(false)
@@ -127,6 +127,17 @@ export default function Header({ role, current, data, irA, colapsado = false, ab
         <Icon nombre="user" tamano={14} />
         {actual.nombre}
       </span>
+      {onLogout && (
+        <button
+          className="icon-btn"
+          onClick={onLogout}
+          title="Cerrar sesión"
+          aria-label="Cerrar sesión"
+          style={{ marginLeft: '4px' }}
+        >
+          <Icon nombre="log-out" tamano={17} />
+        </button>
+      )}
 
     </header>
   )

@@ -172,6 +172,16 @@ export default function DesignApproval({ order, actions, irA, role }) {
                     <StatusBadge estado={v.estado} />
                   </div>
                   <div className="sm mut">{v.fecha} · {v.disenador}</div>
+                  {v.archivoNombre && (
+                    <div className="sm" style={{ marginTop: '3px', color: 'var(--blue-600)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <Icon nombre="file-text" tamano={13} /> {v.archivoNombre}
+                    </div>
+                  )}
+                  {v.aprobadoPor && (
+                    <div className="sm" style={{ color: 'var(--state-green)', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <Icon nombre="check" tamano={13} /> Aprobado por {v.aprobadoPor} ({v.fechaAprobacion || v.fecha})
+                    </div>
+                  )}
                   {v.comentario && <p className="comment-text">“{v.comentario}”</p>}
                 </div>
               ))}
@@ -187,10 +197,11 @@ export default function DesignApproval({ order, actions, irA, role }) {
           icono="check-circle"
           tipoBoton="success"
           textoBoton="Confirmar aprobación"
-          mensaje={`¿Confirmas que el diseño de ${order.id} fue aprobado por ${decisorFinal}? Quedará registrado en el historial y se habilitará el paso a producción.`}
+          subtitulo={`Orden ${order.id} · Versión vigente: v${ultima?.numero}`}
+          mensaje={`¿Confirmas que la versión vigente (${ultima?.numero}) fue aprobada por ${decisorFinal}? Quedará registrado en el historial de producción y se habilitará el paso a impresión.`}
           onClose={() => setConfirmandoAprobacion(false)}
           onConfirm={() => {
-            actions.designApprove(order.id)
+            actions.designApprove(order.id, `Aprobado por ${decisorFinal}`)
             setConfirmandoAprobacion(false)
           }}
         />

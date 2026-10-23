@@ -31,7 +31,7 @@ function validar(f) {
   const e = {}
   if (!f.clienteId) e.clienteId = 'Selecciona un cliente.'
   if (!f.producto) e.producto = 'Selecciona el tipo de producto.'
-  if (!f.cantidad || Number(f.cantidad) <= 0) e.cantidad = 'La cantidad debe ser mayor que cero.'
+  if (!f.cantidad || Number(f.cantidad) <= 0 || !Number.isInteger(Number(f.cantidad))) e.cantidad = 'La cantidad debe ser un número entero mayor que cero.'
   if (!f.dimensiones.trim()) e.dimensiones = 'Indica las dimensiones.'
   if (!f.material.trim()) e.material = 'Indica el material.'
   if (!f.fechaEntrega) e.fechaEntrega = 'Selecciona la fecha de entrega.'

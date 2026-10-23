@@ -10,8 +10,8 @@ import { ROLES } from '../data/roles.js'
 const FILTROS = [['Todas', null], ['Pendientes', 'Pendiente'], ['En proceso', 'En proceso'], ['Pausadas', 'Pausada'], ['Finalizadas', 'Finalizada']]
 
 // OPERARIO: interfaz muy simple, solo sus tareas
-export default function OperatorDashboard({ data, actions }) {
-  const nombre = ROLES.operario.usuario.nombre
+export default function OperatorDashboard({ data, actions, usuarioActual }) {
+  const nombre = usuarioActual?.nombre || ROLES.operario.usuario.nombre
   const misTareas = data.tasks.filter((t) => t.responsable === nombre)
   // Modal abierto: { id: 'T-001', tipo: 'notas' | 'incidencias' } o null
   const [modal, setModal] = useState(null)
@@ -62,9 +62,9 @@ export default function OperatorDashboard({ data, actions }) {
                 <div><dt>Fecha límite</dt><dd>{t.fechaLimite}</dd></div>
               </dl>
 
-              <div className="progress" title={`${avance[t.estado]}%`}>
-                <div className="progress-fill" style={{ width: `${avance[t.estado]}%` }} />
-                <span className="progress-text">{avance[t.estado]}%</span>
+              <div className="progress" title={`${t.pct !== undefined ? t.pct : avance[t.estado]}%`}>
+                <div className="progress-fill" style={{ width: `${t.pct !== undefined ? t.pct : avance[t.estado]}%` }} />
+                <span className="progress-text">{t.pct !== undefined ? t.pct : avance[t.estado]}%</span>
               </div>
 
               <div className="task-actions">
