@@ -2469,7 +2469,7 @@ textarea:focus {
   background: var(--bg-elevated);
 }
 
-.dc {
+.fi .dc {
   height: 92px;
   border-radius: var(--radius-md);
   background: var(--bg-surface);
@@ -2890,4 +2890,424 @@ textarea:focus {
   .topbar {
     padding: 0 16px;
   }
+}
+
+
+/* ==========================================================================
+   CORRECCIÓN GENERAL DE MAQUETACIÓN, DIMENSIONES, ALINEACIÓN Y CONTENCIÓN
+   (Sin rediseño: respeta 100% colores, identidad visual, tipografías y componentes)
+   ========================================================================== */
+
+/* 1. Protección universal contra desbordamientos y contención en cajas */
+p, span, h1, h2, h3, h4, h5, h6, dt, dd, li {
+  overflow-wrap: break-word;
+}
+
+img, svg, canvas {
+  max-width: 100%;
+}
+
+.main {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+.content {
+  box-sizing: border-box;
+  max-width: 1440px;
+  width: 100%;
+  min-width: 0;
+}
+
+/* 2. Textos largos y celdas seguras en tablas */
+.cell-wrap {
+  display: inline-block;
+  max-width: 340px;
+  line-height: 1.4;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  white-space: normal;
+}
+
+.cell-sub {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.35;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.table-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  box-sizing: border-box;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table td {
+  overflow-wrap: break-word;
+}
+
+.table td:last-child .row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-start;
+}
+
+.person {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: break-word;
+  line-height: 1.3;
+}
+
+/* 3. Galería de Diseños y Propuestas Gráficas (.dz, article.dc, .dc-th, .dc-body) */
+.dz {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
+  width: 100%;
+  align-items: stretch;
+  box-sizing: border-box;
+}
+
+article.dc {
+  height: auto;
+  min-height: 330px;
+  border-radius: var(--radius-xl);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+article.dc:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-subtle);
+  box-shadow: var(--shadow-card-hover);
+}
+
+.dc-th {
+  position: relative;
+  height: 190px;
+  width: 100%;
+  background: var(--bg-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-bottom: 1px solid var(--border-light);
+  flex-shrink: 0;
+}
+
+.dc-th .stamp {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+}
+
+.dc-th .design-svg {
+  max-height: 170px;
+  width: auto;
+  max-width: 90%;
+  height: auto;
+}
+
+.dc-body {
+  padding: 16px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dc-body h3 {
+  font-size: 0.96rem;
+  font-weight: 600;
+  color: var(--text-main);
+  margin: 0;
+  line-height: 1.35;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+/* 4. Tarjetas Descriptivas de Roles y Usuarios (Users.jsx) */
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 18px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.grid-3 > .card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 16px 18px;
+}
+
+.grid-3 > .card .row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.grid-3 > .card h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-main);
+  margin: 0;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.grid-3 > .card .pill {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.grid-3 > .card p {
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+  margin: 6px 0 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+/* 5. Ventanas Modales y Formularios Responsivos */
+.modal-backdrop {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 20px 16px;
+}
+
+.modal {
+  max-height: calc(100vh - 40px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  width: min(600px, 94vw);
+  box-sizing: border-box;
+  margin: auto;
+}
+
+.modal-head {
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.modal-head h2 {
+  overflow-wrap: break-word;
+  word-break: break-word;
+  line-height: 1.25;
+}
+
+.modal-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  max-height: calc(88vh - 130px);
+  padding: 20px 24px;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.modal-foot {
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 16px 24px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.field {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.field.full {
+  grid-column: 1 / -1;
+}
+
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 6. Indicadores y Métricas (KPIs) */
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.kpi {
+  min-width: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.kpi-value {
+  font-size: clamp(1.45rem, 3.2vw, 2rem);
+  line-height: 1.1;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.kpi-title {
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+/* 7. Ficha Técnica de Orden, Glance y Trazabilidad */
+.cht {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.cht > div {
+  min-width: 0;
+}
+
+.glance {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.glance > div {
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  box-sizing: border-box;
+}
+
+.spec {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 16px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.spec > div {
+  min-width: 0;
+}
+
+.spec dd {
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.tabs {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  flex-wrap: wrap;
+  box-sizing: border-box;
+}
+
+.timeline-body {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+/* 8. Calendario Logístico (Deliveries.jsx) */
+.cal {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.cd {
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.cd .ev {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+/* 9. Búsqueda Global y Dropdown */
+.search-results {
+  width: min(380px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  box-sizing: border-box;
+}
+
+.search-item {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.search-item span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
