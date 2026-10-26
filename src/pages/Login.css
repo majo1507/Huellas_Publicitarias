@@ -1,0 +1,956 @@
+/* ==========================================================================
+   ORVEX · HUELLAS PUBLICIDAD — PANTALLA DE INICIO DE SESIÓN PREMIUM SAAS
+   Estilos estrictamente encapsulados bajo el contenedor .orvex-login-root
+   ========================================================================== */
+
+.orvex-login-root {
+  --orvex-navy-bg: #060913;
+  --orvex-navy-surface: rgba(13, 21, 38, 0.78);
+  --orvex-navy-surface-hover: rgba(19, 31, 56, 0.9);
+  --orvex-navy-card: rgba(15, 23, 42, 0.85);
+  --orvex-navy-border: rgba(56, 189, 248, 0.16);
+  --orvex-navy-border-hover: rgba(56, 189, 248, 0.4);
+  --orvex-cyan: #06b6d4;
+  --orvex-cyan-glow: #38bdf8;
+  --orvex-blue: #2563eb;
+  --orvex-blue-bright: #3b82f6;
+  --orvex-text-white: #f8fafc;
+  --orvex-text-sub: #94a3b8;
+  --orvex-text-dim: #64748b;
+
+  position: relative;
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--orvex-navy-bg);
+  background-image: 
+    radial-gradient(circle at 15% 20%, rgba(37, 99, 235, 0.18) 0%, transparent 45%),
+    radial-gradient(circle at 85% 80%, rgba(6, 182, 212, 0.15) 0%, transparent 50%),
+    radial-gradient(circle at 50% 50%, rgba(15, 23, 42, 0.6) 0%, transparent 100%);
+  color: var(--orvex-text-white);
+  font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
+  overflow-x: hidden;
+  padding: 40px 24px;
+  box-sizing: border-box;
+}
+
+/* --------------------------------------------------------------------------
+   FONDO ANIMADO: Canvas + Malla de partículas y orbes luminosos
+   -------------------------------------------------------------------------- */
+.orvex-login-bg-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.orvex-login-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.85;
+}
+
+/* Rejilla sutil tecnológica */
+.orvex-login-grid-overlay {
+  position: absolute;
+  inset: 0;
+  background-image: 
+    linear-gradient(to right, rgba(56, 189, 248, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(56, 189, 248, 0.04) 1px, transparent 1px);
+  background-size: 40px 40px;
+  mask-image: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.9) 30%, transparent 80%);
+  -webkit-mask-image: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.9) 30%, transparent 80%);
+}
+
+/* Orbes ambientales con movimiento flotante suave */
+.orvex-login-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.35;
+  pointer-events: none;
+  animation: orvexFloatOrb 18s ease-in-out infinite alternate;
+}
+
+.orvex-login-orb-1 {
+  width: 480px;
+  height: 480px;
+  background: radial-gradient(circle, #2563eb 0%, transparent 70%);
+  top: -100px;
+  left: -80px;
+  animation-duration: 22s;
+}
+
+.orvex-login-orb-2 {
+  width: 520px;
+  height: 520px;
+  background: radial-gradient(circle, #06b6d4 0%, transparent 70%);
+  bottom: -120px;
+  right: -100px;
+  animation-duration: 26s;
+  animation-delay: -6s;
+}
+
+.orvex-login-orb-3 {
+  width: 380px;
+  height: 380px;
+  background: radial-gradient(circle, #3b82f6 0%, transparent 70%);
+  top: 45%;
+  left: 45%;
+  transform: translate(-50%, -50%);
+  opacity: 0.18;
+  animation-duration: 30s;
+  animation-delay: -12s;
+}
+
+@keyframes orvexFloatOrb {
+  0% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(30px, 20px) scale(1.08);
+  }
+  100% {
+    transform: translate(-25px, 35px) scale(0.95);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   CONTENEDOR PRINCIPAL: Dos columnas en escritorio
+   -------------------------------------------------------------------------- */
+.orvex-login-container {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  max-width: 1180px;
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 56px;
+  align-items: center;
+  animation: orvexFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes orvexFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   ZONA IZQUIERDA: PRESENTACIÓN DE ORVEX
+   -------------------------------------------------------------------------- */
+.orvex-presentation-col {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  padding-right: 12px;
+}
+
+/* Identidad de Marca */
+.orvex-brand-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.orvex-logo-glow {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.orvex-logo-glow::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.5), rgba(6, 182, 212, 0.5));
+  filter: blur(10px);
+  opacity: 0.6;
+  z-index: -1;
+}
+
+.orvex-brand-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.orvex-brand-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.orvex-brand-title {
+  font-size: 1.75rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  background: linear-gradient(135deg, #ffffff 40%, #bae6fd 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.orvex-badge-pro {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 20px;
+  background: rgba(6, 182, 212, 0.12);
+  border: 1px solid rgba(6, 182, 212, 0.35);
+  color: #38bdf8;
+  display: inline-flex;
+  align-items: center;
+}
+
+.orvex-brand-sub {
+  color: var(--orvex-text-sub);
+  font-size: 0.9rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+/* Mensaje destacado */
+.orvex-headline-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.orvex-headline-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  padding: 6px 14px;
+  border-radius: 100px;
+  background: rgba(37, 99, 235, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.22);
+  color: #7dd3fc;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.orvex-headline-tag-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #38bdf8;
+  box-shadow: 0 0 8px #38bdf8;
+  animation: orvexPulseDot 2s infinite ease-in-out;
+}
+
+@keyframes orvexPulseDot {
+  0%, 100% { opacity: 0.6; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.3); }
+}
+
+.orvex-headline-title {
+  font-size: 2.35rem;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  margin: 0;
+  color: var(--orvex-text-white);
+}
+
+.orvex-headline-gradient {
+  background: linear-gradient(135deg, #38bdf8 0%, #60a5fa 50%, #a78bfa 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.orvex-headline-desc {
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--orvex-text-sub);
+  margin: 0;
+  max-width: 520px;
+}
+
+/* --------------------------------------------------------------------------
+   REPRESENTACIÓN DE LAS 5 ETAPAS CONECTADAS
+   -------------------------------------------------------------------------- */
+.orvex-stages-workflow {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(56, 189, 248, 0.14);
+  border-radius: 18px;
+  padding: 20px 22px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+}
+
+.orvex-stages-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.orvex-stages-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #7dd3fc;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.orvex-stages-status {
+  font-size: 0.72rem;
+  color: var(--orvex-text-dim);
+  font-weight: 500;
+}
+
+.orvex-stages-track {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: relative;
+  width: 100%;
+  padding: 10px 0;
+}
+
+/* Línea base que une las etapas */
+.orvex-track-line-bg {
+  position: absolute;
+  top: 50%;
+  left: 24px;
+  right: 24px;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateY(-50%);
+  z-index: 1;
+}
+
+/* Línea animada con pulso secuencial */
+.orvex-track-line-pulse {
+  position: absolute;
+  top: 50%;
+  left: 24px;
+  right: 24px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #38bdf8, #60a5fa, transparent);
+  background-size: 200% 100%;
+  transform: translateY(-50%);
+  z-index: 2;
+  animation: orvexPulseTrack 4s ease-in-out infinite;
+}
+
+@keyframes orvexPulseTrack {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Cada etapa individual */
+.orvex-stage-node {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  transition: transform 0.25s ease;
+}
+
+.orvex-stage-node:hover {
+  transform: translateY(-2px);
+}
+
+.orvex-stage-icon-box {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0f172a;
+  border: 1px solid rgba(56, 189, 248, 0.24);
+  color: #7dd3fc;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  position: relative;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.orvex-stage-name {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--orvex-text-sub);
+  letter-spacing: -0.01em;
+  transition: color 0.3s ease;
+}
+
+/* Animación secuencial cíclica y refinada de las etapas */
+.orvex-stage-node:nth-child(2) .orvex-stage-icon-box { animation: orvexStageGlow 6s infinite 0.0s; }
+.orvex-stage-node:nth-child(3) .orvex-stage-icon-box { animation: orvexStageGlow 6s infinite 1.2s; }
+.orvex-stage-node:nth-child(4) .orvex-stage-icon-box { animation: orvexStageGlow 6s infinite 2.4s; }
+.orvex-stage-node:nth-child(5) .orvex-stage-icon-box { animation: orvexStageGlow 6s infinite 3.6s; }
+.orvex-stage-node:nth-child(6) .orvex-stage-icon-box { animation: orvexStageGlow 6s infinite 4.8s; }
+
+@keyframes orvexStageGlow {
+  0%, 100% {
+    border-color: rgba(56, 189, 248, 0.24);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+    color: #7dd3fc;
+    background: #0f172a;
+  }
+  15%, 30% {
+    border-color: #38bdf8;
+    box-shadow: 0 0 18px rgba(56, 189, 248, 0.5), inset 0 0 12px rgba(56, 189, 248, 0.25);
+    color: #ffffff;
+    background: linear-gradient(135deg, #1e3a8a 0%, #0369a1 100%);
+  }
+}
+
+/* Píldoras de valor empresarial */
+.orvex-features-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.orvex-feature-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--orvex-text-sub);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.orvex-feature-pill .icon {
+  color: #38bdf8;
+}
+
+/* --------------------------------------------------------------------------
+   ZONA DERECHA: TARJETA DE LOGIN PREMIUM
+   -------------------------------------------------------------------------- */
+.orvex-login-card-col {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.orvex-login-card {
+  width: 100%;
+  max-width: 460px;
+  background: var(--orvex-navy-surface);
+  border: 1px solid var(--orvex-navy-border);
+  border-radius: 24px;
+  padding: 36px 32px;
+  box-shadow: 
+    0 25px 60px -15px rgba(0, 0, 0, 0.75),
+    0 0 35px -10px rgba(6, 182, 212, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Borde superior con reflejo de luz cyan */
+.orvex-login-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 20%;
+  right: 20%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #38bdf8, #60a5fa, transparent);
+  opacity: 0.8;
+}
+
+/* Encabezado de la tarjeta */
+.orvex-card-header {
+  margin-bottom: 24px;
+}
+
+.orvex-card-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #38bdf8;
+  margin-bottom: 8px;
+}
+
+.orvex-card-title {
+  font-size: 1.55rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0 0 6px;
+  color: var(--orvex-text-white);
+}
+
+.orvex-card-subtitle {
+  font-size: 0.88rem;
+  color: var(--orvex-text-sub);
+  margin: 0;
+  line-height: 1.45;
+}
+
+/* Mensajes de error globales */
+.orvex-login-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 20px;
+  animation: orvexShake 0.4s ease;
+}
+
+@keyframes orvexShake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
+.orvex-alert-icon {
+  color: #f87171;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.orvex-alert-text {
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: #fca5a5;
+  word-break: break-word;
+}
+
+/* Formulario y campos */
+.orvex-login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.orvex-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.orvex-input-label {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: #cbd5e1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.orvex-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.orvex-input-icon {
+  position: absolute;
+  left: 14px;
+  color: var(--orvex-text-dim);
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s ease;
+}
+
+.orvex-login-root .orvex-input {
+  width: 100%;
+  height: 46px;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 0 14px 0 42px;
+  font-size: 0.92rem;
+  color: var(--orvex-text-white);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
+}
+
+.orvex-login-root .orvex-input:hover {
+  border-color: rgba(56, 189, 248, 0.3);
+  background: rgba(15, 23, 42, 0.85);
+}
+
+.orvex-login-root .orvex-input:focus {
+  outline: none;
+  border-color: #38bdf8;
+  background: rgba(15, 23, 42, 0.95);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2), 0 0 16px rgba(56, 189, 248, 0.15);
+}
+
+.orvex-input-wrap:focus-within .orvex-input-icon {
+  color: #38bdf8;
+}
+
+.orvex-input-password {
+  padding-right: 44px !important;
+}
+
+.orvex-toggle-pwd {
+  position: absolute;
+  right: 8px;
+  height: 32px;
+  width: 32px;
+  border: none;
+  background: transparent;
+  color: var(--orvex-text-dim);
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.orvex-toggle-pwd:hover {
+  color: var(--orvex-text-white);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.orvex-toggle-pwd:focus-visible {
+  outline: 2px solid #38bdf8;
+  outline-offset: 1px;
+}
+
+.orvex-field-error-text {
+  font-size: 0.78rem;
+  color: #f87171;
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.orvex-form-field.has-error .orvex-input {
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.orvex-form-field.has-error .orvex-input:focus {
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
+}
+
+/* Botón Iniciar Sesión Prominente */
+.orvex-submit-btn {
+  position: relative;
+  width: 100%;
+  height: 48px;
+  margin-top: 8px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 40%, #0284c7 80%, #06b6d4 100%);
+  color: #ffffff;
+  font-size: 0.98rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  cursor: pointer;
+  box-shadow: 0 4px 18px rgba(37, 99, 235, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.15) inset;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+
+.orvex-submit-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.6s ease;
+}
+
+.orvex-submit-btn:hover:not(:disabled) {
+  transform: translateY(-1.5px);
+  box-shadow: 0 8px 25px rgba(6, 182, 212, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.25) inset;
+}
+
+.orvex-submit-btn:hover:not(:disabled)::before {
+  left: 100%;
+}
+
+.orvex-submit-btn:active:not(:disabled) {
+  transform: translateY(0.5px);
+}
+
+.orvex-submit-btn:disabled {
+  opacity: 0.75;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* --------------------------------------------------------------------------
+   ACCESOS DE DEMOSTRACIÓN POR ROL (CUADRÍCULA COMPACTA)
+   -------------------------------------------------------------------------- */
+.orvex-demo-section {
+  margin-top: 26px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.orvex-demo-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.orvex-demo-title {
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--orvex-text-sub);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.orvex-demo-pill {
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  color: #38bdf8;
+}
+
+.orvex-demo-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.orvex-demo-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--orvex-text-white);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.orvex-demo-btn:hover {
+  background: rgba(56, 189, 248, 0.09);
+  border-color: rgba(56, 189, 248, 0.35);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+
+.orvex-demo-btn:active {
+  transform: translateY(0);
+  background: rgba(56, 189, 248, 0.16);
+}
+
+.orvex-demo-btn:focus-visible {
+  outline: 2px solid #38bdf8;
+  outline-offset: 1px;
+}
+
+.orvex-demo-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #ffffff;
+  flex-shrink: 0;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
+.orvex-demo-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.orvex-demo-role-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--orvex-text-white);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.orvex-demo-role-user {
+  font-size: 0.7rem;
+  color: var(--orvex-text-sub);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.orvex-demo-btn-full {
+  grid-column: span 2;
+}
+
+/* Nota técnica de arquitectura */
+.orvex-arch-note {
+  margin-top: 18px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+  font-size: 0.74rem;
+  line-height: 1.45;
+  color: var(--orvex-text-dim);
+  text-align: center;
+}
+
+.orvex-arch-note strong {
+  color: #cbd5e1;
+}
+
+/* --------------------------------------------------------------------------
+   DISEÑO ADAPTABLE (RESPONSIVE)
+   -------------------------------------------------------------------------- */
+@media (max-width: 1024px) {
+  .orvex-login-root {
+    padding: 32px 18px;
+    align-items: flex-start;
+  }
+
+  .orvex-login-container {
+    grid-template-columns: 1fr;
+    gap: 36px;
+    max-width: 580px;
+  }
+
+  .orvex-presentation-col {
+    padding-right: 0;
+    gap: 24px;
+    text-align: center;
+    align-items: center;
+  }
+
+  .orvex-brand-header {
+    justify-content: center;
+  }
+
+  .orvex-headline-section {
+    align-items: center;
+  }
+
+  .orvex-headline-title {
+    font-size: 1.95rem;
+  }
+
+  .orvex-headline-desc {
+    font-size: 0.94rem;
+  }
+
+  .orvex-stages-workflow {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .orvex-features-pills {
+    justify-content: center;
+  }
+}
+
+@media (max-width: 640px) {
+  .orvex-login-root {
+    padding: 20px 14px;
+  }
+
+  .orvex-login-card {
+    padding: 26px 18px;
+    border-radius: 20px;
+  }
+
+  .orvex-headline-title {
+    font-size: 1.65rem;
+  }
+
+  .orvex-stage-node .orvex-stage-name {
+    font-size: 0.68rem;
+  }
+
+  .orvex-stage-icon-box {
+    width: 36px;
+    height: 36px;
+  }
+
+  .orvex-stage-icon-box svg {
+    width: 15px;
+    height: 15px;
+  }
+
+  .orvex-demo-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .orvex-demo-btn-full {
+    grid-column: span 1;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   PREFERENCIA DE REDUCCIÓN DE MOVIMIENTO (ACCESIBILIDAD)
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .orvex-login-container,
+  .orvex-login-orb,
+  .orvex-track-line-pulse,
+  .orvex-stage-node .orvex-stage-icon-box,
+  .orvex-headline-tag-dot,
+  .orvex-login-alert {
+    animation: none !important;
+    transition: none !important;
+  }
+}
