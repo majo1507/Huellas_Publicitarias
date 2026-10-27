@@ -1,10 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 
-// Tema de la aplicación (claro / oscuro), centralizado.
+// Tema de la aplicación (oscuro prioritario / claro), centralizado.
 // - El atributo data-theme del <html> es la única fuente para los estilos (ver src/theme.css).
 // - La preferencia se guarda en localStorage; index.html la aplica antes de pintar para evitar parpadeos.
-export const CLAVE_TEMA = 'orvex-theme'
-const TEMAS = ['light', 'dark']
+export const CLAVE_TEMA = 'orvex-theme-futuristic'
+const TEMAS = ['dark', 'light']
 
 function temaInicial() {
   const aplicado = document.documentElement.getAttribute('data-theme')

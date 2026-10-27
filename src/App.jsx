@@ -816,6 +816,7 @@ export default function App() {
         colapsado={sidebarColapsado}
         onClose={() => setMenuAbierto(false)}
         onLogout={handleLogout}
+        onToggleColapso={toggleMenu}
       />
       <div className="main">
         <Header
@@ -827,8 +828,13 @@ export default function App() {
           abierto={menuAbierto}
           onMenu={toggleMenu}
           onLogout={handleLogout}
+        onToggleColapso={toggleMenu}
         />
-        <main className="content">{renderPage()}</main>
+        <main className="content">
+          <div key={`${role}-${page.name}-${page.orderId || ''}`} className="page-transition">
+            {renderPage()}
+          </div>
+        </main>
       </div>
       <ToastStack toasts={toasts} onClose={cerrarToast} />
     </div>
