@@ -80,9 +80,9 @@ export default function Reports({ data, irA }) {
 
       {/* Tarjetas ejecutivas inspiradas en el HTML */}
       <div className="kpis">
-        <StatCard titulo="Cumplimiento a tiempo" valor="86%" icono="check-circle" color="verde" detalle="Meta superior al 85%" />
+        <StatCard variante="hero" titulo="Cumplimiento a tiempo" valor="86%" icono="check-circle" color="verde" progreso={86} detalle="Meta superior al 85%" />
         <StatCard titulo="Ciclo promedio orden" valor="11.4 d" icono="clock" color="azul" detalle="Desde solicitud hasta entrega" />
-        <StatCard titulo="Aprobados a la 1ª versión" valor="58%" icono="pen" color="amarillo" detalle="Ratio de eficiencia gráfica" />
+        <StatCard titulo="Aprobados a la 1ª versión" valor="58%" icono="pen" color="amarillo" progreso={58} detalle="Ratio de eficiencia gráfica" />
         <StatCard titulo="Total presupuestado" valor={formatoCOP(facturado)} icono="trending-up" color="azul" detalle={`${activas.length} órdenes en curso`} />
       </div>
 

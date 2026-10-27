@@ -12,15 +12,15 @@
       rel="stylesheet"
     />
     <style>
-      html[data-theme='dark'] { background: #060d1b; color-scheme: dark; }
-      html[data-theme='light'] { background: #e8eef7; color-scheme: light; }
+      html[data-theme='dark'] { background: #070d18; color-scheme: dark; }
+      html[data-theme='light'] { background: #f4f2ec; color-scheme: light; }
     </style>
     <script>
-      // El modo oscuro es la apariencia inicial por defecto; conserva la preferencia en localStorage.
+      // ORVEX Futuristic Enterprise: modo oscuro (#070D18) como experiencia prioritaria, conservando preferencia en localStorage.
       (function () {
         var tema = 'dark';
         try {
-          var guardado = localStorage.getItem('orvex-theme');
+          var guardado = localStorage.getItem('orvex-theme-futuristic');
           if (guardado === 'light' || guardado === 'dark') tema = guardado;
         } catch (e) {}
         document.documentElement.setAttribute('data-theme', tema);

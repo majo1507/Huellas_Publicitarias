@@ -27,10 +27,10 @@ export default function OperatorDashboard({ data, actions, usuarioActual }) {
       <PageHeader titulo="Mis tareas" subtitulo={`Actividades asignadas a ${nombre}.`} icono="list" />
 
       <div className="kpis">
-        <StatCard titulo="Pendientes" valor={contar('Pendiente')} icono="clock" color={contar('Pendiente') ? 'amarillo' : 'azul'} />
+        <StatCard variante="featured" titulo="Pendientes" valor={contar('Pendiente')} icono="clock" color={contar('Pendiente') ? 'amarillo' : 'azul'} />
         <StatCard titulo="En proceso" valor={contar('En proceso')} icono="play" />
         <StatCard titulo="Pausadas" valor={contar('Pausada')} icono="pause" />
-        <StatCard titulo="Finalizadas" valor={contar('Finalizada')} icono="check-circle" color="verde" />
+        <StatCard titulo="Finalizadas" valor={contar('Finalizada')} icono="check-circle" color="verde" progreso={Math.round((contar('Finalizada') / Math.max(misTareas.length, 1)) * 100)} />
       </div>
 
       <div className="chips">

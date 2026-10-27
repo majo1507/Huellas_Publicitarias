@@ -30,11 +30,11 @@ export default function ManagementDashboard({ data, irA }) {
         acciones={<button className="btn btn-primary" onClick={() => irA('reportes')}>Ver reportes detallados</button>} />
 
       <div className="kpis">
-        <StatCard titulo="Total de órdenes" valor={data.orders.length} icono="clipboard" />
-        <StatCard titulo="Órdenes activas" valor={activas.length} icono="activity" />
+        <StatCard variante="hero" titulo="Total de órdenes" valor={data.orders.length} icono="clipboard" segmentos={[{ label: 'Activas', valor: activas.length, color: 'celeste' }, { label: 'Entregadas', valor: entregadas, color: 'verde' }]} />
+        <StatCard variante="featured" titulo="Órdenes activas" valor={activas.length} icono="activity" progreso={Math.round((activas.length / Math.max(data.orders.length, 1)) * 100)} />
         <StatCard titulo="Órdenes retrasadas" valor={retrasadas} icono="alert-triangle" color={retrasadas ? 'rojo' : 'azul'} />
-        <StatCard titulo="Órdenes entregadas" valor={entregadas} icono="package" color="verde" />
-        <StatCard titulo="Entregas a tiempo" valor={`${aTiempo}%`} icono="trending-up" detalle="de las órdenes activas" />
+        <StatCard variante="compacta" titulo="Órdenes entregadas" valor={entregadas} icono="package" color="verde" />
+        <StatCard titulo="Entregas a tiempo" valor={`${aTiempo}%`} icono="trending-up" progreso={aTiempo} detalle="de las órdenes activas" />
         <StatCard titulo="Casos de postventa abiertos" valor={casosAbiertos} icono="life-buoy" detalle={`${data.cases.length} casos en total`} />
       </div>
 

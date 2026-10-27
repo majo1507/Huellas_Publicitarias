@@ -43,10 +43,10 @@ export default function DesignerDashboard({ data, irA }) {
         acciones={<button className="btn btn-primary" onClick={() => irA('disenos')}>Ver todos los diseños</button>} />
 
       <div className="kpis">
-        <StatCard titulo="Diseños pendientes" valor={contar('Pendiente')} icono="inbox" color={contar('Pendiente') ? 'amarillo' : 'azul'} />
+        <StatCard variante="featured" titulo="Diseños pendientes" valor={contar('Pendiente')} icono="inbox" color={contar('Pendiente') ? 'amarillo' : 'azul'} />
         <StatCard titulo="En proceso" valor={contar('En proceso')} icono="pen" />
         <StatCard titulo="Enviados a aprobación" valor={contar('Enviado')} icono="send" />
-        <StatCard titulo="Aprobados" valor={contar('Aprobado')} icono="check-circle" color="verde" />
+        <StatCard titulo="Aprobados" valor={contar('Aprobado')} icono="check-circle" color="verde" progreso={Math.round((contar('Aprobado') / Math.max(mios.length, 1)) * 100)} />
         <StatCard titulo="Rechazados" valor={contar('Requiere cambios')} icono="x-circle" color={contar('Requiere cambios') ? 'rojo' : 'azul'} />
       </div>
 
