@@ -23,19 +23,20 @@ export const TIEMPO_PROMEDIO_ETAPA = {
 }
 
 // Operarios disponibles para asignar actividades
-export const OPERARIOS = ['Juan Pérez', 'Pedro Ramírez']
+export const OPERARIOS = ['Pedro Morales', 'Juan Pérez', 'Pedro Ramírez']
 
 // ---------------------------------------------------------------------------
 // USUARIOS INTERNOS
 // ---------------------------------------------------------------------------
 export const initialUsers = [
-  { id: 'U1', nombre: 'Ana Martínez', cargo: 'Comercial / Recepción', rol: 'Comercial', correo: 'ana.martinez@orvex.test', estado: 'Activo' },
-  { id: 'U2', nombre: 'Carlos Ruiz', cargo: 'Coordinador de producción', rol: 'Coordinador', correo: 'carlos.ruiz@orvex.test', estado: 'Activo' },
-  { id: 'U3', nombre: 'María López', cargo: 'Diseñadora gráfica', rol: 'Diseñador', correo: 'maria.lopez@orvex.test', estado: 'Activo' },
-  { id: 'U4', nombre: 'Juan Pérez', cargo: 'Operario de impresión', rol: 'Operario', correo: 'juan.perez@orvex.test', estado: 'Activo' },
-  { id: 'U5', nombre: 'Pedro Ramírez', cargo: 'Operario de acabados', rol: 'Operario', correo: 'pedro.ramirez@orvex.test', estado: 'Activo' },
-  { id: 'U6', nombre: 'Sofía Herrera', cargo: 'Atención postventa', rol: 'Postventa', correo: 'sofia.herrera@orvex.test', estado: 'Activo' },
-  { id: 'U7', nombre: 'Andrés Torres', cargo: 'Gerente general', rol: 'Gerencia', correo: 'andres.torres@orvex.test', estado: 'Activo' },
+  { id: 'U1', nombre: 'Ana Martínez', cargo: 'Comercial / Recepción', rol: 'Comercial', correo: 'ana.martinez@huellas.co', estado: 'Activo' },
+  { id: 'U2', nombre: 'Carlos Gómez', cargo: 'Coordinador de producción', rol: 'Coordinador', correo: 'carlos.gomez@huellas.co', estado: 'Activo' },
+  { id: 'U3', nombre: 'María López', cargo: 'Diseñadora gráfica', rol: 'Diseñador', correo: 'maria.lopez@huellas.co', estado: 'Activo' },
+  { id: 'U4', nombre: 'Pedro Morales', cargo: 'Operario de taller', rol: 'Operario', correo: 'pedro.morales@huellas.co', estado: 'Activo' },
+  { id: 'U5', nombre: 'Juan Pérez', cargo: 'Operario de impresión', rol: 'Operario', correo: 'juan.perez@orvex.test', estado: 'Activo' },
+  { id: 'U6', nombre: 'Sofía Herrera', cargo: 'Atención postventa', rol: 'Postventa', correo: 'sofia.herrera@huellas.co', estado: 'Activo' },
+  { id: 'U7', nombre: 'Laura Sánchez', cargo: 'Gerente general', rol: 'Gerencia', correo: 'laura.sanchez@huellas.co', estado: 'Activo' },
+  { id: 'U8', nombre: 'Pedro Ramírez', cargo: 'Operario de acabados', rol: 'Operario', correo: 'pedro.ramirez@orvex.test', estado: 'Activo' },
 ]
 
 // ---------------------------------------------------------------------------
@@ -84,17 +85,17 @@ export const initialOrders = [
   crearOrden({
     n: 1, clienteId: 'C1', producto: 'Pendón publicitario', cantidad: 5, material: 'Lona', dimensiones: '2m x 1m',
     colores: 'Azul y verde corporativo', acabados: 'Ojales y refuerzo', fechaSolicitud: '28/09/2026', fechaEntrega: '10/10/2026',
-    estado: 'Impresión', disenoEstado: 'Aprobado', responsable: 'Juan Pérez', presupuesto: 350000, metodoEntrega: 'Domicilio',
+    estado: 'Impresión', disenoEstado: 'Aprobado', responsable: 'Pedro Morales', presupuesto: 350000, metodoEntrega: 'Domicilio',
     requerimientos: 'Logo en alta resolución, colores corporativos.', observaciones: 'Entregar en la sede principal.',
     versiones: [ver(1, '29/09/2026', 'Aprobada')],
     historial: [
       ev('28/09/2026', '09:15', 'Solicitud creada', 'Ana Martínez'),
-      ev('28/09/2026', '10:40', 'Orden generada', 'Carlos Ruiz'),
-      ev('28/09/2026', '11:00', 'Actividad asignada: diseño a María López', 'Carlos Ruiz', 'Completado', true),
+      ev('28/09/2026', '10:40', 'Orden generada', 'Carlos Gómez'),
+      ev('28/09/2026', '11:00', 'Actividad asignada: diseño a María López', 'Carlos Gómez', 'Completado', true),
       ev('29/09/2026', '14:20', 'Diseño creado (versión 1)', 'María López'),
       ev('30/09/2026', '08:50', 'Diseño enviado al cliente', 'María López'),
       ev('30/09/2026', '16:05', 'Diseño aprobado', 'Laura Gómez'),
-      ev('01/10/2026', '09:00', 'Orden enviada a impresión', 'Carlos Ruiz'),
+      ev('01/10/2026', '09:00', 'Orden enviada a impresión', 'Carlos Gómez'),
     ],
   }),
   crearOrden({
@@ -105,7 +106,7 @@ export const initialOrders = [
     versiones: [ver(1, '02/10/2026', 'En proceso')],
     historial: [
       ev('01/10/2026', '10:10', 'Solicitud creada', 'Ana Martínez'),
-      ev('01/10/2026', '11:30', 'Orden generada', 'Carlos Ruiz'),
+      ev('01/10/2026', '11:30', 'Orden generada', 'Carlos Gómez'),
       ev('02/10/2026', '09:20', 'Diseño creado (versión 1)', 'María López'),
     ],
   }),
@@ -120,7 +121,7 @@ export const initialOrders = [
     ],
     historial: [
       ev('29/09/2026', '08:45', 'Solicitud creada', 'Ana Martínez'),
-      ev('29/09/2026', '10:00', 'Orden generada', 'Carlos Ruiz'),
+      ev('29/09/2026', '10:00', 'Orden generada', 'Carlos Gómez'),
       ev('30/09/2026', '15:30', 'Diseño enviado al cliente', 'María López'),
       ev('01/10/2026', '09:40', 'Diseño rechazado: cambiar el color del logo al verde corporativo.', 'Laura Gómez', 'Pendiente'),
       ev('02/10/2026', '16:15', 'Diseño enviado para aprobación (versión 2)', 'María López'),
@@ -134,7 +135,7 @@ export const initialOrders = [
     versiones: [ver(1, '01/10/2026', 'Rechazada', 'El logo se ve muy pequeño; aumentar su tamaño.')],
     historial: [
       ev('30/09/2026', '11:00', 'Solicitud creada', 'Ana Martínez'),
-      ev('30/09/2026', '14:00', 'Orden generada', 'Carlos Ruiz'),
+      ev('30/09/2026', '14:00', 'Orden generada', 'Carlos Gómez'),
       ev('01/10/2026', '10:30', 'Diseño enviado al cliente', 'María López'),
       ev('02/10/2026', '08:55', 'Diseño rechazado: el logo se ve muy pequeño; aumentar su tamaño.', 'Paula Ortiz', 'Pendiente'),
     ],
@@ -146,19 +147,19 @@ export const initialOrders = [
     versiones: [ver(1, '22/09/2026', 'Aprobada')],
     historial: [
       ev('20/09/2026', '09:00', 'Solicitud creada', 'Ana Martínez'),
-      ev('21/09/2026', '10:00', 'Orden generada', 'Carlos Ruiz'),
+      ev('21/09/2026', '10:00', 'Orden generada', 'Carlos Gómez'),
       ev('25/09/2026', '11:00', 'Diseño aprobado', 'Diego Castro'),
-      ev('29/09/2026', '08:00', 'Orden enviada a impresión', 'Carlos Ruiz'),
+      ev('29/09/2026', '08:00', 'Orden enviada a impresión', 'Carlos Gómez'),
     ],
   }),
   crearOrden({
     n: 6, clienteId: 'C5', producto: 'Cajas para empaque', cantidad: 200, material: 'Cartulina', dimensiones: '20cm x 15cm x 10cm',
     colores: 'Verde y blanco', acabados: 'Laminado y troquelado', fechaSolicitud: '18/09/2026', fechaEntrega: '01/10/2026',
-    estado: 'Acabados', disenoEstado: 'Aprobado', responsable: 'Pedro Ramírez', presupuesto: 840000, metodoEntrega: 'Domicilio',
+    estado: 'Acabados', disenoEstado: 'Aprobado', responsable: 'Pedro Morales', presupuesto: 840000, metodoEntrega: 'Domicilio',
     versiones: [ver(1, '20/09/2026', 'Aprobada')],
     historial: [
       ev('18/09/2026', '09:30', 'Solicitud creada', 'Ana Martínez'),
-      ev('19/09/2026', '10:00', 'Orden generada', 'Carlos Ruiz'),
+      ev('19/09/2026', '10:00', 'Orden generada', 'Carlos Gómez'),
       ev('24/09/2026', '15:00', 'Diseño aprobado', 'Natalia Rojas'),
       ev('26/09/2026', '09:00', 'Impresión finalizada', 'Juan Pérez'),
     ],
@@ -171,18 +172,18 @@ export const initialOrders = [
     versiones: [],
     historial: [
       ev('02/10/2026', '15:00', 'Solicitud creada', 'Ana Martínez'),
-      ev('03/10/2026', '08:30', 'Orden generada', 'Carlos Ruiz'),
-      ev('03/10/2026', '08:35', 'Actividad asignada: diseño a María López', 'Carlos Ruiz', 'Completado', true),
+      ev('03/10/2026', '08:30', 'Orden generada', 'Carlos Gómez'),
+      ev('03/10/2026', '08:35', 'Actividad asignada: diseño a María López', 'Carlos Gómez', 'Completado', true),
     ],
   }),
   crearOrden({
     n: 8, clienteId: 'C7', producto: 'Agendas institucionales', cantidad: 80, material: 'Papel bond y cartón', dimensiones: 'A5',
     colores: 'Azul y dorado', acabados: 'Encuadernación argollada', fechaSolicitud: '22/09/2026', fechaEntrega: '06/10/2026',
-    estado: 'Acabados', disenoEstado: 'Aprobado', responsable: 'Pedro Ramírez', presupuesto: 960000, metodoEntrega: 'Domicilio',
+    estado: 'Acabados', disenoEstado: 'Aprobado', responsable: 'Pedro Morales', presupuesto: 960000, metodoEntrega: 'Domicilio',
     versiones: [ver(1, '24/09/2026', 'Aprobada')],
     historial: [
       ev('22/09/2026', '09:00', 'Solicitud creada', 'Ana Martínez'),
-      ev('22/09/2026', '12:00', 'Orden generada', 'Carlos Ruiz'),
+      ev('22/09/2026', '12:00', 'Orden generada', 'Carlos Gómez'),
       ev('27/09/2026', '10:00', 'Diseño aprobado', 'Rosa Medina'),
       ev('01/10/2026', '14:00', 'Impresión finalizada', 'Juan Pérez'),
     ],
@@ -196,19 +197,19 @@ export const initialOrders = [
     historial: [
       ev('15/09/2026', '09:00', 'Solicitud creada', 'Ana Martínez'),
       ev('17/09/2026', '11:00', 'Diseño aprobado', 'Laura Gómez'),
-      ev('24/09/2026', '16:00', 'Despacho realizado', 'Pedro Ramírez'),
-      ev('26/09/2026', '10:30', 'Pedido entregado al cliente', 'Pedro Ramírez'),
+      ev('24/09/2026', '16:00', 'Despacho realizado', 'Pedro Morales'),
+      ev('26/09/2026', '10:30', 'Pedido entregado al cliente', 'Pedro Morales'),
     ],
   }),
   crearOrden({
     n: 10, clienteId: 'C8', producto: 'Menús plastificados', cantidad: 40, material: 'Papel couché plastificado', dimensiones: 'Carta',
     colores: 'Rojo y crema', acabados: 'Plastificado', fechaSolicitud: '24/09/2026', fechaEntrega: '05/10/2026',
-    estado: 'Despacho', disenoEstado: 'Aprobado', responsable: 'Pedro Ramírez', presupuesto: 210000, metodoEntrega: 'Domicilio',
+    estado: 'Despacho', disenoEstado: 'Aprobado', responsable: 'Pedro Morales', presupuesto: 210000, metodoEntrega: 'Domicilio',
     versiones: [ver(1, '26/09/2026', 'Aprobada')],
     historial: [
       ev('24/09/2026', '10:00', 'Solicitud creada', 'Ana Martínez'),
       ev('28/09/2026', '09:00', 'Diseño aprobado', 'Camilo Peña'),
-      ev('02/10/2026', '15:00', 'Acabados finalizados', 'Pedro Ramírez'),
+      ev('02/10/2026', '15:00', 'Acabados finalizados', 'Pedro Morales'),
     ],
   }),
   crearOrden({
@@ -219,7 +220,7 @@ export const initialOrders = [
     historial: [
       ev('10/09/2026', '09:00', 'Solicitud creada', 'Ana Martínez'),
       ev('15/09/2026', '10:00', 'Diseño aprobado', 'Mario Díaz'),
-      ev('28/09/2026', '11:00', 'Pedido entregado al cliente', 'Pedro Ramírez'),
+      ev('28/09/2026', '11:00', 'Pedido entregado al cliente', 'Pedro Morales'),
     ],
   }),
   crearOrden({
@@ -230,7 +231,7 @@ export const initialOrders = [
     historial: [
       ev('08/09/2026', '09:00', 'Solicitud creada', 'Ana Martínez'),
       ev('12/09/2026', '10:00', 'Diseño aprobado', 'Diego Castro'),
-      ev('22/09/2026', '11:00', 'Pedido entregado al cliente', 'Pedro Ramírez'),
+      ev('22/09/2026', '11:00', 'Pedido entregado al cliente', 'Pedro Morales'),
       ev('25/09/2026', '09:30', 'Caso de postventa registrado', 'Sofía Herrera'),
     ],
   }),
@@ -268,18 +269,135 @@ export const initialRequests = [
 // ACTIVIDADES DE PRODUCCIÓN (tareas de los operarios)
 // estado: Pendiente | En proceso | Pausada | Finalizada
 // ---------------------------------------------------------------------------
-const tarea = (id, ordenId, actividad, etapa, responsable, prioridad, fechaLimite, estado, pct = 0, deps = []) => ({
-  id, ordenId, actividad, etapa, responsable, prioridad, fechaLimite, estado, pct, deps, notas: [], incidencias: [],
+const tarea = (
+  id,
+  ordenId,
+  actividad,
+  etapa,
+  responsable,
+  prioridad,
+  fechaLimite,
+  estado,
+  pct = 0,
+  deps = [],
+  descripcion = '',
+  instrucciones = ''
+) => ({
+  id,
+  ordenId,
+  actividad,
+  descripcion,
+  instrucciones,
+  etapa,
+  responsable,
+  prioridad,
+  fechaLimite,
+  estado,
+  pct,
+  deps,
+  notas: [],
+  incidencias: [],
 })
 
 export const initialTasks = [
-  tarea('T-001', 'OP-2026-0001', 'Impresión de pendones', 'Impresión', 'Juan Pérez', 'Alta', '08/10/2026', 'En proceso', 65, []),
-  tarea('T-002', 'OP-2026-0001', 'Corte y ojales', 'Acabados', 'Juan Pérez', 'Media', '09/10/2026', 'Pendiente', 0, ['T-001']),
-  tarea('T-003', 'OP-2026-0005', 'Impresión de plegables', 'Impresión', 'Juan Pérez', 'Alta', '02/10/2026', 'En proceso', 40, []),
-  tarea('T-004', 'OP-2026-0006', 'Laminado de cajas', 'Acabados', 'Pedro Ramírez', 'Alta', '01/10/2026', 'En proceso', 50, []),
-  tarea('T-005', 'OP-2026-0008', 'Encuadernación de agendas', 'Acabados', 'Pedro Ramírez', 'Media', '06/10/2026', 'Pendiente', 0, []),
-  tarea('T-006', 'OP-2026-0010', 'Despacho de menús', 'Despacho', 'Pedro Ramírez', 'Media', '05/10/2026', 'Pendiente', 0, []),
-  tarea('T-007', 'OP-2026-0006', 'Corte de cajas', 'Acabados', 'Juan Pérez', 'Media', '30/09/2026', 'Finalizada', 100, []),
+  tarea(
+    'T-001',
+    'OP-2026-0001',
+    'Impresión de pendones',
+    'Impresión',
+    'Juan Pérez',
+    'Alta',
+    '08/10/2026',
+    'En proceso',
+    65,
+    [],
+    'Impresión gran formato de 5 pendones publicitarios en lona banner.',
+    'Verificar perfil de color corporativo azul y verde antes del tiraje completo.'
+  ),
+  tarea(
+    'T-002',
+    'OP-2026-0001',
+    'Corte y ojales',
+    'Acabados',
+    'Pedro Morales',
+    'Media',
+    '09/10/2026',
+    'Pendiente',
+    0,
+    ['T-001'],
+    'Refilado perimetral, termosellado de bordes e instalación de ojales metálicos.',
+    'Colocar 4 ojales por pendón en las esquinas con refuerzo doble.'
+  ),
+  tarea(
+    'T-003',
+    'OP-2026-0005',
+    'Impresión de plegables',
+    'Impresión',
+    'Juan Pérez',
+    'Alta',
+    '02/10/2026',
+    'En proceso',
+    40,
+    [],
+    'Tiraje de 300 plegables informativos en papel bond 90g.',
+    'Revisar registro de retiro y frente antes de pasar a plegado.'
+  ),
+  tarea(
+    'T-004',
+    'OP-2026-0006',
+    'Laminado de cajas',
+    'Acabados',
+    'Pedro Morales',
+    'Alta',
+    '01/10/2026',
+    'En proceso',
+    50,
+    [],
+    'Aplicación de laminado protector y troquelado de 200 cajas para empaque.',
+    'Controlar temperatura de rodillos y verificar pliegues sin fisuras.'
+  ),
+  tarea(
+    'T-005',
+    'OP-2026-0008',
+    'Encuadernación de agendas',
+    'Acabados',
+    'Pedro Morales',
+    'Media',
+    '06/10/2026',
+    'Pendiente',
+    0,
+    [],
+    'Perforación y encuadernado con doble anillo metálico para 80 agendas A5.',
+    'Validar alineación de guardas y tapas duras antes de cerrar el anillo.'
+  ),
+  tarea(
+    'T-006',
+    'OP-2026-0010',
+    'Despacho de menús',
+    'Despacho',
+    'Pedro Morales',
+    'Media',
+    '05/10/2026',
+    'Pendiente',
+    0,
+    [],
+    'Empaque termoencogible y alistamiento de 40 menús plastificados.',
+    'Adjuntar remisión de entrega para firma del cliente en sitio.'
+  ),
+  tarea(
+    'T-007',
+    'OP-2026-0006',
+    'Corte de cajas',
+    'Acabados',
+    'Pedro Morales',
+    'Media',
+    '30/09/2026',
+    'Finalizada',
+    100,
+    [],
+    'Corte inicial de pliegos de cartulina para cajas de empaque.',
+    'Guillotina calibrada según plano técnico.'
+  ),
 ]
 
 // ---------------------------------------------------------------------------
@@ -389,7 +507,7 @@ export const initialComms = [
     clienteId: 'C6',
     cliente: 'Constructora Andes',
     ordenId: 'OP-2026-0005',
-    responsable: 'Carlos Ruiz',
+    responsable: 'Carlos Gómez',
     estado: 'Abierta',
     asunto: 'Insumo de papel para plegables de obra',
     mensajes: [
@@ -403,7 +521,7 @@ export const initialComms = [
     clienteId: 'C8',
     cliente: 'Restaurante El Fogón',
     ordenId: 'OP-2026-0010',
-    responsable: 'Pedro Ramírez',
+    responsable: 'Pedro Morales',
     estado: 'Cerrada',
     asunto: 'Despacho de menús plastificados',
     mensajes: [
@@ -412,7 +530,6 @@ export const initialComms = [
     ],
   },
 ]
-
 
 // ---------------------------------------------------------------------------
 // PROVEEDORES E INVENTARIO DE PLANTA
@@ -569,7 +686,7 @@ export const initialInventoryMovements = [
     unidad: 'm²',
     costoTotal: 1850000,
     ordenId: null,
-    responsable: 'Carlos Ruiz',
+    responsable: 'Carlos Gómez',
     observacion: 'Compra de lote mensual a Suministros Gráficos Andinos',
   },
   {
@@ -611,7 +728,7 @@ export const initialInventoryMovements = [
     unidad: 'm²',
     costoTotal: 432000,
     ordenId: 'OP-2026-0006',
-    responsable: 'Pedro Ramírez',
+    responsable: 'Pedro Morales',
     observacion: 'Rotulación promocional Gimnasio Fuerza',
   },
   {
@@ -625,7 +742,7 @@ export const initialInventoryMovements = [
     unidad: 'pliegos',
     costoTotal: 435000,
     ordenId: null,
-    responsable: 'Carlos Ruiz',
+    responsable: 'Carlos Gómez',
     observacion: 'Reposición de stock de papelería comercial',
   },
 ]

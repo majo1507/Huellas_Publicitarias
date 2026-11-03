@@ -7,9 +7,15 @@ import EmptyState from '../components/EmptyState.jsx'
 import Icon from '../components/Icon.jsx'
 import { ROLES } from '../data/roles.js'
 
-const FILTROS = [['Todas', null], ['Pendientes', 'Pendiente'], ['En proceso', 'En proceso'], ['Pausadas', 'Pausada'], ['Finalizadas', 'Finalizada']]
+const FILTROS = [
+  ['Todas', null],
+  ['Pendientes', 'Pendiente'],
+  ['En proceso', 'En proceso'],
+  ['Pausadas', 'Pausada'],
+  ['Finalizadas', 'Finalizada'],
+]
 
-// OPERARIO: interfaz muy simple, solo sus tareas
+// OPERARIO: interfaz centrada en sus tareas asignadas (ej. Pedro Morales)
 export default function OperatorDashboard({ data, actions, usuarioActual }) {
   const nombre = usuarioActual?.nombre || ROLES.operario.usuario.nombre
   const misTareas = data.tasks.filter((t) => t.responsable === nombre)
@@ -35,53 +41,131 @@ export default function OperatorDashboard({ data, actions, usuarioActual }) {
 
       <div className="chips">
         {FILTROS.map(([texto, valor]) => (
-          <button key={texto} className={filtro === valor ? 'chip active' : 'chip'} onClick={() => setFiltro(valor)}>{texto}</button>
+          <button
+            key={texto}
+            className={filtro === valor ? 'chip active' : 'chip'}
+            onClick={() => setFiltro(valor)}
+          >
+            {texto} ({valor ? contar(valor) : misTareas.length})
+          </button>
         ))}
       </div>
 
-      {lista.length === 0 && <div className="card"><EmptyState icono="check-circle" titulo="No hay tareas en este estado" /></div>}
+      {lista.length === 0 && (
+        <div className="card">
+          <EmptyState icono="check-circle" titulo="No hay tareas en este estado" />
+        </div>
+      )}
 
       <div className="task-grid">
         {lista.map((t) => {
           const finalizada = t.estado === 'Finalizada'
           const o = orden(t.ordenId)
+          const pctActual = t.pct !== undefined && t.pct > 0 ? t.pct : avance[t.estado] ?? 0
           return (
-            <article key={t.id} className={`card task-card prioridad-${t.prioridad.toLowerCase()}${finalizada ? ' done' : ''}`}>
+            <article
+              key={t.id}
+              className={`card task-card prioridad-${(t.prioridad || 'Media').toLowerCase()}${finalizada ? ' done' : ''}`}
+            >
               <header>
                 <div>
                   <span className="order-id">{t.ordenId}</span>
                   <h3>{t.actividad}</h3>
-                  <p className="muted">{o?.producto} · {o?.cliente}</p>
+                  <p className="muted">
+                    {o ? `${o.producto} · ${o.cliente}` : `Orden ${t.ordenId}`}
+                  </p>
                 </div>
                 <StatusBadge estado={t.estado} />
               </header>
 
+              {(t.descripcion || t.instrucciones) && (
+                <div
+                  style={{
+                    margin: '10px 0',
+                    padding: '8px 10px',
+                    background: 'var(--bg-subtle)',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--border-light)',
+                  }}
+                >
+                  {t.descripcion && (
+                    <p className="sm" style={{ margin: 0 }}>
+                      <strong>Descripción:</strong> {t.descripcion}
+                    </p>
+                  )}
+                  {t.instrucciones && (
+                    <p className="sm" style={{ margin: t.descripcion ? '4px 0 0' : 0 }}>
+                      <strong>Instrucciones:</strong> {t.instrucciones}
+                    </p>
+                  )}
+                </div>
+              )}
+
               <dl className="order-meta">
-                <div><dt>Etapa</dt><dd>{t.etapa}</dd></div>
-                <div><dt>Prioridad</dt><dd><StatusBadge estado={t.prioridad} /></dd></div>
-                <div><dt>Fecha límite</dt><dd>{t.fechaLimite}</dd></div>
+                <div>
+                  <dt>Etapa</dt>
+                  <dd>{t.etapa}</dd>
+                </div>
+                <div>
+                  <dt>Prioridad</dt>
+                  <dd>
+                    <StatusBadge estado={t.prioridad} />
+                  </dd>
+                </div>
+                <div>
+                  <dt>Fecha límite</dt>
+                  <dd>{t.fechaLimite}</dd>
+                </div>
               </dl>
 
-              <div className="progress" title={`${t.pct !== undefined ? t.pct : avance[t.estado]}%`}>
-                <div className="progress-fill" style={{ width: `${t.pct !== undefined ? t.pct : avance[t.estado]}%` }} />
-                <span className="progress-text">{t.pct !== undefined ? t.pct : avance[t.estado]}%</span>
+              <div className="progress" title={`${pctActual}%`}>
+                <div className="progress-fill" style={{ width: `${pctActual}%` }} />
+                <span className="progress-text">{pctActual}%</span>
               </div>
 
               <div className="task-actions">
-                <button className="btn btn-primary" disabled={t.estado === 'En proceso' || finalizada} onClick={() => actions.taskAction(t.id, 'iniciar')}>
+                <button
+                  className="btn btn-primary"
+                  disabled={t.estado === 'En proceso' || finalizada}
+                  onClick={() => actions.taskAction(t.id, 'iniciar')}
+                >
                   <Icon nombre="play" tamano={15} /> {t.estado === 'Pausada' ? 'Reanudar' : 'Iniciar tarea'}
                 </button>
-                <button className="btn" disabled={t.estado !== 'En proceso'} onClick={() => actions.taskAction(t.id, 'pausar')}><Icon nombre="pause" tamano={15} /> Pausar</button>
-                <button className="btn btn-success" disabled={finalizada || t.estado === 'Pendiente'} onClick={() => actions.taskAction(t.id, 'finalizar')}><Icon nombre="check" tamano={15} /> Finalizar</button>
+                <button
+                  className="btn"
+                  disabled={t.estado !== 'En proceso'}
+                  onClick={() => actions.taskAction(t.id, 'pausar')}
+                >
+                  <Icon nombre="pause" tamano={15} /> Pausar
+                </button>
+                <button
+                  className="btn btn-success"
+                  disabled={finalizada}
+                  onClick={() => actions.taskAction(t.id, 'finalizar')}
+                >
+                  <Icon nombre="check" tamano={15} /> Finalizar
+                </button>
               </div>
               <div className="task-actions secondary">
-                <button className="btn btn-ghost btn-sm" onClick={() => setModal({ id: t.id, tipo: 'notas' })}><Icon nombre="message" tamano={14} /> Registrar observación</button>
-                <button className="btn btn-ghost btn-sm danger-text" onClick={() => setModal({ id: t.id, tipo: 'incidencias' })}><Icon nombre="alert-triangle" tamano={14} /> Registrar incidencia</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setModal({ id: t.id, tipo: 'notas' })}>
+                  <Icon nombre="message" tamano={14} /> Registrar observación
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm danger-text"
+                  onClick={() => setModal({ id: t.id, tipo: 'incidencias' })}
+                >
+                  <Icon nombre="alert-triangle" tamano={14} /> Registrar incidencia
+                </button>
               </div>
 
-              {[...t.notas.map((n) => ({ ...n, tipo: 'Observación' })), ...t.incidencias.map((n) => ({ ...n, tipo: 'Incidencia' }))].map((r, i) => (
+              {[
+                ...(t.notas || []).map((n) => ({ ...n, tipo: 'Observación' })),
+                ...(t.incidencias || []).map((n) => ({ ...n, tipo: 'Incidencia' })),
+              ].map((r, i) => (
                 <p key={i} className={r.tipo === 'Incidencia' ? 'note note-error' : 'note'}>
-                  <strong>{r.tipo}</strong> · {r.fecha} {r.hora}<br />{r.texto}
+                  <strong>{r.tipo}</strong> · {r.fecha} {r.hora}
+                  <br />
+                  {r.texto}
                 </p>
               ))}
             </article>
@@ -98,7 +182,10 @@ export default function OperatorDashboard({ data, actions, usuarioActual }) {
           etiqueta={modal.tipo === 'incidencias' ? 'Describe el problema ocurrido' : 'Escribe tu observación'}
           ayuda="Quedará registrado en el historial interno de la orden."
           onClose={() => setModal(null)}
-          onConfirm={(texto) => { actions.addTaskNote(modal.id, modal.tipo, texto); setModal(null) }}
+          onConfirm={(texto) => {
+            actions.addTaskNote(modal.id, modal.tipo, texto)
+            setModal(null)
+          }}
         />
       )}
     </div>

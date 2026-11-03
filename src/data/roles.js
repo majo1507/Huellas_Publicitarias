@@ -46,7 +46,7 @@ export const ROLES = {
   coordinador: {
     id: 'coordinador',
     nombre: 'Coordinador de producción',
-    usuario: { nombre: 'Carlos Ruiz', cargo: 'Coordinador de producción' },
+    usuario: { nombre: 'Carlos Gómez', cargo: 'Coordinador de producción' },
     ordenPage: 'detalle',
     buscador: true,
     menu: [
@@ -81,7 +81,7 @@ export const ROLES = {
   operario: {
     id: 'operario',
     nombre: 'Operario',
-    usuario: { nombre: 'Juan Pérez', cargo: 'Operario de impresión' },
+    usuario: { nombre: 'Pedro Morales', cargo: 'Operario de taller' },
     ordenPage: null,
     buscador: false,
     menu: [{ grupo: 'General', page: 'inicio', label: 'Mis tareas', icono: 'list' }],

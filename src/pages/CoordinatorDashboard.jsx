@@ -41,10 +41,17 @@ export default function CoordinatorDashboard({ data, actions, irA }) {
 
   // Sub-formulario para agregar una nueva actividad a la orden desde el panel del coordinador
   const [nuevaActividadNombre, setNuevaActividadNombre] = useState('')
+  const [nuevaActividadDesc, setNuevaActividadDesc] = useState('')
+  const [nuevaActividadInst, setNuevaActividadInst] = useState('')
   const [nuevaActividadEtapa, setNuevaActividadEtapa] = useState('Impresión')
   const [nuevaActividadResp, setNuevaActividadResp] = useState('Pedro Morales')
   const [nuevaActividadPrioridad, setNuevaActividadPrioridad] = useState('Media')
   const [nuevaActividadFecha, setNuevaActividadFecha] = useState('')
+
+  // Modal directo para asignar una actividad desde el panel del coordinador
+  const [modalAsignarDirecto, setModalAsignarDirecto] = useState(false)
+  const [ordenDirectaId, setOrdenDirectaId] = useState('')
+  const [errorActividad, setErrorActividad] = useState('')
 
   const activas = data.orders.filter(estaActiva)
   const retrasadas = activas.filter(estaRetrasada)
@@ -76,15 +83,23 @@ export default function CoordinatorDashboard({ data, actions, irA }) {
     ? usuariosEquipo.filter((u) => u.rol === 'Diseñador' || u.rol === 'Coordinador').map((u) => u.nombre)
     : ['María López', 'Carlos Gómez']
 
-  const listaOperarios = usuariosEquipo.length
-    ? usuariosEquipo.map((u) => u.nombre)
-    : ['María López', ...OPERARIOS, 'Carlos Gómez']
+  const listaOperarios = [
+    ...new Set([
+      'Pedro Morales',
+      ...OPERARIOS,
+      ...usuariosEquipo.map((u) => u.nombre),
+      'María López',
+      'Carlos Gómez',
+    ]),
+  ]
 
-  const responsables = ['María López', ...OPERARIOS].map((nombre) => ({
+  const responsables = [...new Set(['Pedro Morales', 'María López', ...OPERARIOS])].map((nombre) => ({
     nombre,
     ordenes: activas.filter((o) => o.responsable === nombre || o.disenador === nombre).length,
     tareas: tareasAbiertas.filter((t) => t.responsable === nombre).length,
   }))
+
+  const contarTareas = (est) => data.tasks.filter((t) => t.estado === est).length
 
   // Verifica en el inventario si el material requerido por la orden tiene stock disponible
   function consultarStockMaterialOrden(orden) {
@@ -106,10 +121,27 @@ export default function CoordinatorDashboard({ data, actions, irA }) {
     setCostoEdit(Number(orden.costoInterno || 0))
     setFechaEntregaEdit(orden.fechaEntrega || '')
     setNuevaActividadNombre('')
+    setNuevaActividadDesc('')
+    setNuevaActividadInst('')
     setNuevaActividadEtapa(orden.estado === 'Diseño' ? 'Diseño' : 'Impresión')
-    setNuevaActividadResp(orden.responsable || 'Pedro Morales')
+    setNuevaActividadResp('Pedro Morales')
     setNuevaActividadPrioridad('Media')
     setNuevaActividadFecha(orden.fechaEntrega || '10/10/2026')
+    setErrorActividad('')
+  }
+
+  function abrirModalAsignarDirecto() {
+    const primera = activas[0] || data.orders[0]
+    setOrdenDirectaId(primera?.id || '')
+    setNuevaActividadNombre('')
+    setNuevaActividadDesc('')
+    setNuevaActividadInst('')
+    setNuevaActividadEtapa('Impresión')
+    setNuevaActividadResp('Pedro Morales')
+    setNuevaActividadPrioridad('Media')
+    setNuevaActividadFecha(primera?.fechaEntrega || '10/10/2026')
+    setErrorActividad('')
+    setModalAsignarDirecto(true)
   }
 
   function handleGuardarCoordinacion(e) {
@@ -127,16 +159,44 @@ export default function CoordinatorDashboard({ data, actions, irA }) {
 
   function handleAgregarActividadAOrden(e) {
     e.preventDefault()
-    if (!ordenCoordinando || !nuevaActividadNombre.trim()) return
+    if (!ordenCoordinando || !nuevaActividadNombre.trim()) {
+      setErrorActividad('Ingresa el nombre de la actividad a asignar.')
+      return
+    }
     actions?.createTask?.({
       ordenId: ordenCoordinando.id,
       actividad: nuevaActividadNombre.trim(),
+      descripcion: nuevaActividadDesc.trim(),
+      instrucciones: nuevaActividadInst.trim(),
       etapa: nuevaActividadEtapa,
-      responsable: nuevaActividadResp,
+      responsable: nuevaActividadResp || 'Pedro Morales',
       prioridad: nuevaActividadPrioridad,
       fechaLimite: nuevaActividadFecha.trim() || ordenCoordinando.fechaEntrega,
     })
     setNuevaActividadNombre('')
+    setNuevaActividadDesc('')
+    setNuevaActividadInst('')
+    setErrorActividad('')
+  }
+
+  function handleGuardarAsignacionDirecta(e) {
+    e.preventDefault()
+    if (!ordenDirectaId || !nuevaActividadNombre.trim()) {
+      setErrorActividad('Selecciona la orden de producción e ingresa el nombre de la actividad.')
+      return
+    }
+    const ordRef = data.orders.find((o) => o.id === ordenDirectaId)
+    actions?.createTask?.({
+      ordenId: ordenDirectaId,
+      actividad: nuevaActividadNombre.trim(),
+      descripcion: nuevaActividadDesc.trim(),
+      instrucciones: nuevaActividadInst.trim(),
+      etapa: nuevaActividadEtapa,
+      responsable: nuevaActividadResp || 'Pedro Morales',
+      prioridad: nuevaActividadPrioridad,
+      fechaLimite: nuevaActividadFecha.trim() || ordRef?.fechaEntrega || '10/10/2026',
+    })
+    setModalAsignarDirecto(false)
   }
 
   const ordenesSupervision = data.orders.filter((o) => {
@@ -310,18 +370,43 @@ export default function CoordinatorDashboard({ data, actions, irA }) {
             <button className="btn btn-soft btn-sm" onClick={() => irA('inventario')}>
               <Icon nombre="package" tamano={14} /> Consultar inventario
             </button>
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={() => {
-                generarReporteGeneralPDF(data)
-                actions?.notify?.('Reporte general PDF descargado.', 'exito')
-              }}
-            >
-              <Icon nombre="download" tamano={14} /> Exportar PDF general
+            <button className="btn btn-primary btn-sm" onClick={abrirModalAsignarDirecto}>
+              <Icon nombre="plus" tamano={14} /> Asignar actividad a operario
             </button>
           </div>
         }
       >
+        <div
+          className="row"
+          style={{
+            gap: '10px',
+            marginBottom: '12px',
+            padding: '8px 12px',
+            background: 'var(--bg-subtle)',
+            borderRadius: 'var(--radius-sm)',
+            border: '1px solid var(--border-light)',
+            flexWrap: 'wrap',
+            justifyContent: 'space-between',
+          }}
+        >
+          <span className="sm">
+            <strong>Estado de actividades en taller ({data.tasks.length}):</strong>
+          </span>
+          <div className="row" style={{ gap: '12px', flexWrap: 'wrap' }}>
+            <span className="sm">
+              Pendientes: <strong>{contarTareas('Pendiente')}</strong>
+            </span>
+            <span className="sm">
+              En proceso: <strong>{contarTareas('En proceso')}</strong>
+            </span>
+            <span className="sm">
+              Pausadas: <strong>{contarTareas('Pausada')}</strong>
+            </span>
+            <span className="sm">
+              Finalizadas: <strong>{contarTareas('Finalizada')}</strong>
+            </span>
+          </div>
+        </div>
         <div className="row" style={{ justifyContent: 'space-between', gap: '12px', marginBottom: '14px', flexWrap: 'wrap' }}>
           <div className="chips" style={{ marginBottom: 0 }}>
             <button className={filtroSupervision === 'todas' ? 'chip active' : 'chip'} onClick={() => setFiltroSupervision('todas')}>
@@ -740,7 +825,15 @@ export default function CoordinatorDashboard({ data, actions, irA }) {
                     <tbody>
                       {tareasOrdenModal.map((t) => (
                         <tr key={t.id}>
-                          <td><strong>{t.actividad}</strong></td>
+                          <td>
+                            <strong>{t.actividad}</strong>
+                            {t.descripcion && <small className="cell-sub">{t.descripcion}</small>}
+                            {t.instrucciones && (
+                              <small className="cell-sub" style={{ color: 'var(--blue-600)' }}>
+                                Instrucciones: {t.instrucciones}
+                              </small>
+                            )}
+                          </td>
                           <td>{t.etapa}</td>
                           <td>
                             <select
@@ -762,7 +855,7 @@ export default function CoordinatorDashboard({ data, actions, irA }) {
                 </div>
               )}
 
-              {/* Sub-formulario rápido para asignar una nueva actividad a la orden */}
+              {/* Sub-formulario completo para asignar una nueva actividad a la orden */}
               <form
                 onSubmit={handleAgregarActividadAOrden}
                 style={{
@@ -773,17 +866,35 @@ export default function CoordinatorDashboard({ data, actions, irA }) {
                 }}
               >
                 <div className="sm" style={{ fontWeight: 700, marginBottom: '8px' }}>
-                  + Programar nueva actividad en la orden {ordenModalActual.id}
+                  + Asignar nueva actividad en la orden {ordenModalActual.id}
                 </div>
+                {errorActividad && (
+                  <div className="ban rd" style={{ marginBottom: '8px' }}>
+                    <Icon nombre="alert-triangle" tamano={14} /> <span>{errorActividad}</span>
+                  </div>
+                )}
                 <div className="form-grid" style={{ gap: '8px' }}>
                   <div className="field">
+                    <label className="field-label">Nombre de la actividad *</label>
                     <input
-                      placeholder="Nombre de la actividad (ej. Impresión lona, Laminado UV...)"
+                      placeholder="Ej. Impresión lona, Laminado UV, Corte..."
                       value={nuevaActividadNombre}
-                      onChange={(e) => setNuevaActividadNombre(e.target.value)}
+                      onChange={(e) => {
+                        setNuevaActividadNombre(e.target.value)
+                        setErrorActividad('')
+                      }}
                     />
                   </div>
                   <div className="field">
+                    <label className="field-label">Responsable asignado *</label>
+                    <select value={nuevaActividadResp} onChange={(e) => setNuevaActividadResp(e.target.value)}>
+                      {listaOperarios.map((nom) => (
+                        <option key={nom} value={nom}>{nom}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="field">
+                    <label className="field-label">Etapa</label>
                     <select value={nuevaActividadEtapa} onChange={(e) => setNuevaActividadEtapa(e.target.value)}>
                       <option value="Diseño">Diseño</option>
                       <option value="Impresión">Impresión</option>
@@ -792,20 +903,40 @@ export default function CoordinatorDashboard({ data, actions, irA }) {
                     </select>
                   </div>
                   <div className="field">
-                    <select value={nuevaActividadResp} onChange={(e) => setNuevaActividadResp(e.target.value)}>
-                      {listaOperarios.map((nom) => (
-                        <option key={nom} value={nom}>{nom}</option>
-                      ))}
+                    <label className="field-label">Prioridad</label>
+                    <select value={nuevaActividadPrioridad} onChange={(e) => setNuevaActividadPrioridad(e.target.value)}>
+                      <option value="Alta">Alta</option>
+                      <option value="Media">Media</option>
+                      <option value="Baja">Baja</option>
                     </select>
                   </div>
-                  <div className="field" style={{ display: 'flex', gap: '6px' }}>
+                  <div className="field">
+                    <label className="field-label">Fecha límite</label>
                     <input
-                      placeholder="Fecha límite (DD/MM/AAAA)"
+                      placeholder="DD/MM/AAAA"
                       value={nuevaActividadFecha}
                       onChange={(e) => setNuevaActividadFecha(e.target.value)}
                     />
-                    <button type="submit" className="btn btn-soft btn-sm" style={{ whiteSpace: 'nowrap' }}>
-                      <Icon nombre="plus" tamano={14} /> Asignar
+                  </div>
+                  <div className="field">
+                    <label className="field-label">Descripción</label>
+                    <input
+                      placeholder="Descripción del trabajo a realizar..."
+                      value={nuevaActividadDesc}
+                      onChange={(e) => setNuevaActividadDesc(e.target.value)}
+                    />
+                  </div>
+                  <div className="field full" style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
+                    <div style={{ flex: 1 }}>
+                      <label className="field-label">Instrucciones operativas</label>
+                      <input
+                        placeholder="Instrucciones específicas para el operario..."
+                        value={nuevaActividadInst}
+                        onChange={(e) => setNuevaActividadInst(e.target.value)}
+                      />
+                    </div>
+                    <button type="submit" className="btn btn-primary btn-sm" style={{ whiteSpace: 'nowrap', height: '36px' }}>
+                      <Icon nombre="check" tamano={14} /> Confirmar asignación
                     </button>
                   </div>
                 </div>
@@ -818,15 +949,144 @@ export default function CoordinatorDashboard({ data, actions, irA }) {
                 className="btn btn-soft"
                 onClick={() => {
                   generarReporteOrdenPDF(ordenModalActual, data)
-                  actions?.notify?.(`Reporte PDF de ${ordenModalActual.id} descargado.`, 'exito')
+                  actions?.notify?.(`Orden de producción ${ordenModalActual.id} (PDF) descargada.`, 'exito')
                 }}
               >
-                <Icon nombre="download" tamano={15} /> Descargar PDF de la orden
+                <Icon nombre="download" tamano={15} /> Orden de producción (PDF)
               </button>
               <button type="button" className="btn" onClick={() => setOrdenCoordinando(null)}>
                 Cerrar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DIRECTO DE ASIGNACIÓN DE ACTIVIDAD DESDE EL PANEL DEL COORDINADOR */}
+      {modalAsignarDirecto && (
+        <div className="modal-backdrop" onClick={() => setModalAsignarDirecto(false)}>
+          <div
+            className="modal"
+            style={{ maxWidth: '640px' }}
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Asignar actividad a operario"
+          >
+            <div className="modal-head">
+              <span className="modal-icon modal-icon-primary">
+                <Icon nombre="plus" tamano={20} />
+              </span>
+              <div>
+                <h2>Asignar actividad de producción</h2>
+                <p>Selecciona la orden relacionada, el responsable (ej. Pedro Morales) y las instrucciones.</p>
+              </div>
+              <button className="icon-btn" onClick={() => setModalAsignarDirecto(false)} aria-label="Cerrar">
+                <Icon nombre="x" />
+              </button>
+            </div>
+            <form onSubmit={handleGuardarAsignacionDirecta} className="modal-body" noValidate>
+              {errorActividad && (
+                <div className="ban rd" style={{ marginBottom: '12px' }}>
+                  <Icon nombre="alert-triangle" tamano={15} /> <span>{errorActividad}</span>
+                </div>
+              )}
+              <div className="form-grid">
+                <div className="field full">
+                  <label className="field-label" htmlFor="dirOrden">Orden relacionada *</label>
+                  <select
+                    id="dirOrden"
+                    value={ordenDirectaId}
+                    onChange={(e) => {
+                      const idSel = e.target.value
+                      setOrdenDirectaId(idSel)
+                      const ordObj = data.orders.find((o) => o.id === idSel)
+                      if (ordObj?.fechaEntrega) setNuevaActividadFecha(ordObj.fechaEntrega)
+                    }}
+                  >
+                    {data.orders.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.id} · {o.cliente} — {o.producto} ({o.estado})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label className="field-label" htmlFor="dirResp">Responsable asignado *</label>
+                  <select id="dirResp" value={nuevaActividadResp} onChange={(e) => setNuevaActividadResp(e.target.value)}>
+                    {listaOperarios.map((nom) => (
+                      <option key={nom} value={nom}>{nom}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label className="field-label" htmlFor="dirEtapa">Etapa</label>
+                  <select id="dirEtapa" value={nuevaActividadEtapa} onChange={(e) => setNuevaActividadEtapa(e.target.value)}>
+                    <option value="Diseño">Diseño</option>
+                    <option value="Impresión">Impresión</option>
+                    <option value="Acabados">Acabados</option>
+                    <option value="Despacho">Despacho</option>
+                  </select>
+                </div>
+                <div className="field full">
+                  <label className="field-label" htmlFor="dirNombre">Nombre de la actividad *</label>
+                  <input
+                    id="dirNombre"
+                    value={nuevaActividadNombre}
+                    onChange={(e) => {
+                      setNuevaActividadNombre(e.target.value)
+                      setErrorActividad('')
+                    }}
+                    placeholder="Ej. Impresión de pendones, Troquelado de cajas, Empaque..."
+                    autoFocus
+                  />
+                </div>
+                <div className="field full">
+                  <label className="field-label" htmlFor="dirDesc">Descripción</label>
+                  <input
+                    id="dirDesc"
+                    value={nuevaActividadDesc}
+                    onChange={(e) => setNuevaActividadDesc(e.target.value)}
+                    placeholder="Descripción detallada del trabajo a realizar..."
+                  />
+                </div>
+                <div className="field">
+                  <label className="field-label" htmlFor="dirPrio">Prioridad</label>
+                  <select id="dirPrio" value={nuevaActividadPrioridad} onChange={(e) => setNuevaActividadPrioridad(e.target.value)}>
+                    <option value="Alta">Alta</option>
+                    <option value="Media">Media</option>
+                    <option value="Baja">Baja</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label className="field-label" htmlFor="dirFecha">Fecha límite</label>
+                  <input
+                    id="dirFecha"
+                    value={nuevaActividadFecha}
+                    onChange={(e) => setNuevaActividadFecha(e.target.value)}
+                    placeholder="DD/MM/AAAA"
+                  />
+                </div>
+                <div className="field full">
+                  <label className="field-label" htmlFor="dirInst">Instrucciones</label>
+                  <textarea
+                    id="dirInst"
+                    rows={2}
+                    value={nuevaActividadInst}
+                    onChange={(e) => setNuevaActividadInst(e.target.value)}
+                    placeholder="Instrucciones técnicas y de control de calidad para el operario..."
+                  />
+                </div>
+              </div>
+              <div className="modal-foot" style={{ marginTop: '20px', padding: 0, background: 'none', border: 'none' }}>
+                <button type="button" className="btn" onClick={() => setModalAsignarDirecto(false)}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  <Icon nombre="check" tamano={15} /> Confirmar asignación
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

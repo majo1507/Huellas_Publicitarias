@@ -29,7 +29,7 @@ import Reports from './pages/Reports.jsx'
 import Users from './pages/Users.jsx'
 import Login from './pages/Login.jsx'
 import { ROLES, normalizarRol } from './data/roles.js'
-import { api, getAuthToken, setAuthToken } from './services/api.js'
+import { api, getAuthToken, setAuthToken, DEMO_STATE_KEY, guardarEstadoDemo, leerEstadoDemo } from './services/api.js'
 import { formatearFecha, formatearHora, puedeAvanzar, validarCierreOrden } from './utils/format.js'
 
 // Dashboard (opción "Inicio") que corresponde a cada rol
@@ -76,6 +76,7 @@ export default function App() {
   const [suppliers, setSuppliers] = useState([])
   const [inventoryMovements, setInventoryMovements] = useState([])
   const [cargando, setCargando] = useState(false)
+  const [datosListos, setDatosListos] = useState(false)
   const [errorCarga, setErrorCarga] = useState('')
   const [intento, setIntento] = useState(0)
 
@@ -150,6 +151,7 @@ export default function App() {
         setInventory(d.inventory || [])
         setSuppliers(d.suppliers || [])
         setInventoryMovements(d.inventoryMovements || [])
+        setDatosListos(true)
         setCargando(false)
       })
       .catch((e) => {
@@ -167,6 +169,56 @@ export default function App() {
   }, [intento, currentUser?.correo])
 
   useEffect(() => { window.scrollTo(0, 0) }, [page])
+
+  // Persistencia automática del estado compartido en modo demostración local
+  useEffect(() => {
+    if (!datosListos || !api.usarMock) return
+    guardarEstadoDemo({
+      orders,
+      requests,
+      tasks,
+      cases,
+      clients,
+      users,
+      comms,
+      inventory,
+      suppliers,
+      inventoryMovements,
+    })
+  }, [
+    datosListos,
+    orders,
+    requests,
+    tasks,
+    cases,
+    clients,
+    users,
+    comms,
+    inventory,
+    suppliers,
+    inventoryMovements,
+  ])
+
+  // Sincronización en tiempo real entre pestañas/perfiles abiertos simultáneamente
+  useEffect(() => {
+    function handleStorageSync(e) {
+      if (e.key && e.key !== DEMO_STATE_KEY) return
+      if (!api.usarMock) return
+      const sincronizado = leerEstadoDemo()
+      setOrders(sincronizado.orders || [])
+      setRequests(sincronizado.requests || [])
+      setTasks(sincronizado.tasks || [])
+      setCases(sincronizado.cases || [])
+      setClients(sincronizado.clients || [])
+      setUsers(sincronizado.users || [])
+      setComms(sincronizado.comms || [])
+      setInventory(sincronizado.inventory || [])
+      setSuppliers(sincronizado.suppliers || [])
+      setInventoryMovements(sincronizado.inventoryMovements || [])
+    }
+    window.addEventListener('storage', handleStorageSync)
+    return () => window.removeEventListener('storage', handleStorageSync)
+  }, [])
 
   const usuario = currentUser?.nombre || ROLES[role]?.usuario?.nombre || 'Usuario'
   const data = {
@@ -320,13 +372,15 @@ export default function App() {
   const tituloMenu = ROLES[role]?.menu.find((m) => m.page === page.name)?.label || 'Módulo'
 
   function updateOrder(id, cambios, evento) {
-    setOrders((prev) =>
-      prev.map((o) => {
+    setOrders((prev) => {
+      const next = prev.map((o) => {
         if (o.id !== id) return o
         const nuevos = typeof cambios === 'function' ? cambios(o) : cambios
         return { ...o, ...nuevos, historial: evento ? [...o.historial, evento] : o.historial }
       })
-    )
+      if (api.usarMock) guardarEstadoDemo({ orders: next })
+      return next
+    })
   }
 
   // ---------------- Coordinación de responsables y presupuesto en una orden ----------------
@@ -723,61 +777,114 @@ export default function App() {
   }
 
   // ---------------- Actividades de taller (HU-08 y HU-10) ----------------
-  const updateTask = (id, cambios) => setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...cambios } : t)))
+  const updateTask = (id, cambios) =>
+    setTasks((prev) => {
+      const next = prev.map((t) => (t.id === id ? { ...t, ...cambios } : t))
+      if (api.usarMock) guardarEstadoDemo({ tasks: next })
+      return next
+    })
 
   function createTask(nuevaTarea) {
-    const tempId = `T-${tasks.length + 1}`
+    const numId = tasks.length + 1
+    const tempId = `T-${String(numId).padStart(3, '0')}`
+    const plantillaLocal = {
+      id: tempId,
+      ordenId: nuevaTarea.ordenId,
+      actividad: nuevaTarea.actividad,
+      descripcion: nuevaTarea.descripcion || '',
+      instrucciones: nuevaTarea.instrucciones || '',
+      etapa: nuevaTarea.etapa || 'Impresión',
+      responsable: nuevaTarea.responsable || 'Pedro Morales',
+      prioridad: nuevaTarea.prioridad || 'Media',
+      fechaLimite: nuevaTarea.fechaLimite || formatearFecha(),
+      estado: 'Pendiente',
+      pct: 0,
+      deps: nuevaTarea.deps || [],
+      notas: [],
+      incidencias: [],
+    }
+
+    const aplicarCreacion = (creada) => {
+      const tareaCompleta = {
+        ...plantillaLocal,
+        ...creada,
+        descripcion: creada.descripcion ?? plantillaLocal.descripcion,
+        instrucciones: creada.instrucciones ?? plantillaLocal.instrucciones,
+      }
+      setTasks((prev) => {
+        const next = [...prev.filter((t) => t.id !== tareaCompleta.id), tareaCompleta]
+        if (api.usarMock) guardarEstadoDemo({ tasks: next })
+        return next
+      })
+      if (tareaCompleta.ordenId) {
+        updateOrder(
+          tareaCompleta.ordenId,
+          {},
+          crearEvento(
+            `Nueva actividad programada: "${tareaCompleta.actividad}" asignada a ${tareaCompleta.responsable}`,
+            usuario,
+            'Completado',
+            true
+          )
+        )
+      }
+      notify(`Actividad "${tareaCompleta.actividad}" asignada a ${tareaCompleta.responsable}.`, 'exito')
+    }
+
+    if (api.usarMock) {
+      aplicarCreacion(plantillaLocal)
+      return plantillaLocal
+    }
+
     api.crearActividad(nuevaTarea)
       .then((res) => {
-        const creada = res?.data || {
-          id: tempId,
-          ordenId: nuevaTarea.ordenId,
-          actividad: nuevaTarea.actividad,
-          etapa: nuevaTarea.etapa || 'Impresión',
-          responsable: nuevaTarea.responsable || 'Pedro Morales',
-          prioridad: nuevaTarea.prioridad || 'Media',
-          fechaLimite: nuevaTarea.fechaLimite || formatearFecha(),
-          estado: 'Pendiente',
-          pct: 0,
-          deps: [],
-          notas: [],
-          incidencias: [],
-        }
-        setTasks((prev) => [...prev, creada])
-        if (creada.ordenId) {
-          updateOrder(
-            creada.ordenId,
-            {},
-            crearEvento(
-              `Nueva actividad programada: "${creada.actividad}" asignada a ${creada.responsable}`,
-              usuario,
-              'Completado',
-              true
-            )
-          )
-        }
-        notify(`Actividad "${creada.actividad}" asignada a ${creada.responsable}.`, 'exito')
+        aplicarCreacion(res?.data || plantillaLocal)
       })
       .catch((err) => {
         notify(err.message || 'No se pudo crear la actividad.', 'error')
       })
+    return plantillaLocal
   }
 
   function taskAction(id, accion) {
     const t = tasks.find((x) => x.id === id)
     if (!t) return
     const verbo = { iniciar: 'iniciada', pausar: 'pausada', finalizar: 'finalizada' }[accion] || 'actualizada'
+    const nuevoEstado = { iniciar: 'En proceso', pausar: 'Pausada', finalizar: 'Finalizada' }[accion]
+    const pctBase = Number(t.pct || 0)
+    const nuevoPct =
+      accion === 'finalizar'
+        ? 100
+        : accion === 'iniciar'
+          ? pctBase > 0 && pctBase < 100
+            ? pctBase
+            : 50
+          : pctBase > 0 && pctBase < 100
+            ? pctBase
+            : 50
+
+    const aplicarAccionMock = () => {
+      updateTask(id, { estado: nuevoEstado, pct: nuevoPct })
+      updateOrder(
+        t.ordenId,
+        {},
+        crearEvento(`Tarea "${t.actividad}" ${verbo} por ${usuario} (${nuevoPct}%)`, usuario, nuevoEstado, true)
+      )
+      notify(`Tarea "${t.actividad}" ${verbo}.`, accion === 'pausar' ? 'aviso' : 'exito')
+    }
+
+    if (api.usarMock) {
+      aplicarAccionMock()
+      return
+    }
 
     api.accionActividad(id, accion)
       .then((res) => {
         if (res?.modoMock) {
-          const nuevoEstado = { iniciar: 'En proceso', pausar: 'Pausada', finalizar: 'Finalizada' }[accion]
-          updateTask(id, { estado: nuevoEstado })
-          updateOrder(t.ordenId, {}, crearEvento(`Tarea "${t.actividad}" ${verbo}`, usuario, nuevoEstado, true))
-          notify(`Tarea "${t.actividad}" ${verbo}.`, accion === 'pausar' ? 'aviso' : 'exito')
+          aplicarAccionMock()
           return
         }
-        if (res?.data) updateTask(id, res.data)
+        if (res?.data) updateTask(id, { ...res.data, pct: res.data.pct ?? nuevoPct })
         if (res?.orden) replaceOrderFromServer(res.orden)
         notify(`Tarea "${t.actividad}" ${verbo}.`, accion === 'pausar' ? 'aviso' : 'exito')
       })

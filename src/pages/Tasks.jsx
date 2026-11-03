@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import PageHeader from '../components/PageHeader.jsx'
+import StatCard from '../components/StatCard.jsx'
 import DataTable from '../components/DataTable.jsx'
 import StatusBadge from '../components/StatusBadge.jsx'
 import Avatar from '../components/Avatar.jsx'
@@ -24,6 +25,8 @@ export default function Tasks({ data, actions, irA, role }) {
   const [modalNuevaActividad, setModalNuevaActividad] = useState(false)
   const [ordenNuevaAct, setOrdenNuevaAct] = useState('')
   const [nombreNuevaAct, setNombreNuevaAct] = useState('')
+  const [descNuevaAct, setDescNuevaAct] = useState('')
+  const [instNuevaAct, setInstNuevaAct] = useState('')
   const [etapaNuevaAct, setEtapaNuevaAct] = useState('Impresión')
   const [respNuevaAct, setRespNuevaAct] = useState('Pedro Morales')
   const [prioNuevaAct, setPrioNuevaAct] = useState('Media')
@@ -33,11 +36,18 @@ export default function Tasks({ data, actions, irA, role }) {
   const usuarioActual = ROLES[role]?.usuario?.nombre || 'Carlos Gómez'
   const orden = (ordenId) => data.orders.find((o) => o.id === ordenId)
   const puedeReasignar = ['coordinador', 'gerencia'].includes(role)
-  const listaResponsables = data.users?.length
-    ? data.users.filter((u) => u.estado === 'Activo' && u.rol !== 'Cliente').map((u) => u.nombre)
-    : OPERARIOS
+  const listaResponsables = [
+    ...new Set([
+      'Pedro Morales',
+      ...OPERARIOS,
+      ...(data.users?.length
+        ? data.users.filter((u) => u.estado === 'Activo' && u.rol !== 'Cliente').map((u) => u.nombre)
+        : []),
+    ]),
+  ]
 
   const ordenesActivas = data.orders.filter(estaActiva)
+  const contarEstado = (est) => data.tasks.filter((t) => t.estado === est).length
 
   // Filtrado por pestaña
   const filtradas = data.tasks.filter((t) => {
@@ -59,8 +69,10 @@ export default function Tasks({ data, actions, irA, role }) {
     const primeraOrden = ordenesActivas[0] || data.orders[0]
     setOrdenNuevaAct(primeraOrden?.id || '')
     setNombreNuevaAct('')
+    setDescNuevaAct('')
+    setInstNuevaAct('')
     setEtapaNuevaAct('Impresión')
-    setRespNuevaAct(listaResponsables[0] || 'Pedro Morales')
+    setRespNuevaAct('Pedro Morales')
     setPrioNuevaAct('Media')
     setFechaNuevaAct(primeraOrden?.fechaEntrega || '12/10/2026')
     setErrNuevaAct('')
@@ -70,14 +82,16 @@ export default function Tasks({ data, actions, irA, role }) {
   function handleCrearNuevaActividad(e) {
     e.preventDefault()
     if (!ordenNuevaAct || !nombreNuevaAct.trim()) {
-      setErrNuevaAct('Selecciona la orden e ingresa el nombre de la actividad.')
+      setErrNuevaAct('Selecciona la orden relacionada e ingresa el nombre de la actividad.')
       return
     }
     actions.createTask?.({
       ordenId: ordenNuevaAct,
       actividad: nombreNuevaAct.trim(),
+      descripcion: descNuevaAct.trim(),
+      instrucciones: instNuevaAct.trim(),
       etapa: etapaNuevaAct,
-      responsable: respNuevaAct,
+      responsable: respNuevaAct || 'Pedro Morales',
       prioridad: prioNuevaAct,
       fechaLimite: fechaNuevaAct.trim() || '12/10/2026',
     })
@@ -87,7 +101,7 @@ export default function Tasks({ data, actions, irA, role }) {
   function abrirModalEdicion(t) {
     setTareaSeleccionada(t)
     setNuevoEstado(t.estado)
-    setNuevoPct(t.pct !== undefined ? t.pct : (t.estado === 'Finalizada' ? 100 : t.estado === 'En proceso' ? 50 : 0))
+    setNuevoPct(t.pct !== undefined ? t.pct : t.estado === 'Finalizada' ? 100 : t.estado === 'En proceso' ? 50 : 0)
     setErrorModal('')
   }
 
@@ -96,7 +110,6 @@ export default function Tasks({ data, actions, irA, role }) {
     e.preventDefault()
     if (!tareaSeleccionada) return
 
-    // Validar dependencias si se intenta marcar como En proceso o Finalizada
     if (nuevoEstado !== 'Pendiente' && nuevoEstado !== 'Pausada' && tareaSeleccionada.deps?.length > 0) {
       const depIncompleta = tareaSeleccionada.deps
         .map((depId) => data.tasks.find((x) => x.id === depId))
@@ -108,7 +121,6 @@ export default function Tasks({ data, actions, irA, role }) {
       }
     }
 
-    // Regla HU-14: Validación de coherencia estado vs avance (0 a 100%)
     if (nuevoPct < 0 || nuevoPct > 100) {
       setErrorModal('El porcentaje de avance debe estar entre 0% y 100%.')
       return
@@ -146,19 +158,35 @@ export default function Tasks({ data, actions, irA, role }) {
     },
     {
       clave: 'actividad',
-      titulo: 'Actividad',
+      titulo: 'Actividad, descripción e instrucciones',
       ordenar: true,
       render: (t) => (
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <strong>{t.actividad}</strong>
             {t.incidencias?.length > 0 && (
-              <span className="badge badge-rojo" style={{ fontSize: '10px', padding: '1px 5px' }} title={`${t.incidencias.length} incidencia(s) registrada(s)`}>
+              <span
+                className="badge badge-rojo"
+                style={{ fontSize: '10px', padding: '1px 5px' }}
+                title={`${t.incidencias.length} incidencia(s) registrada(s)`}
+              >
                 {t.incidencias.length} inc.
               </span>
             )}
           </div>
-          <small className="cell-sub">{t.producto} · Etapa: {t.etapa}</small>
+          <small className="cell-sub">
+            {t.producto} · Etapa: {t.etapa}
+          </small>
+          {t.descripcion && (
+            <small className="cell-sub" style={{ display: 'block', marginTop: '2px' }}>
+              {t.descripcion}
+            </small>
+          )}
+          {t.instrucciones && (
+            <small className="cell-sub" style={{ display: 'block', color: 'var(--blue-600)' }}>
+              Instrucciones: {t.instrucciones}
+            </small>
+          )}
         </div>
       ),
     },
@@ -176,7 +204,11 @@ export default function Tasks({ data, actions, irA, role }) {
             onChange={(e) => actions.assignTask(t.id, e.target.value)}
             title={!puedeReasignar ? 'Solo el coordinador o gerencia pueden reasignar responsables' : undefined}
           >
-            {[...new Set([...listaResponsables, t.responsable])].map((n) => <option key={n} value={n}>{n}</option>)}
+            {[...new Set([...listaResponsables, t.responsable])].map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
           </select>
         </span>
       ),
@@ -188,7 +220,17 @@ export default function Tasks({ data, actions, irA, role }) {
       titulo: 'Avance',
       render: (t) => (
         <div style={{ width: '130px' }}>
-          <ProgressBar valor={t.pct !== undefined ? t.pct : (t.estado === 'Finalizada' ? 100 : t.estado === 'En proceso' ? 50 : 0)} />
+          <ProgressBar
+            valor={
+              t.pct !== undefined && t.pct > 0
+                ? t.pct
+                : t.estado === 'Finalizada'
+                  ? 100
+                  : t.estado === 'En proceso' || t.estado === 'Pausada'
+                    ? 50
+                    : 0
+            }
+          />
         </div>
       ),
     },
@@ -228,6 +270,19 @@ export default function Tasks({ data, actions, irA, role }) {
         }
       />
 
+      {/* Indicadores en tiempo real de las actividades de taller */}
+      <div className="kpis" style={{ marginBottom: '16px' }}>
+        <StatCard
+          titulo="Pendientes"
+          valor={contarEstado('Pendiente')}
+          icono="clock"
+          color={contarEstado('Pendiente') ? 'amarillo' : 'azul'}
+        />
+        <StatCard titulo="En proceso" valor={contarEstado('En proceso')} icono="play" />
+        <StatCard titulo="Pausadas" valor={contarEstado('Pausada')} icono="pause" />
+        <StatCard titulo="Finalizadas" valor={contarEstado('Finalizada')} icono="check-circle" color="verde" />
+      </div>
+
       {/* Pestañas de estado */}
       <div className="tabs" role="tablist">
         <button className={pestaña === 'todas' ? 'on' : ''} onClick={() => setPestaña('todas')}>
@@ -237,13 +292,16 @@ export default function Tasks({ data, actions, irA, role }) {
           Mis tareas <span className="pill">{data.tasks.filter((t) => t.responsable === usuarioActual).length}</span>
         </button>
         <button className={pestaña === 'Pendiente' ? 'on' : ''} onClick={() => setPestaña('Pendiente')}>
-          Pendientes <span className="pill">{data.tasks.filter((t) => t.estado === 'Pendiente').length}</span>
+          Pendientes <span className="pill">{contarEstado('Pendiente')}</span>
         </button>
         <button className={pestaña === 'En proceso' ? 'on' : ''} onClick={() => setPestaña('En proceso')}>
-          En proceso <span className="pill">{data.tasks.filter((t) => t.estado === 'En proceso').length}</span>
+          En proceso <span className="pill">{contarEstado('En proceso')}</span>
+        </button>
+        <button className={pestaña === 'Pausada' ? 'on' : ''} onClick={() => setPestaña('Pausada')}>
+          Pausadas <span className="pill">{contarEstado('Pausada')}</span>
         </button>
         <button className={pestaña === 'Finalizada' ? 'on' : ''} onClick={() => setPestaña('Finalizada')}>
-          Finalizadas <span className="pill">{data.tasks.filter((t) => t.estado === 'Finalizada').length}</span>
+          Finalizadas <span className="pill">{contarEstado('Finalizada')}</span>
         </button>
       </div>
 
@@ -251,7 +309,7 @@ export default function Tasks({ data, actions, irA, role }) {
         columnas={columnas}
         filas={filas}
         porPagina={8}
-        buscar={(t) => `${t.ordenId} ${t.actividad} ${t.producto} ${t.responsable}`}
+        buscar={(t) => `${t.ordenId} ${t.actividad} ${t.descripcion || ''} ${t.producto} ${t.responsable}`}
         placeholder="Buscar por actividad, orden o responsable..."
         filtros={[
           { titulo: 'Estado', valor: (t) => t.estado, opciones: ['Pendiente', 'En proceso', 'Pausada', 'Finalizada'] },
@@ -264,14 +322,25 @@ export default function Tasks({ data, actions, irA, role }) {
       {/* MODAL PARA ASIGNAR NUEVA ACTIVIDAD A UNA ORDEN */}
       {modalNuevaActividad && (
         <div className="modal-backdrop" onClick={() => setModalNuevaActividad(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Asignar nueva actividad">
+          <div
+            className="modal"
+            style={{ maxWidth: '640px' }}
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Asignar nueva actividad"
+          >
             <div className="modal-head">
-              <span className="modal-icon modal-icon-primary"><Icon nombre="plus" tamano={20} /></span>
+              <span className="modal-icon modal-icon-primary">
+                <Icon nombre="plus" tamano={20} />
+              </span>
               <div>
                 <h2>Programar y asignar nueva actividad</h2>
-                <p>Coordina qué integrante realizará esta tarea dentro de una orden de producción.</p>
+                <p>Selecciona la orden de producción, el responsable y las instrucciones operativas.</p>
               </div>
-              <button className="icon-btn" onClick={() => setModalNuevaActividad(false)}><Icon nombre="x" /></button>
+              <button className="icon-btn" onClick={() => setModalNuevaActividad(false)}>
+                <Icon nombre="x" />
+              </button>
             </div>
             <form onSubmit={handleCrearNuevaActividad} className="modal-body" noValidate>
               {errNuevaAct && (
@@ -281,8 +350,19 @@ export default function Tasks({ data, actions, irA, role }) {
               )}
               <div className="form-grid">
                 <div className="field full">
-                  <label className="field-label" htmlFor="newTaskOrden">Orden de producción *</label>
-                  <select id="newTaskOrden" value={ordenNuevaAct} onChange={(e) => setOrdenNuevaAct(e.target.value)}>
+                  <label className="field-label" htmlFor="newTaskOrden">
+                    Orden relacionada *
+                  </label>
+                  <select
+                    id="newTaskOrden"
+                    value={ordenNuevaAct}
+                    onChange={(e) => {
+                      const idSel = e.target.value
+                      setOrdenNuevaAct(idSel)
+                      const ordObj = data.orders.find((o) => o.id === idSel)
+                      if (ordObj?.fechaEntrega) setFechaNuevaAct(ordObj.fechaEntrega)
+                    }}
+                  >
                     {data.orders.map((o) => (
                       <option key={o.id} value={o.id}>
                         {o.id} · {o.cliente} — {o.producto} ({o.estado})
@@ -290,18 +370,24 @@ export default function Tasks({ data, actions, irA, role }) {
                     ))}
                   </select>
                 </div>
-                <div className="field full">
-                  <label className="field-label" htmlFor="newTaskNombre">Actividad a realizar *</label>
-                  <input
-                    id="newTaskNombre"
-                    value={nombreNuevaAct}
-                    onChange={(e) => { setNombreNuevaAct(e.target.value); setErrNuevaAct('') }}
-                    placeholder="Ej. Impresión gran formato, Troquelado, Empaque..."
-                    autoFocus
-                  />
-                </div>
+
                 <div className="field">
-                  <label className="field-label" htmlFor="newTaskEtapa">Etapa del proceso</label>
+                  <label className="field-label" htmlFor="newTaskResp">
+                    Responsable asignado *
+                  </label>
+                  <select id="newTaskResp" value={respNuevaAct} onChange={(e) => setRespNuevaAct(e.target.value)}>
+                    {listaResponsables.map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="field">
+                  <label className="field-label" htmlFor="newTaskEtapa">
+                    Etapa del proceso
+                  </label>
                   <select id="newTaskEtapa" value={etapaNuevaAct} onChange={(e) => setEtapaNuevaAct(e.target.value)}>
                     <option value="Diseño">Diseño</option>
                     <option value="Impresión">Impresión</option>
@@ -309,30 +395,78 @@ export default function Tasks({ data, actions, irA, role }) {
                     <option value="Despacho">Despacho</option>
                   </select>
                 </div>
-                <div className="field">
-                  <label className="field-label" htmlFor="newTaskResp">Responsable asignado</label>
-                  <select id="newTaskResp" value={respNuevaAct} onChange={(e) => setRespNuevaAct(e.target.value)}>
-                    {listaResponsables.map((n) => (
-                      <option key={n} value={n}>{n}</option>
-                    ))}
-                  </select>
+
+                <div className="field full">
+                  <label className="field-label" htmlFor="newTaskNombre">
+                    Nombre de la actividad *
+                  </label>
+                  <input
+                    id="newTaskNombre"
+                    value={nombreNuevaAct}
+                    onChange={(e) => {
+                      setNombreNuevaAct(e.target.value)
+                      setErrNuevaAct('')
+                    }}
+                    placeholder="Ej. Impresión gran formato, Laminado UV, Corte y ojales..."
+                    autoFocus
+                  />
                 </div>
+
+                <div className="field full">
+                  <label className="field-label" htmlFor="newTaskDesc">
+                    Descripción de la actividad
+                  </label>
+                  <input
+                    id="newTaskDesc"
+                    value={descNuevaAct}
+                    onChange={(e) => setDescNuevaAct(e.target.value)}
+                    placeholder="Detalle del trabajo a ejecutar sobre el material o lote..."
+                  />
+                </div>
+
                 <div className="field">
-                  <label className="field-label" htmlFor="newTaskPrio">Prioridad</label>
+                  <label className="field-label" htmlFor="newTaskPrio">
+                    Prioridad
+                  </label>
                   <select id="newTaskPrio" value={prioNuevaAct} onChange={(e) => setPrioNuevaAct(e.target.value)}>
                     <option value="Alta">Alta</option>
                     <option value="Media">Media</option>
                     <option value="Baja">Baja</option>
                   </select>
                 </div>
+
                 <div className="field">
-                  <label className="field-label" htmlFor="newTaskFecha">Fecha límite</label>
-                  <input id="newTaskFecha" value={fechaNuevaAct} onChange={(e) => setFechaNuevaAct(e.target.value)} placeholder="DD/MM/AAAA" />
+                  <label className="field-label" htmlFor="newTaskFecha">
+                    Fecha límite
+                  </label>
+                  <input
+                    id="newTaskFecha"
+                    value={fechaNuevaAct}
+                    onChange={(e) => setFechaNuevaAct(e.target.value)}
+                    placeholder="DD/MM/AAAA"
+                  />
+                </div>
+
+                <div className="field full">
+                  <label className="field-label" htmlFor="newTaskInst">
+                    Instrucciones operativas
+                  </label>
+                  <textarea
+                    id="newTaskInst"
+                    rows={2}
+                    value={instNuevaAct}
+                    onChange={(e) => setInstNuevaAct(e.target.value)}
+                    placeholder="Indicaciones específicas de máquina, calibración, empaque o control de calidad..."
+                  />
                 </div>
               </div>
               <div className="modal-foot" style={{ marginTop: '20px', padding: 0, background: 'none', border: 'none' }}>
-                <button type="button" className="btn" onClick={() => setModalNuevaActividad(false)}>Cancelar</button>
-                <button type="submit" className="btn btn-primary"><Icon nombre="check" tamano={15} /> Asignar actividad</button>
+                <button type="button" className="btn" onClick={() => setModalNuevaActividad(false)}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  <Icon nombre="check" tamano={15} /> Confirmar asignación
+                </button>
               </div>
             </form>
           </div>
@@ -342,14 +476,26 @@ export default function Tasks({ data, actions, irA, role }) {
       {/* MODAL HU-14: Gestión de estado y avance porcentual coherente */}
       {tareaSeleccionada && (
         <div className="modal-backdrop" onClick={() => setTareaSeleccionada(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Gestionar actividad">
+          <div
+            className="modal"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Gestionar actividad"
+          >
             <div className="modal-head">
-              <span className="modal-icon modal-icon-primary"><Icon nombre="list" tamano={20} /></span>
+              <span className="modal-icon modal-icon-primary">
+                <Icon nombre="list" tamano={20} />
+              </span>
               <div>
                 <h2>Gestionar: {tareaSeleccionada.actividad}</h2>
-                <p>Orden {tareaSeleccionada.ordenId} · Responsable: {tareaSeleccionada.responsable}</p>
+                <p>
+                  Orden {tareaSeleccionada.ordenId} · Responsable: {tareaSeleccionada.responsable}
+                </p>
               </div>
-              <button className="icon-btn" onClick={() => setTareaSeleccionada(null)}><Icon nombre="x" /></button>
+              <button className="icon-btn" onClick={() => setTareaSeleccionada(null)}>
+                <Icon nombre="x" />
+              </button>
             </div>
 
             <form onSubmit={handleGuardarAvance} className="modal-body">
@@ -357,6 +503,29 @@ export default function Tasks({ data, actions, irA, role }) {
                 <div className="ban rd" style={{ marginBottom: '14px' }}>
                   <Icon nombre="alert-triangle" tamano={16} />
                   <span>{errorModal}</span>
+                </div>
+              )}
+
+              {(tareaSeleccionada.descripcion || tareaSeleccionada.instrucciones) && (
+                <div
+                  style={{
+                    marginBottom: '14px',
+                    padding: '8px 10px',
+                    background: 'var(--bg-subtle)',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--border-light)',
+                  }}
+                >
+                  {tareaSeleccionada.descripcion && (
+                    <p className="sm" style={{ margin: 0 }}>
+                      <strong>Descripción:</strong> {tareaSeleccionada.descripcion}
+                    </p>
+                  )}
+                  {tareaSeleccionada.instrucciones && (
+                    <p className="sm" style={{ margin: tareaSeleccionada.descripcion ? '4px 0 0' : 0 }}>
+                      <strong>Instrucciones:</strong> {tareaSeleccionada.instrucciones}
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -376,7 +545,9 @@ export default function Tasks({ data, actions, irA, role }) {
 
               <div className="form-grid">
                 <div className="field">
-                  <label className="field-label" htmlFor="taskEstado">Estado de la actividad</label>
+                  <label className="field-label" htmlFor="taskEstado">
+                    Estado de la actividad
+                  </label>
                   <select
                     id="taskEstado"
                     value={nuevoEstado}
@@ -411,7 +582,11 @@ export default function Tasks({ data, actions, irA, role }) {
                     disabled={nuevoEstado === 'Finalizada' || nuevoEstado === 'Pendiente'}
                   />
                   <span className="field-hint">
-                    {nuevoEstado === 'Pendiente' ? '0% obligatorio' : nuevoEstado === 'Finalizada' ? '100% al completar' : 'Entre 1% y 99%'}
+                    {nuevoEstado === 'Pendiente'
+                      ? '0% obligatorio'
+                      : nuevoEstado === 'Finalizada'
+                        ? '100% al completar'
+                        : 'Entre 1% y 99%'}
                   </span>
                 </div>
               </div>
@@ -419,7 +594,9 @@ export default function Tasks({ data, actions, irA, role }) {
               {/* Registro histórico de notas e incidencias previas */}
               {(tareaSeleccionada.notas?.length > 0 || tareaSeleccionada.incidencias?.length > 0) && (
                 <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid var(--border-light)' }}>
-                  <strong className="sm" style={{ display: 'block', marginBottom: '8px' }}>Registro de observaciones e incidencias:</strong>
+                  <strong className="sm" style={{ display: 'block', marginBottom: '8px' }}>
+                    Registro de observaciones e incidencias:
+                  </strong>
                   {[
                     ...tareaSeleccionada.notas.map((n) => ({ ...n, tipo: 'Observación' })),
                     ...tareaSeleccionada.incidencias.map((n) => ({ ...n, tipo: 'Incidencia' })),
@@ -432,8 +609,12 @@ export default function Tasks({ data, actions, irA, role }) {
               )}
 
               <div className="modal-foot" style={{ marginTop: '20px', padding: 0, background: 'none', border: 'none' }}>
-                <button type="button" className="btn" onClick={() => setTareaSeleccionada(null)}>Cancelar</button>
-                <button type="submit" className="btn btn-primary"><Icon nombre="check" tamano={15} /> Guardar avance</button>
+                <button type="button" className="btn" onClick={() => setTareaSeleccionada(null)}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  <Icon nombre="check" tamano={15} /> Guardar avance
+                </button>
               </div>
             </form>
           </div>

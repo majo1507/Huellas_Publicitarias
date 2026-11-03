@@ -8,6 +8,77 @@ const USAR_MOCK = import.meta.env?.VITE_USE_MOCK === 'true'
 const API_URL = import.meta.env?.VITE_API_URL || 'http://localhost:3000/api'
 const TOKEN_KEY = 'orvex_auth_token'
 const DEMO_FALLBACK_KEY = 'orvex_demo_fallback'
+export const DEMO_STATE_KEY = 'orvex_demo_state_v1'
+
+function crearEstadoInicialDemo() {
+  return {
+    clients: structuredClone(mock.initialClients),
+    orders: structuredClone(mock.initialOrders),
+    requests: structuredClone(mock.initialRequests),
+    tasks: structuredClone(mock.initialTasks),
+    cases: structuredClone(mock.initialCases),
+    users: structuredClone(mock.initialUsers),
+    comms: structuredClone(mock.initialComms),
+    inventory: structuredClone(mock.initialInventory || []),
+    suppliers: structuredClone(mock.initialSuppliers || []),
+    inventoryMovements: structuredClone(mock.initialInventoryMovements || []),
+  }
+}
+
+export function leerEstadoDemo() {
+  const base = crearEstadoInicialDemo()
+  if (typeof window === 'undefined' || !window.localStorage) return base
+  try {
+    const raw = window.localStorage.getItem(DEMO_STATE_KEY)
+    if (!raw) {
+      window.localStorage.setItem(DEMO_STATE_KEY, JSON.stringify(base))
+      return base
+    }
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object') return base
+
+    // Garantizar que Pedro Morales y Carlos Gómez existan en usuarios aunque hubiera un estado previo
+    const usersGuardados = Array.isArray(parsed.users) && parsed.users.length ? parsed.users : base.users
+    const tienePedro = usersGuardados.some((u) => u.nombre === 'Pedro Morales')
+    const usersFinal = tienePedro
+      ? usersGuardados
+      : [...usersGuardados, { id: 'U4-PM', nombre: 'Pedro Morales', cargo: 'Operario de taller', rol: 'Operario', correo: 'pedro.morales@huellas.co', estado: 'Activo' }]
+
+    const tasksGuardadas = Array.isArray(parsed.tasks) && parsed.tasks.length ? parsed.tasks : base.tasks
+    const tasksFinal = tasksGuardadas.map((t) => ({
+      descripcion: '',
+      instrucciones: '',
+      notas: [],
+      incidencias: [],
+      deps: [],
+      ...t,
+    }))
+
+    return {
+      clients: Array.isArray(parsed.clients) && parsed.clients.length ? parsed.clients : base.clients,
+      orders: Array.isArray(parsed.orders) && parsed.orders.length ? parsed.orders : base.orders,
+      requests: Array.isArray(parsed.requests) && parsed.requests.length ? parsed.requests : base.requests,
+      tasks: tasksFinal,
+      cases: Array.isArray(parsed.cases) ? parsed.cases : base.cases,
+      users: usersFinal,
+      comms: Array.isArray(parsed.comms) ? parsed.comms : base.comms,
+      inventory: Array.isArray(parsed.inventory) && parsed.inventory.length ? parsed.inventory : base.inventory,
+      suppliers: Array.isArray(parsed.suppliers) && parsed.suppliers.length ? parsed.suppliers : base.suppliers,
+      inventoryMovements: Array.isArray(parsed.inventoryMovements) ? parsed.inventoryMovements : base.inventoryMovements,
+    }
+  } catch {
+    return base
+  }
+}
+
+export function guardarEstadoDemo(parcial = {}) {
+  if (typeof window === 'undefined' || !window.localStorage) return
+  try {
+    const actual = leerEstadoDemo()
+    const siguiente = { ...actual, ...parcial, updatedAt: Date.now() }
+    window.localStorage.setItem(DEMO_STATE_KEY, JSON.stringify(siguiente))
+  } catch {}
+}
 
 // Cuentas locales de prueba para demostración cuando PostgreSQL no está disponible
 const CUENTAS_DEMO_LOCAL = [
@@ -221,15 +292,22 @@ function esErrorDeConexionOBaseDatos(err) {
   return false
 }
 
-async function consultarLista(ruta, datosMock) {
-  if (getModoDemoLocal()) return simular(datosMock)
+async function consultarLista(ruta, datosMock, claveDemo = null) {
+  const obtenerRespaldo = () => {
+    if (claveDemo) {
+      const estado = leerEstadoDemo()
+      if (Array.isArray(estado[claveDemo])) return estado[claveDemo]
+    }
+    return datosMock
+  }
+  if (getModoDemoLocal()) return simular(obtenerRespaldo())
   try {
     const res = await pedir(ruta)
     return Array.isArray(res) ? res : res?.data || []
   } catch (err) {
     if (esErrorDeConexionOBaseDatos(err)) {
       setModoDemoLocal(true)
-      return structuredClone(datosMock)
+      return structuredClone(obtenerRespaldo())
     }
     throw err
   }
@@ -276,9 +354,9 @@ export const api = {
   },
 
   async logout() {
+    const eraMock = getModoDemoLocal()
     setAuthToken('')
-    setModoDemoLocal(false)
-    if (USAR_MOCK) return simular({ ok: true })
+    if (eraMock || USAR_MOCK) return simular({ ok: true })
     try {
       return await pedir('/auth/logout', { method: 'POST' })
     } catch {
@@ -301,7 +379,7 @@ export const api = {
   },
 
   // Clientes
-  listarClientes: () => consultarLista('/clientes', mock.initialClients),
+  listarClientes: () => consultarLista('/clientes', mock.initialClients, 'clients'),
   crearCliente: (cliente) =>
     ejecutarConFallback(
       () => pedir('/clientes', { method: 'POST', body: JSON.stringify(cliente) }),
@@ -309,7 +387,7 @@ export const api = {
     ),
 
   // Solicitudes (HU-03 a HU-06)
-  listarSolicitudes: () => consultarLista('/solicitudes', mock.initialRequests),
+  listarSolicitudes: () => consultarLista('/solicitudes', mock.initialRequests, 'requests'),
   crearSolicitud: (solicitud) =>
     ejecutarConFallback(
       () => pedir('/solicitudes', { method: 'POST', body: JSON.stringify(solicitud) }),
@@ -337,11 +415,11 @@ export const api = {
     ),
 
   // Órdenes de producción (HU-06, HU-13, HU-16, HU-17, HU-19, HU-20)
-  listarOrdenes: () => consultarLista('/ordenes', mock.initialOrders),
+  listarOrdenes: () => consultarLista('/ordenes', mock.initialOrders, 'orders'),
   obtenerOrden: (id) =>
     ejecutarConFallback(
       () => pedir(`/ordenes/${id}`),
-      mock.initialOrders.find((o) => o.id === id)
+      leerEstadoDemo().orders.find((o) => o.id === id)
     ),
   avanzarEtapaOrden: (id, etapa) =>
     ejecutarConFallback(
@@ -433,7 +511,7 @@ export const api = {
     ),
 
   // Actividades de taller (HU-08, HU-10, HU-14, HU-15)
-  listarActividades: () => consultarLista('/actividades', mock.initialTasks),
+  listarActividades: () => consultarLista('/actividades', mock.initialTasks, 'tasks'),
   crearActividad: (tarea) =>
     ejecutarConFallback(
       () =>
@@ -481,19 +559,19 @@ export const api = {
     ),
 
   // Inventario, proveedores y movimientos de bodega
-  listarInventario: () => consultarLista('/inventario', mock.initialInventory || []),
+  listarInventario: () => consultarLista('/inventario', mock.initialInventory || [], 'inventory'),
   crearMaterialInventario: (material) =>
     ejecutarConFallback(
       () => pedir('/inventario', { method: 'POST', body: JSON.stringify(material) }),
       { modoMock: true, data: null }
     ),
-  listarProveedores: () => consultarLista('/inventario/proveedores', mock.initialSuppliers || []),
+  listarProveedores: () => consultarLista('/inventario/proveedores', mock.initialSuppliers || [], 'suppliers'),
   crearProveedor: (proveedor) =>
     ejecutarConFallback(
       () => pedir('/inventario/proveedores', { method: 'POST', body: JSON.stringify(proveedor) }),
       { modoMock: true, data: null }
     ),
-  listarMovimientosInventario: () => consultarLista('/inventario/movimientos', mock.initialInventoryMovements || []),
+  listarMovimientosInventario: () => consultarLista('/inventario/movimientos', mock.initialInventoryMovements || [], 'inventoryMovements'),
   registrarMovimientoInventario: (movimiento) =>
     ejecutarConFallback(
       () => pedir('/inventario/movimientos', { method: 'POST', body: JSON.stringify(movimiento) }),
@@ -501,7 +579,7 @@ export const api = {
     ),
 
   // Gestión de postventa (HU-18)
-  listarCasos: () => consultarLista('/casos', mock.initialCases),
+  listarCasos: () => consultarLista('/casos', mock.initialCases, 'cases'),
   crearCasoPostventa: (caso) =>
     ejecutarConFallback(
       () => pedir('/casos', { method: 'POST', body: JSON.stringify(caso) }),
@@ -532,7 +610,7 @@ export const api = {
     ),
 
   // Usuarios y seguridad (HU-01)
-  listarUsuarios: () => consultarLista('/usuarios', mock.initialUsers),
+  listarUsuarios: () => consultarLista('/usuarios', mock.initialUsers, 'users'),
   crearUsuario: (usuario) =>
     ejecutarConFallback(
       () => pedir('/usuarios', { method: 'POST', body: JSON.stringify(usuario) }),
@@ -550,7 +628,7 @@ export const api = {
     ),
 
   // Comunicaciones omnicanal
-  listarComunicaciones: () => consultarLista('/comunicaciones', mock.initialComms),
+  listarComunicaciones: () => consultarLista('/comunicaciones', mock.initialComms, 'comms'),
   enviarMensajeComunicacion: (id, mensaje) =>
     ejecutarConFallback(
       () =>
@@ -563,6 +641,9 @@ export const api = {
 
   // Carga inicial de toda la información que necesita la aplicación
   async cargarTodo() {
+    if (getModoDemoLocal()) {
+      return simular(leerEstadoDemo(), 40)
+    }
     const [
       clients,
       orders,
@@ -586,21 +667,10 @@ export const api = {
       this.listarProveedores(),
       this.listarMovimientosInventario(),
     ])
-    // Si la base de datos conectó pero está vacía (sin seed), usar datos mock de demostración
+    // Si la base de datos conectó pero está vacía (sin seed), usar estado de demostración persistido
     if (clients.length === 0 && orders.length === 0 && requests.length === 0) {
       setModoDemoLocal(true)
-      return {
-        clients: structuredClone(mock.initialClients),
-        orders: structuredClone(mock.initialOrders),
-        requests: structuredClone(mock.initialRequests),
-        tasks: structuredClone(mock.initialTasks),
-        cases: structuredClone(mock.initialCases),
-        users: structuredClone(mock.initialUsers),
-        comms: structuredClone(mock.initialComms),
-        inventory: structuredClone(mock.initialInventory || []),
-        suppliers: structuredClone(mock.initialSuppliers || []),
-        inventoryMovements: structuredClone(mock.initialInventoryMovements || []),
-      }
+      return leerEstadoDemo()
     }
     return {
       clients,
@@ -610,11 +680,11 @@ export const api = {
       cases,
       users,
       comms,
-      inventory: inventory.length ? inventory : structuredClone(mock.initialInventory || []),
-      suppliers: suppliers.length ? suppliers : structuredClone(mock.initialSuppliers || []),
+      inventory: inventory.length ? inventory : leerEstadoDemo().inventory,
+      suppliers: suppliers.length ? suppliers : leerEstadoDemo().suppliers,
       inventoryMovements: inventoryMovements.length
         ? inventoryMovements
-        : structuredClone(mock.initialInventoryMovements || []),
+        : leerEstadoDemo().inventoryMovements,
     }
   },
 }
