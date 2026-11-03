@@ -389,6 +389,52 @@ export default function App() {
 
     api.validarSolicitud(id)
       .then((res) => {
+        if (res?.modoMock) {
+          const cliente = clients.find((c) => c.id === s.clienteId) || {
+            nombre: s.cliente,
+            direccion: 'Sede comercial',
+            ciudad: 'Bogotá',
+            contacto: s.cliente,
+          }
+          const ordenId = `OP-2026-${String(orders.length + 1).padStart(4, '0')}`
+          const nueva = {
+            id: ordenId,
+            solicitudId: s.id,
+            clienteId: s.clienteId,
+            cliente: s.cliente,
+            producto: s.producto,
+            cantidad: Number(s.cantidad),
+            material: s.material,
+            dimensiones: s.dimensiones,
+            colores: 'Por definir en pre-prensa',
+            acabados: 'Corte y empaque estándar',
+            fechaSolicitud: s.fechaSolicitud,
+            fechaEntrega: s.fechaEntrega,
+            estado: 'Diseño',
+            disenoEstado: 'Pendiente',
+            responsable: 'María López',
+            disenador: 'María López',
+            presupuesto: Number(s.presupuesto) || 0,
+            costoInterno: Math.round((Number(s.presupuesto) || 0) * 0.6),
+            requerimientos: s.requerimientos || 'Sin especificaciones adicionales',
+            observaciones: s.observaciones || '',
+            entrega: {
+              direccion: cliente.direccion ? `${cliente.direccion}, ${cliente.ciudad || 'Bogotá'}` : 'Dirección en sede comercial',
+              metodo: 'Domicilio',
+              contacto: cliente.contacto || s.cliente,
+            },
+            versiones: [],
+            historial: [
+              crearEvento(`Solicitud ${s.id} registrada en comercial`, 'Ana Martínez'),
+              crearEvento(`Orden generada desde solicitud ${s.id}`, usuario),
+              crearEvento('Actividad asignada: propuesta gráfica a María López', usuario, 'Completado', true),
+            ],
+          }
+          setOrders((prev) => [...prev, nueva])
+          updateRequest(id, { estado: 'Aprobada', ordenId, motivoRechazo: '' })
+          notify(`Solicitud validada. Se generó la orden ${ordenId} y se asignó a diseño.`, 'exito')
+          return
+        }
         const solActualizada = res?.data
         const ordenCreada = res?.orden
         if (ordenCreada) replaceOrderFromServer(ordenCreada)
@@ -415,6 +461,31 @@ export default function App() {
 
     api.avanzarEtapaOrden(id, regla.siguiente)
       .then((res) => {
+        if (res?.modoMock) {
+          if (regla.bloqueada) {
+            updateOrder(
+              id,
+              {},
+              crearEvento(`Avance bloqueado: se intentó pasar a ${regla.siguiente} sin diseño aprobado`, usuario, 'Pendiente', false, {
+                estadoAnterior: order.estado,
+                nuevoEstado: regla.siguiente,
+                motivo: regla.motivo,
+              })
+            )
+            notify(regla.motivo, 'error')
+            return
+          }
+          updateOrder(
+            id,
+            { estado: regla.siguiente },
+            crearEvento(`Etapa cambiada a ${regla.siguiente}`, usuario, 'En proceso', false, {
+              estadoAnterior: order.estado,
+              nuevoEstado: regla.siguiente,
+            })
+          )
+          notify(`La orden ${id} avanzó a ${regla.siguiente}.`)
+          return
+        }
         if (res?.data) replaceOrderFromServer(res.data)
         notify(`La orden ${id} avanzó a ${res?.data?.estado || regla.siguiente}.`)
       })
@@ -445,6 +516,37 @@ export default function App() {
 
     api.registrarEntrega(ordenId, datosEntrega)
       .then((res) => {
+        if (res?.modoMock) {
+          const nuevaInfoEntrega = {
+            ...orden.entrega,
+            contacto: datosEntrega.contacto || orden.cliente,
+            documento: datosEntrega.documento || '',
+            cargo: datosEntrega.cargo || 'Recepción cliente',
+            telefono: datosEntrega.telefono || '',
+            fechaReal: datosEntrega.fechaReal || formatearFecha(),
+            conformidad: datosEntrega.conformidad || 'Conforme',
+            observaciones: datosEntrega.observaciones || '',
+            evidencia: datosEntrega.evidencia || (orden.entrega?.evidencia || null),
+          }
+          updateOrder(
+            ordenId,
+            { estado: 'Entrega', entrega: nuevaInfoEntrega },
+            crearEvento(
+              `Entrega formal registrada a ${datosEntrega.contacto}${datosEntrega.documento ? ` (Doc: ${datosEntrega.documento})` : ''}`,
+              usuario,
+              'Completado',
+              false,
+              {
+                estadoAnterior: orden.estado,
+                nuevoEstado: 'Entrega',
+                motivo: `Conformidad: ${datosEntrega.conformidad}`,
+                observaciones: datosEntrega.observaciones,
+              }
+            )
+          )
+          notify(`Entrega de ${ordenId} registrada con éxito. Acta/evidencia asociada a la orden.`, 'exito')
+          return
+        }
         if (res?.data) replaceOrderFromServer(res.data)
         notify(`Entrega de ${ordenId} registrada con éxito. Acta/evidencia asociada a la orden.`, 'exito')
       })
@@ -459,6 +561,18 @@ export default function App() {
   function designNewVersion(id, archivoNombre, observacionesDisenador) {
     api.crearVersionDiseno(id, { archivoNombre, observacionesDisenador })
       .then((res) => {
+        if (res?.modoMock) {
+          const ord = orders.find((o) => o.id === id)
+          const numero = (ord?.versiones?.length || 0) + 1
+          const version = { numero, fecha: formatearFecha(), disenador: 'María López', estado: 'En proceso', comentario: '' }
+          updateOrder(
+            id,
+            (o) => ({ versiones: [...o.versiones, version], disenoEstado: 'En proceso', estado: 'Diseño' }),
+            crearEvento(`Diseño creado (versión ${numero})`, usuario)
+          )
+          notify(`Versión ${numero} creada para ${id}.`)
+          return
+        }
         if (res?.orden) replaceOrderFromServer(res.orden)
         notify(`Versión ${res?.data?.numero || ''} creada para ${id}.`)
       })
@@ -470,6 +584,15 @@ export default function App() {
   function designSend(id, observaciones = '') {
     api.enviarDiseno(id, observaciones)
       .then((res) => {
+        if (res?.modoMock) {
+          updateOrder(
+            id,
+            (o) => ({ versiones: cambiarUltimaVersion(o.versiones, { estado: 'Enviada' }), disenoEstado: 'Enviado', estado: 'Aprobación' }),
+            crearEvento('Diseño enviado para aprobación', usuario)
+          )
+          notify(`Diseño de ${id} enviado para aprobación del cliente.`)
+          return
+        }
         if (res?.orden) replaceOrderFromServer(res.orden)
         notify(`Diseño de ${id} enviado para aprobación del cliente.`)
       })
@@ -481,6 +604,15 @@ export default function App() {
   function designApprove(id, comentario = '') {
     api.responderDiseno(id, 'aprobado', comentario, usuario)
       .then((res) => {
+        if (res?.modoMock) {
+          updateOrder(
+            id,
+            (o) => ({ versiones: cambiarUltimaVersion(o.versiones, { estado: 'Aprobada' }), disenoEstado: 'Aprobado' }),
+            crearEvento('Diseño aprobado', usuario)
+          )
+          notify(`Diseño de ${id} aprobado. La orden ya puede pasar a impresión.`)
+          return
+        }
         if (res?.orden) replaceOrderFromServer(res.orden)
         notify(`Diseño de ${id} aprobado. La orden ya puede pasar a impresión.`)
       })
@@ -492,6 +624,15 @@ export default function App() {
   function designReject(id, comentario) {
     api.responderDiseno(id, 'rechazado', comentario, usuario)
       .then((res) => {
+        if (res?.modoMock) {
+          updateOrder(
+            id,
+            (o) => ({ versiones: cambiarUltimaVersion(o.versiones, { estado: 'Rechazada', comentario }), disenoEstado: 'Requiere cambios', estado: 'Diseño' }),
+            crearEvento(`Diseño rechazado: ${comentario}`, usuario, 'Pendiente')
+          )
+          notify(`Se solicitaron cambios al diseño de ${id}.`, 'aviso')
+          return
+        }
         if (res?.orden) replaceOrderFromServer(res.orden)
         notify(`Se solicitaron cambios al diseño de ${id}.`, 'aviso')
       })
@@ -510,6 +651,13 @@ export default function App() {
 
     api.accionActividad(id, accion)
       .then((res) => {
+        if (res?.modoMock) {
+          const nuevoEstado = { iniciar: 'En proceso', pausar: 'Pausada', finalizar: 'Finalizada' }[accion]
+          updateTask(id, { estado: nuevoEstado })
+          updateOrder(t.ordenId, {}, crearEvento(`Tarea "${t.actividad}" ${verbo}`, usuario, nuevoEstado, true))
+          notify(`Tarea "${t.actividad}" ${verbo}.`, accion === 'pausar' ? 'aviso' : 'exito')
+          return
+        }
         if (res?.data) updateTask(id, res.data)
         if (res?.orden) replaceOrderFromServer(res.orden)
         notify(`Tarea "${t.actividad}" ${verbo}.`, accion === 'pausar' ? 'aviso' : 'exito')
@@ -527,6 +675,13 @@ export default function App() {
 
     api.agregarNotaActividad(id, texto, esIncidencia)
       .then((res) => {
+        if (res?.modoMock) {
+          const registro = { fecha: formatearFecha(), hora: formatearHora(), texto, autor: usuario }
+          updateTask(id, { [tipo]: [...(t[tipo] || []), registro] })
+          updateOrder(t.ordenId, {}, crearEvento(`${etiqueta} en "${t.actividad}": ${texto}`, usuario, 'Pendiente', true))
+          notify(`${etiqueta} registrada.`, esIncidencia ? 'aviso' : 'exito')
+          return
+        }
         if (res?.data) updateTask(id, res.data)
         if (res?.orden) replaceOrderFromServer(res.orden)
         notify(`${etiqueta} registrada.`, esIncidencia ? 'aviso' : 'exito')
@@ -545,6 +700,16 @@ export default function App() {
 
     api.asignarActividad(id, responsable)
       .then((res) => {
+        if (res?.modoMock) {
+          updateTask(id, { responsable })
+          updateOrder(
+            t.ordenId,
+            {},
+            crearEvento(`Actividad "${t.actividad}": responsable reasignado de ${anterior} a ${responsable}`, usuario, 'Completado', true)
+          )
+          notify(`Actividad "${t.actividad}" asignada a ${responsable}.`, 'exito')
+          return
+        }
         if (res?.data) updateTask(id, res.data)
         if (res?.orden) replaceOrderFromServer(res.orden)
         notify(`Actividad "${t.actividad}" asignada a ${responsable}.`, 'exito')
@@ -558,6 +723,18 @@ export default function App() {
     const t = tasks.find((x) => x.id === taskId)
     api.actualizarAvanceActividad(taskId, nuevoEstado, nuevoPct)
       .then((res) => {
+        if (res?.modoMock) {
+          updateTask(taskId, { estado: nuevoEstado, pct: nuevoPct })
+          if (t?.ordenId) {
+            updateOrder(
+              t.ordenId,
+              {},
+              crearEvento(`Avance en actividad "${t.actividad}": ${nuevoEstado} (${nuevoPct}%)`, usuario, nuevoEstado, true)
+            )
+          }
+          notify(`Actividad "${t?.actividad || ''}" actualizada a ${nuevoEstado} (${nuevoPct}%).`)
+          return
+        }
         if (res?.data) updateTask(taskId, res.data)
         if (res?.orden) replaceOrderFromServer(res.orden)
         notify(`Actividad "${t?.actividad || ''}" actualizada a ${nuevoEstado} (${nuevoPct}%).`)
@@ -574,6 +751,35 @@ export default function App() {
 
     api.crearCasoPostventa(nuevoCaso)
       .then((res) => {
+        if (res?.modoMock) {
+          const ordenAsociada = orders.find((o) => o.id === nuevoCaso.ordenId)
+          const casoCompleto = {
+            id: tempId,
+            fecha: formatearFecha(),
+            estado: 'Abierto',
+            responsable: nuevoCaso.responsable || null,
+            calificacion: null,
+            solucion: null,
+            ...nuevoCaso,
+            cliente: nuevoCaso.cliente || ordenAsociada?.cliente || 'Cliente',
+          }
+          setCases((prev) => [casoCompleto, ...prev])
+          if (nuevoCaso.ordenId) {
+            updateOrder(
+              nuevoCaso.ordenId,
+              {},
+              crearEvento(
+                `Caso de postventa ${tempId} registrado (${nuevoCaso.tipo}): ${nuevoCaso.descripcion}`,
+                usuario,
+                'Pendiente',
+                false,
+                { motivo: `Clasificación: ${nuevoCaso.tipo}`, observaciones: nuevoCaso.descripcion }
+              )
+            )
+          }
+          notify(`Caso de postventa ${tempId} registrado con éxito.`, 'exito')
+          return
+        }
         const casoCreado = res?.data
         if (casoCreado) {
           setCases((prev) => [casoCreado, ...prev.filter((c) => c.id !== casoCreado.id)])
@@ -591,6 +797,25 @@ export default function App() {
   function updateCase(id, cambios, mensaje) {
     api.actualizarCasoPostventa(id, cambios)
       .then((res) => {
+        if (res?.modoMock) {
+          setCases((prev) => prev.map((c) => (c.id === id ? { ...c, ...cambios } : c)))
+          const caso = cases.find((c) => c.id === id)
+          if (caso?.ordenId && cambios.estado) {
+            updateOrder(
+              caso.ordenId,
+              {},
+              crearEvento(
+                `Caso postventa ${id}: ${cambios.estado}${cambios.solucion ? ` - Solución: ${cambios.solucion}` : ''}`,
+                usuario,
+                cambios.estado === 'Resuelto' ? 'Completado' : 'Pendiente',
+                false,
+                { estadoAnterior: caso.estado, nuevoEstado: cambios.estado, motivo: cambios.solucion || null }
+              )
+            )
+          }
+          if (mensaje) notify(mensaje)
+          return
+        }
         if (res?.data) {
           setCases((prev) => prev.map((c) => (c.id === id ? { ...c, ...res.data } : c)))
         }
@@ -615,6 +840,19 @@ export default function App() {
 
     api.cerrarOrden(id, motivo)
       .then((res) => {
+        if (res?.modoMock) {
+          updateOrder(
+            id,
+            { estado: 'Cerrada', cerradoPor: usuario, fechaCierre: formatearFecha(), motivoCierre: motivo },
+            crearEvento(`Orden cerrada formalmente por ${usuario}`, usuario, 'Completado', false, {
+              estadoAnterior: orden.estado,
+              nuevoEstado: 'Cerrada',
+              motivo,
+            })
+          )
+          notify(`La orden ${id} ha sido cerrada formalmente.`, 'exito')
+          return
+        }
         if (res?.data) replaceOrderFromServer(res.data)
         notify(`La orden ${id} ha sido cerrada formalmente.`, 'exito')
       })
@@ -631,6 +869,19 @@ export default function App() {
 
     api.reabrirOrden(id, motivo)
       .then((res) => {
+        if (res?.modoMock) {
+          updateOrder(
+            id,
+            { estado: 'Postventa', reabiertoPor: usuario, fechaReapertura: formatearFecha() },
+            crearEvento(`Orden reabierta por ${usuario} a etapa Postventa`, usuario, 'En proceso', false, {
+              estadoAnterior: orden.estado,
+              nuevoEstado: 'Postventa',
+              motivo,
+            })
+          )
+          notify(`La orden ${id} ha sido reabierta a Postventa.`, 'aviso')
+          return
+        }
         if (res?.data) replaceOrderFromServer(res.data)
         notify(`La orden ${id} ha sido reabierta a Postventa.`, 'aviso')
       })
@@ -648,6 +899,40 @@ export default function App() {
 
     api.clonarOrden(id, motivo)
       .then((res) => {
+        if (res?.modoMock) {
+          const nuevoNumero = orders.length + 1
+          const nuevoId = `OP-2026-${String(nuevoNumero).padStart(4, '0')}`
+          const entregaCalculada = new Date()
+          entregaCalculada.setDate(entregaCalculada.getDate() + 4)
+          const nuevaOrden = {
+            ...ordenOriginal,
+            id: nuevoId,
+            fechaSolicitud: formatearFecha(),
+            fechaEntrega: formatearFecha(entregaCalculada),
+            estado: 'Impresión',
+            disenoEstado: 'Aprobado',
+            esReimpresion: true,
+            ordenOriginalId: id,
+            historial: [
+              crearEvento(
+                `Orden clonada a partir de ${id} para reimpresión. Motivo: ${motivo}`,
+                usuario,
+                'Completado'
+              ),
+            ],
+            entrega: {
+              ...ordenOriginal.entrega,
+              contacto: ordenOriginal.entrega?.contacto || ordenOriginal.cliente,
+              fechaReal: null,
+              conformidad: null,
+              evidencia: null,
+            },
+          }
+          setOrders((prev) => [nuevaOrden, ...prev])
+          notify(`Orden clonada con éxito: ${nuevoId} (Reimpresión de ${id}).`, 'exito')
+          irA('detalle', nuevoId)
+          return
+        }
         const nuevaOrden = res?.data
         if (nuevaOrden) {
           replaceOrderFromServer(nuevaOrden)
@@ -667,6 +952,23 @@ export default function App() {
     const comm = comms.find((c) => c.id === commId)
     api.enviarMensajeComunicacion(commId, nuevoMensaje)
       .then((res) => {
+        if (res?.modoMock) {
+          setComms((prev) =>
+            prev.map((c) => (c.id === commId ? { ...c, estado: 'Respondida', mensajes: [...c.mensajes, nuevoMensaje] } : c))
+          )
+          if (comm?.ordenId) {
+            updateOrder(
+              comm.ordenId,
+              {},
+              crearEvento(
+                `Respuesta enviada al cliente por ${comm.canal === 'wa' ? 'WhatsApp' : comm.canal === 'mail' ? 'Correo' : 'Telefonía'}`,
+                usuario
+              )
+            )
+          }
+          notify(`Respuesta enviada a ${comm?.cliente || 'cliente'}.`)
+          return
+        }
         if (res?.data) {
           setComms((prev) => prev.map((c) => (c.id === commId ? res.data : c)))
         }

@@ -1,11 +1,115 @@
 // Capa de acceso a datos de ORVEX — Huellas Publicidad.
-// Conectada al backend real Express + PostgreSQL con soporte JWT y fallback opcional a mockData.
+// Conectada al backend real Express + PostgreSQL con soporte JWT y fallback automático
+// al modo de demostración local (mockData) cuando PostgreSQL no está disponible.
 
 import * as mock from '../data/mockData.js'
 
-const USAR_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+const USAR_MOCK = import.meta.env?.VITE_USE_MOCK === 'true'
+const API_URL = import.meta.env?.VITE_API_URL || 'http://localhost:3000/api'
 const TOKEN_KEY = 'orvex_auth_token'
+const DEMO_FALLBACK_KEY = 'orvex_demo_fallback'
+
+// Cuentas locales de prueba para demostración cuando PostgreSQL no está disponible
+const CUENTAS_DEMO_LOCAL = [
+  {
+    id: 'U2',
+    rol: 'coordinador',
+    rolUi: 'coordinador',
+    rolBd: 'coord',
+    correo: 'carlos.gomez@huellas.co',
+    email: 'carlos.gomez@huellas.co',
+    aliases: ['carlos.gomez@huellas.co', 'carlos.ruiz@orvex.test', 'carlos gómez', 'carlos gomez', 'carlos ruiz'],
+    clave: 'coord123',
+    nombre: 'Carlos Gómez',
+    nombre_completo: 'Carlos Gómez',
+    cargo: 'Coordinador de producción',
+    estado: 'Activo',
+  },
+  {
+    id: 'U1',
+    rol: 'comercial',
+    rolUi: 'comercial',
+    rolBd: 'ejecutiva',
+    correo: 'ana.martinez@huellas.co',
+    email: 'ana.martinez@huellas.co',
+    aliases: ['ana.martinez@huellas.co', 'ana.martinez@orvex.test', 'ana martínez', 'ana martinez'],
+    clave: 'comercial123',
+    nombre: 'Ana Martínez',
+    nombre_completo: 'Ana Martínez',
+    cargo: 'Ejecutiva comercial',
+    estado: 'Activo',
+  },
+  {
+    id: 'U3',
+    rol: 'disenador',
+    rolUi: 'disenador',
+    rolBd: 'disenador',
+    correo: 'maria.lopez@huellas.co',
+    email: 'maria.lopez@huellas.co',
+    aliases: ['maria.lopez@huellas.co', 'maria.lopez@orvex.test', 'maría lópez', 'maria lopez'],
+    clave: 'diseno123',
+    nombre: 'María López',
+    nombre_completo: 'María López',
+    cargo: 'Diseñadora gráfica',
+    estado: 'Activo',
+  },
+  {
+    id: 'U4',
+    rol: 'operario',
+    rolUi: 'operario',
+    rolBd: 'produccion',
+    correo: 'pedro.morales@huellas.co',
+    email: 'pedro.morales@huellas.co',
+    aliases: ['pedro.morales@huellas.co', 'juan.perez@orvex.test', 'pedro.ramirez@orvex.test', 'pedro morales', 'juan pérez', 'juan perez'],
+    clave: 'taller123',
+    nombre: 'Pedro Morales',
+    nombre_completo: 'Pedro Morales',
+    cargo: 'Operario de taller',
+    estado: 'Activo',
+  },
+  {
+    id: 'U6',
+    rol: 'postventa',
+    rolUi: 'postventa',
+    rolBd: 'postventa',
+    correo: 'sofia.herrera@huellas.co',
+    email: 'sofia.herrera@huellas.co',
+    aliases: ['sofia.herrera@huellas.co', 'sofia.herrera@orvex.test', 'sofía herrera', 'sofia herrera'],
+    clave: 'post123',
+    nombre: 'Sofía Herrera',
+    nombre_completo: 'Sofía Herrera',
+    cargo: 'Atención postventa',
+    estado: 'Activo',
+  },
+  {
+    id: 'U7',
+    rol: 'gerencia',
+    rolUi: 'gerencia',
+    rolBd: 'gerente',
+    correo: 'laura.sanchez@huellas.co',
+    email: 'laura.sanchez@huellas.co',
+    aliases: ['laura.sanchez@huellas.co', 'andres.torres@orvex.test', 'laura sánchez', 'laura sanchez', 'andrés torres', 'andres torres'],
+    clave: 'gerencia123',
+    nombre: 'Laura Sánchez',
+    nombre_completo: 'Laura Sánchez',
+    cargo: 'Gerente general',
+    estado: 'Activo',
+  },
+  {
+    id: 'C1',
+    rol: 'cliente',
+    rolUi: 'cliente',
+    rolBd: 'cliente',
+    correo: 'carlos.mendoza@alpina.com',
+    email: 'carlos.mendoza@alpina.com',
+    aliases: ['carlos.mendoza@alpina.com', 'laura@empresaabc.test', 'carlos mendoza'],
+    clave: 'cliente123',
+    nombre: 'Carlos Mendoza',
+    nombre_completo: 'Carlos Mendoza',
+    cargo: 'Cliente (Alpina S.A.)',
+    estado: 'Activo',
+  },
+]
 
 export function getAuthToken() {
   try {
@@ -22,8 +126,57 @@ export function setAuthToken(token) {
   } catch {}
 }
 
-// Simula la respuesta de un servidor (solo cuando VITE_USE_MOCK=true)
-const simular = (valor, ms = 350) =>
+export function getModoDemoLocal() {
+  if (USAR_MOCK) return true
+  try {
+    return sessionStorage.getItem(DEMO_FALLBACK_KEY) === 'true' || getAuthToken() === 'mock-jwt-token'
+  } catch {
+    return false
+  }
+}
+
+export function setModoDemoLocal(activo) {
+  try {
+    if (activo) sessionStorage.setItem(DEMO_FALLBACK_KEY, 'true')
+    else sessionStorage.removeItem(DEMO_FALLBACK_KEY)
+  } catch {}
+}
+
+function buscarCuentaDemoLocal(credenciales = {}) {
+  const idInput = String(credenciales.identificador || credenciales.email || credenciales.correo || '')
+    .trim()
+    .toLowerCase()
+  const password = String(credenciales.clave || credenciales.password || '')
+
+  return (
+    CUENTAS_DEMO_LOCAL.find(
+      (c) => c.aliases.includes(idInput) && c.clave === password
+    ) || null
+  )
+}
+
+function autenticarDemoLocal(credenciales = {}) {
+  const cuenta = buscarCuentaDemoLocal(credenciales)
+
+  if (!cuenta) {
+    const err = new Error('Credenciales inválidas. Verifica tu correo y contraseña o selecciona uno de los accesos de demostración.')
+    err.status = 401
+    throw err
+  }
+
+  setModoDemoLocal(true)
+  setAuthToken('mock-jwt-token')
+
+  const { aliases, clave, ...usuarioLimpio } = cuenta
+  return {
+    token: 'mock-jwt-token',
+    modoDemo: true,
+    usuario: usuarioLimpio,
+  }
+}
+
+// Simula la respuesta de un servidor en modo demostración
+const simular = (valor, ms = 120) =>
   new Promise((resolve) => setTimeout(() => resolve(structuredClone(valor)), ms))
 
 // Petición real a la API REST con cabeceras JWT y manejo de errores JSON
@@ -60,30 +213,71 @@ async function pedir(ruta, opciones = {}) {
   return payload
 }
 
+// Determina si el error proviene de falta de conexión al backend o de PostgreSQL no disponible
+function esErrorDeConexionOBaseDatos(err) {
+  if (!err || !err.status) return true // Fallo de red (backend apagado o inaccesible)
+  if (err.status >= 500) return true   // Error 500 por PostgreSQL desconectado o sin configurar
+  if (err.status === 401 && getAuthToken() === 'mock-jwt-token') return true
+  return false
+}
+
 async function consultarLista(ruta, datosMock) {
-  if (USAR_MOCK) return simular(datosMock)
-  const res = await pedir(ruta)
-  return Array.isArray(res) ? res : res?.data || []
+  if (getModoDemoLocal()) return simular(datosMock)
+  try {
+    const res = await pedir(ruta)
+    return Array.isArray(res) ? res : res?.data || []
+  } catch (err) {
+    if (esErrorDeConexionOBaseDatos(err)) {
+      setModoDemoLocal(true)
+      return structuredClone(datosMock)
+    }
+    throw err
+  }
+}
+
+async function ejecutarConFallback(fnReal, valorFallback) {
+  if (getModoDemoLocal()) return simular(valorFallback)
+  try {
+    return await fnReal()
+  } catch (err) {
+    if (esErrorDeConexionOBaseDatos(err)) {
+      setModoDemoLocal(true)
+      return structuredClone(valorFallback)
+    }
+    throw err
+  }
 }
 
 export const api = {
-  usarMock: USAR_MOCK,
+  get usarMock() {
+    return getModoDemoLocal()
+  },
 
-  // Autenticación (HU-02)
+  // Autenticación (HU-02): intenta login real contra PostgreSQL; si PostgreSQL o el backend
+  // no están disponibles, activa automáticamente el modo de demostración local.
   async login(credenciales) {
     if (USAR_MOCK) {
-      return simular({ token: 'mock-jwt-token', usuario: credenciales })
+      return simular(autenticarDemoLocal(credenciales))
     }
-    const res = await pedir('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify(credenciales),
-    })
-    if (res?.token) setAuthToken(res.token)
-    return res
+    try {
+      const res = await pedir('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify(credenciales),
+      })
+      setModoDemoLocal(false)
+      if (res?.token) setAuthToken(res.token)
+      return res
+    } catch (err) {
+      if (esErrorDeConexionOBaseDatos(err) || (err.status === 401 && buscarCuentaDemoLocal(credenciales))) {
+        return autenticarDemoLocal(credenciales)
+      }
+      throw err
+    }
   },
 
   async logout() {
     setAuthToken('')
+    setModoDemoLocal(false)
     if (USAR_MOCK) return simular({ ok: true })
     try {
       return await pedir('/auth/logout', { method: 'POST' })
@@ -93,190 +287,241 @@ export const api = {
   },
 
   async obtenerPerfil() {
-    if (USAR_MOCK) return simular(null)
-    const res = await pedir('/auth/perfil')
-    return res?.data || res
+    if (getModoDemoLocal()) return simular(null)
+    try {
+      const res = await pedir('/auth/perfil')
+      return res?.data || res
+    } catch (err) {
+      if (esErrorDeConexionOBaseDatos(err)) {
+        setModoDemoLocal(true)
+        return null
+      }
+      throw err
+    }
   },
 
   // Clientes
   listarClientes: () => consultarLista('/clientes', mock.initialClients),
   crearCliente: (cliente) =>
-    USAR_MOCK
-      ? simular(cliente)
-      : pedir('/clientes', { method: 'POST', body: JSON.stringify(cliente) }),
+    ejecutarConFallback(
+      () => pedir('/clientes', { method: 'POST', body: JSON.stringify(cliente) }),
+      { modoMock: true, data: null }
+    ),
 
   // Solicitudes (HU-03 a HU-06)
   listarSolicitudes: () => consultarLista('/solicitudes', mock.initialRequests),
   crearSolicitud: (solicitud) =>
-    USAR_MOCK
-      ? simular(solicitud)
-      : pedir('/solicitudes', { method: 'POST', body: JSON.stringify(solicitud) }),
+    ejecutarConFallback(
+      () => pedir('/solicitudes', { method: 'POST', body: JSON.stringify(solicitud) }),
+      { modoMock: true, data: null }
+    ),
   enviarAValidacion: (id) =>
-    USAR_MOCK
-      ? simular({ data: { id, estado: 'En validación' } })
-      : pedir(`/solicitudes/${id}/enviar`, { method: 'PATCH' }),
+    ejecutarConFallback(
+      () => pedir(`/solicitudes/${id}/enviar`, { method: 'PATCH' }),
+      { modoMock: true, data: { id, estado: 'En validación' } }
+    ),
   validarSolicitud: (id) =>
-    USAR_MOCK
-      ? simular({ data: { id, estado: 'Aprobada' } })
-      : pedir(`/solicitudes/${id}/validar`, { method: 'POST' }),
+    ejecutarConFallback(
+      () => pedir(`/solicitudes/${id}/validar`, { method: 'POST' }),
+      { modoMock: true }
+    ),
   devolverSolicitud: (id, motivo) =>
-    USAR_MOCK
-      ? simular({ data: { id, estado: 'Devuelta para corrección', motivoRechazo: motivo } })
-      : pedir(`/solicitudes/${id}/devolver`, { method: 'PATCH', body: JSON.stringify({ motivo }) }),
+    ejecutarConFallback(
+      () => pedir(`/solicitudes/${id}/devolver`, { method: 'PATCH', body: JSON.stringify({ motivo }) }),
+      { modoMock: true, data: { id, estado: 'Devuelta para corrección', motivoRechazo: motivo } }
+    ),
   rechazarSolicitud: (id, motivo) =>
-    USAR_MOCK
-      ? simular({ data: { id, estado: 'Rechazada', motivoRechazo: motivo } })
-      : pedir(`/solicitudes/${id}/rechazar`, { method: 'PATCH', body: JSON.stringify({ motivo }) }),
+    ejecutarConFallback(
+      () => pedir(`/solicitudes/${id}/rechazar`, { method: 'PATCH', body: JSON.stringify({ motivo }) }),
+      { modoMock: true, data: { id, estado: 'Rechazada', motivoRechazo: motivo } }
+    ),
 
   // Órdenes de producción (HU-06, HU-13, HU-16, HU-17, HU-19, HU-20)
   listarOrdenes: () => consultarLista('/ordenes', mock.initialOrders),
   obtenerOrden: (id) =>
-    USAR_MOCK
-      ? simular(mock.initialOrders.find((o) => o.id === id))
-      : pedir(`/ordenes/${id}`),
+    ejecutarConFallback(
+      () => pedir(`/ordenes/${id}`),
+      mock.initialOrders.find((o) => o.id === id)
+    ),
   avanzarEtapaOrden: (id, etapa) =>
-    USAR_MOCK
-      ? simular({ data: { id, estado: etapa } })
-      : pedir(`/ordenes/${id}/etapa`, {
+    ejecutarConFallback(
+      () =>
+        pedir(`/ordenes/${id}/etapa`, {
           method: 'PATCH',
           body: JSON.stringify(etapa ? { etapa } : {}),
         }),
+      { modoMock: true }
+    ),
   registrarEntrega: (ordenId, datosEntrega) =>
-    USAR_MOCK
-      ? simular({ ordenId, ...datosEntrega, registrado: true })
-      : pedir(`/ordenes/${ordenId}/entrega`, {
+    ejecutarConFallback(
+      () =>
+        pedir(`/ordenes/${ordenId}/entrega`, {
           method: 'POST',
           body: JSON.stringify(datosEntrega),
         }),
+      { modoMock: true }
+    ),
   cerrarOrden: (id, motivo) =>
-    USAR_MOCK
-      ? simular({ id, estado: 'Cerrada', motivo })
-      : pedir(`/ordenes/${id}/cerrar`, {
+    ejecutarConFallback(
+      () =>
+        pedir(`/ordenes/${id}/cerrar`, {
           method: 'POST',
           body: JSON.stringify({ motivo }),
         }),
+      { modoMock: true }
+    ),
   reabrirOrden: (id, motivo) =>
-    USAR_MOCK
-      ? simular({ id, estado: 'Postventa', motivo })
-      : pedir(`/ordenes/${id}/reabrir`, {
+    ejecutarConFallback(
+      () =>
+        pedir(`/ordenes/${id}/reabrir`, {
           method: 'POST',
           body: JSON.stringify({ motivo }),
         }),
+      { modoMock: true }
+    ),
   clonarOrden: (id, motivo) =>
-    USAR_MOCK
-      ? simular({ id, motivo })
-      : pedir(`/ordenes/${id}/clonar`, {
+    ejecutarConFallback(
+      () =>
+        pedir(`/ordenes/${id}/clonar`, {
           method: 'POST',
           body: JSON.stringify({ motivo }),
         }),
+      { modoMock: true }
+    ),
   obtenerHistorialOrden: (id) =>
-    USAR_MOCK
-      ? simular(mock.initialOrders.find((o) => o.id === id)?.historial || [])
-      : pedir(`/ordenes/${id}/historial`),
+    ejecutarConFallback(
+      () => pedir(`/ordenes/${id}/historial`),
+      mock.initialOrders.find((o) => o.id === id)?.historial || []
+    ),
 
   // Diseño y versiones de arte (HU-11, HU-12, HU-13)
   crearVersionDiseno: (ordenId, payload = {}) =>
-    USAR_MOCK
-      ? simular({ ordenId, ...payload })
-      : pedir(`/disenos/orden/${ordenId}`, {
+    ejecutarConFallback(
+      () =>
+        pedir(`/disenos/orden/${ordenId}`, {
           method: 'POST',
           body: JSON.stringify(payload),
         }),
+      { modoMock: true }
+    ),
   enviarDiseno: (ordenId, observaciones = '') =>
-    USAR_MOCK
-      ? simular({ ordenId, observaciones })
-      : pedir(`/disenos/orden/${ordenId}/enviar`, {
+    ejecutarConFallback(
+      () =>
+        pedir(`/disenos/orden/${ordenId}/enviar`, {
           method: 'PATCH',
           body: JSON.stringify({ observaciones }),
         }),
+      { modoMock: true }
+    ),
   responderDiseno: (ordenId, decision, comentario = '', decisor = '') =>
-    USAR_MOCK
-      ? simular({ ordenId, decision, comentario })
-      : pedir(`/disenos/orden/${ordenId}/aprobacion`, {
+    ejecutarConFallback(
+      () =>
+        pedir(`/disenos/orden/${ordenId}/aprobacion`, {
           method: 'PATCH',
           body: JSON.stringify({ estado: decision, comentario, decisor }),
         }),
+      { modoMock: true }
+    ),
 
   // Actividades de taller (HU-08, HU-10, HU-14, HU-15)
   listarActividades: () => consultarLista('/actividades', mock.initialTasks),
   asignarActividad: (id, responsable) =>
-    USAR_MOCK
-      ? simular({ id, responsable })
-      : pedir(`/actividades/${id}/asignar`, {
+    ejecutarConFallback(
+      () =>
+        pedir(`/actividades/${id}/asignar`, {
           method: 'PATCH',
           body: JSON.stringify({ responsable }),
         }),
+      { modoMock: true }
+    ),
   accionActividad: (id, accion) =>
-    USAR_MOCK
-      ? simular({ id, accion })
-      : pedir(`/actividades/${id}/accion`, {
+    ejecutarConFallback(
+      () =>
+        pedir(`/actividades/${id}/accion`, {
           method: 'PATCH',
           body: JSON.stringify({ accion }),
         }),
+      { modoMock: true }
+    ),
   actualizarAvanceActividad: (id, estado, pct) =>
-    USAR_MOCK
-      ? simular({ id, estado, pct })
-      : pedir(`/actividades/${id}/avance`, {
+    ejecutarConFallback(
+      () =>
+        pedir(`/actividades/${id}/avance`, {
           method: 'PATCH',
           body: JSON.stringify({ estado, pct }),
         }),
+      { modoMock: true }
+    ),
   agregarNotaActividad: (id, texto, esIncidencia = false) =>
-    USAR_MOCK
-      ? simular({ id, texto, esIncidencia })
-      : pedir(`/actividades/${id}/notas`, {
+    ejecutarConFallback(
+      () =>
+        pedir(`/actividades/${id}/notas`, {
           method: 'POST',
           body: JSON.stringify({ texto, esIncidencia }),
         }),
+      { modoMock: true }
+    ),
 
   // Gestión de postventa (HU-18)
   listarCasos: () => consultarLista('/casos', mock.initialCases),
   crearCasoPostventa: (caso) =>
-    USAR_MOCK
-      ? simular({ id: 'CAS-MOCK', ...caso })
-      : pedir('/casos', { method: 'POST', body: JSON.stringify(caso) }),
+    ejecutarConFallback(
+      () => pedir('/casos', { method: 'POST', body: JSON.stringify(caso) }),
+      { modoMock: true }
+    ),
   actualizarCasoPostventa: (id, cambios) =>
-    USAR_MOCK
-      ? simular({ id, ...cambios })
-      : pedir(`/casos/${id}`, { method: 'PATCH', body: JSON.stringify(cambios) }),
+    ejecutarConFallback(
+      () => pedir(`/casos/${id}`, { method: 'PATCH', body: JSON.stringify(cambios) }),
+      { modoMock: true }
+    ),
   resolverCasoPostventa: (id, solucion) =>
-    USAR_MOCK
-      ? simular({ id, estado: 'Resuelto', solucion })
-      : pedir(`/casos/${id}/resolver`, {
+    ejecutarConFallback(
+      () =>
+        pedir(`/casos/${id}/resolver`, {
           method: 'PATCH',
           body: JSON.stringify({ solucion }),
         }),
+      { modoMock: true }
+    ),
   calificarCasoPostventa: (id, calificacion) =>
-    USAR_MOCK
-      ? simular({ id, calificacion })
-      : pedir(`/casos/${id}/calificar`, {
+    ejecutarConFallback(
+      () =>
+        pedir(`/casos/${id}/calificar`, {
           method: 'PATCH',
           body: JSON.stringify({ calificacion }),
         }),
+      { modoMock: true }
+    ),
 
   // Usuarios y seguridad (HU-01)
   listarUsuarios: () => consultarLista('/usuarios', mock.initialUsers),
   crearUsuario: (usuario) =>
-    USAR_MOCK
-      ? simular(usuario)
-      : pedir('/usuarios', { method: 'POST', body: JSON.stringify(usuario) }),
+    ejecutarConFallback(
+      () => pedir('/usuarios', { method: 'POST', body: JSON.stringify(usuario) }),
+      { modoMock: true, data: usuario }
+    ),
   actualizarUsuario: (id, cambios) =>
-    USAR_MOCK
-      ? simular({ id, ...cambios })
-      : pedir(`/usuarios/${id}`, { method: 'PATCH', body: JSON.stringify(cambios) }),
+    ejecutarConFallback(
+      () => pedir(`/usuarios/${id}`, { method: 'PATCH', body: JSON.stringify(cambios) }),
+      { modoMock: true, data: { id, ...cambios } }
+    ),
   cambiarEstadoUsuario: (id, estado) =>
-    USAR_MOCK
-      ? simular({ id, estado })
-      : pedir(`/usuarios/${id}/estado`, { method: 'PATCH', body: JSON.stringify({ estado }) }),
+    ejecutarConFallback(
+      () => pedir(`/usuarios/${id}/estado`, { method: 'PATCH', body: JSON.stringify({ estado }) }),
+      { modoMock: true, data: { id, estado } }
+    ),
 
   // Comunicaciones omnicanal
   listarComunicaciones: () => consultarLista('/comunicaciones', mock.initialComms),
   enviarMensajeComunicacion: (id, mensaje) =>
-    USAR_MOCK
-      ? simular({ id, mensaje })
-      : pedir(`/comunicaciones/${id}/mensajes`, {
+    ejecutarConFallback(
+      () =>
+        pedir(`/comunicaciones/${id}/mensajes`, {
           method: 'POST',
           body: JSON.stringify(mensaje),
         }),
+      { modoMock: true }
+    ),
 
   // Carga inicial de toda la información que necesita la aplicación
   async cargarTodo() {
@@ -289,6 +534,19 @@ export const api = {
       this.listarUsuarios(),
       this.listarComunicaciones(),
     ])
+    // Si la base de datos conectó pero está vacía (sin seed), usar datos mock de demostración
+    if (clients.length === 0 && orders.length === 0 && requests.length === 0) {
+      setModoDemoLocal(true)
+      return {
+        clients: structuredClone(mock.initialClients),
+        orders: structuredClone(mock.initialOrders),
+        requests: structuredClone(mock.initialRequests),
+        tasks: structuredClone(mock.initialTasks),
+        cases: structuredClone(mock.initialCases),
+        users: structuredClone(mock.initialUsers),
+        comms: structuredClone(mock.initialComms),
+      }
+    }
     return { clients, orders, requests, tasks, cases, users, comms }
   },
 }
