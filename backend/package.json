@@ -1,0 +1,33 @@
+{
+  "name": "huellas-backend",
+  "version": "1.0.0",
+  "description": "Backend para el sistema empresarial Huellas con Express y PostgreSQL",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "migrate": "node database/migrate.js",
+    "seed": "node database/seed.js"
+  },
+  "keywords": [
+    "huellas",
+    "backend",
+    "express",
+    "postgresql"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.5.0",
+    "pg": "^8.13.1",
+    "swagger-ui-express": "^5.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
+  }
+}
