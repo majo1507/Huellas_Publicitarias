@@ -141,6 +141,7 @@ function construirOrdenCompleta(o, versionesRows = [], historialRows = []) {
     fechaReapertura: o.fecha_reapertura || null,
     esReimpresion: Boolean(o.es_reimpresion),
     ordenOriginalId: o.orden_original_codigo || null,
+    archivosReferencia: Array.isArray(o.archivos_referencia) ? o.archivos_referencia : [],
     created_at: o.created_at,
     updated_at: o.updated_at,
   };
@@ -1039,12 +1040,96 @@ const clonarOrden = async (req, res) => {
   }
 };
 
+/**
+ * 8. COORDINACIÓN Y ASIGNACIÓN DE EQUIPO, PLAZOS Y PRESUPUESTO EN ORDEN
+ * PATCH /api/ordenes/:id/asignacion
+ */
+const actualizarAsignacionOrden = async (req, res) => {
+  const { disenador, responsable, presupuesto, costoInterno, fechaEntrega } = req.body || {};
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const orden = await resolverOrden(client, req.params.id, true);
+    if (!orden) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: `Orden ${req.params.id} no encontrada.` });
+    }
+
+    const nuevoDisenador = disenador || orden.disenador_nombre_asignado || 'María López';
+    const nuevoResponsable = responsable || orden.responsable_nombre || 'Pedro Morales';
+    const nuevoPresupuesto = presupuesto !== undefined ? Number(presupuesto) : Number(orden.presupuesto || 0);
+    const nuevoCosto = costoInterno !== undefined ? Number(costoInterno) : Number(orden.costo_interno || 0);
+    const nuevaFechaEntrega = fechaEntrega || orden.fecha_entrega;
+
+    const usrDis = await resolverUsuario(client, nuevoDisenador);
+    const usrProd = await resolverUsuario(client, nuevoResponsable);
+
+    await client.query(
+      `UPDATE ordenes
+       SET disenador_nombre_asignado = $1,
+           responsable_nombre = $2,
+           disenador_id = COALESCE($3, disenador_id),
+           produccion_id = COALESCE($4, produccion_id),
+           presupuesto = $5,
+           costo_interno = $6,
+           fecha_entrega = $7
+       WHERE id = $8`,
+      [
+        nuevoDisenador,
+        nuevoResponsable,
+        usrDis ? usrDis.id : null,
+        usrProd ? usrProd.id : null,
+        nuevoPresupuesto,
+        nuevoCosto,
+        nuevaFechaEntrega,
+        orden.id,
+      ]
+    );
+
+    const respUser = (req.usuario?.id && req.usuario.rol !== 'cliente')
+      ? (await resolverUsuario(client, req.usuario.id))
+      : (await resolverUsuario(client, orden.ejecutiva_id));
+    const respNombre = req.usuario?.nombre_completo || respUser.nombre_completo;
+
+    await client.query(
+      `INSERT INTO registro_sesion (
+        orden_id, usuario_responsable_id, accion_texto,
+        fecha_texto, hora_texto, responsable_nombre, estado_evento, interno
+      ) VALUES ($1,$2,$3,$4,$5,$6,'Completado',true)`,
+      [
+        orden.id,
+        respUser.id,
+        `Coordinación de orden actualizada: Diseño (${nuevoDisenador}), Responsable operativo (${nuevoResponsable})`,
+        formatearFechaHoy(),
+        formatearHoraAhora(),
+        respNombre,
+      ]
+    );
+
+    await client.query('COMMIT');
+
+    const [ordenCompleta] = await cargarOrdenesEnriquecidas(pool, 'AND o.id = $1', [orden.id]);
+    res.json({
+      message: 'Asignación y costos de la orden actualizados exitosamente.',
+      data: ordenCompleta,
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('ordenesController.actualizarAsignacionOrden error:', error.message);
+    res.status(500).json({ error: 'Error al actualizar la asignación de la orden.' });
+  } finally {
+    client.release();
+  }
+};
+
 module.exports = {
   listarOrdenes,
   obtenerOrdenPorId,
   obtenerHistorialOrden,
   crearOrden,
   actualizarEtapa,
+  actualizarAsignacionOrden,
   registrarEntrega,
   cerrarOrden,
   reabrirOrden,

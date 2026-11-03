@@ -45,6 +45,7 @@ function formatearSolicitud(s) {
     ordenId: ordenCodigo,
     orden_id: s.orden_id || null,
     motivoRechazo: s.motivo_rechazo || '',
+    archivosReferencia: Array.isArray(s.archivos_referencia) ? s.archivos_referencia : [],
     created_at: s.created_at,
   };
 }
@@ -150,14 +151,15 @@ const crearSolicitud = async (req, res) => {
     const cantNum = Number(cantidad || 1);
     const presNum = Number(presupuesto || 0);
     const fechaSol = formatearFechaHoy();
+    const archRef = Array.isArray(req.body.archivosReferencia) ? req.body.archivosReferencia : [];
 
     const ins = await pool.query(
       `INSERT INTO solicitudes (
         codigo, cliente_id, ejecutiva_id, descripcion, estado,
         producto, cantidad, dimensiones, material,
         fecha_solicitud, fecha_entrega, presupuesto,
-        requerimientos, observaciones, motivo_rechazo
-      ) VALUES ($1,$2,$3,$4,'pendiente',$5,$6,$7,$8,$9,$10,$11,$12,$13,'')
+        requerimientos, observaciones, motivo_rechazo, archivos_referencia
+      ) VALUES ($1,$2,$3,$4,'pendiente',$5,$6,$7,$8,$9,$10,$11,$12,$13,'',$14::jsonb)
       RETURNING id`,
       [
         codigo,
@@ -173,6 +175,7 @@ const crearSolicitud = async (req, res) => {
         presNum,
         requerimientos || '',
         observaciones || '',
+        JSON.stringify(archRef),
       ]
     );
 
@@ -307,6 +310,7 @@ const validarSolicitud = async (req, res) => {
     };
 
     const presNum = Number(sol.presupuesto || 0);
+    const archRef = Array.isArray(sol.archivos_referencia) ? sol.archivos_referencia : [];
     const insOrd = await client.query(
       `INSERT INTO ordenes (
         cliente_id, producto, ejecutiva_id, disenador_id, produccion_id,
@@ -314,14 +318,14 @@ const validarSolicitud = async (req, res) => {
         solicitud_codigo, cantidad, material, dimensiones, colores, acabados,
         fecha_solicitud, fecha_entrega, estado_nombre, diseno_estado,
         responsable_nombre, disenador_nombre_asignado, presupuesto, costo_interno,
-        metodo_entrega, requerimientos, observaciones, entrega_json
+        metodo_entrega, requerimientos, observaciones, entrega_json, archivos_referencia
       ) VALUES (
         $1,$2,$3,$4,NULL,
         1,'Media',12.50,false,
         $5,$6,$7,$8,'Por definir en pre-prensa','Corte y empaque estándar',
         $9,$10,'Diseño','Pendiente',
         'María López','María López',$11,$12,
-        'Domicilio',$13,$14,$15
+        'Domicilio',$13,$14,$15,$16::jsonb
       ) RETURNING *`,
       [
         sol.cliente_id,
@@ -339,6 +343,7 @@ const validarSolicitud = async (req, res) => {
         sol.requerimientos || 'Sin especificaciones adicionales',
         sol.observaciones || '',
         JSON.stringify(entregaJson),
+        JSON.stringify(archRef),
       ]
     );
 

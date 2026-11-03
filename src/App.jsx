@@ -24,6 +24,7 @@ import Deliveries from './pages/Deliveries.jsx'
 import Communications from './pages/Communications.jsx'
 import Production from './pages/Production.jsx'
 import Tasks from './pages/Tasks.jsx'
+import Inventory from './pages/Inventory.jsx'
 import Reports from './pages/Reports.jsx'
 import Users from './pages/Users.jsx'
 import Login from './pages/Login.jsx'
@@ -58,6 +59,11 @@ function crearEvento(actividad, responsable, estado = 'Completado', interno = fa
   }
 }
 
+function cambiarUltimaVersion(versiones, cambios) {
+  if (!Array.isArray(versiones) || versiones.length === 0) return []
+  return versiones.map((v, idx) => (idx === versiones.length - 1 ? { ...v, ...cambios } : v))
+}
+
 export default function App() {
   const [orders, setOrders] = useState([])
   const [requests, setRequests] = useState([])
@@ -66,6 +72,9 @@ export default function App() {
   const [clients, setClients] = useState([])
   const [users, setUsers] = useState([])
   const [comms, setComms] = useState([])
+  const [inventory, setInventory] = useState([])
+  const [suppliers, setSuppliers] = useState([])
+  const [inventoryMovements, setInventoryMovements] = useState([])
   const [cargando, setCargando] = useState(false)
   const [errorCarga, setErrorCarga] = useState('')
   const [intento, setIntento] = useState(0)
@@ -119,7 +128,7 @@ export default function App() {
     }
   }
 
-  // Carga de datos desde PostgreSQL cuando el usuario está autenticado
+  // Carga de datos desde PostgreSQL (o modo demostración local) cuando el usuario está autenticado
   useEffect(() => {
     if (!currentUser) {
       setCargando(false)
@@ -138,6 +147,9 @@ export default function App() {
         setClients(d.clients || [])
         setUsers(d.users || [])
         setComms(d.comms || [])
+        setInventory(d.inventory || [])
+        setSuppliers(d.suppliers || [])
+        setInventoryMovements(d.inventoryMovements || [])
         setCargando(false)
       })
       .catch((e) => {
@@ -157,7 +169,18 @@ export default function App() {
   useEffect(() => { window.scrollTo(0, 0) }, [page])
 
   const usuario = currentUser?.nombre || ROLES[role]?.usuario?.nombre || 'Usuario'
-  const data = { orders, requests, tasks, cases, clients, users, comms }
+  const data = {
+    orders,
+    requests,
+    tasks,
+    cases,
+    clients,
+    users,
+    comms,
+    inventory,
+    suppliers,
+    inventoryMovements,
+  }
 
   function notify(texto, tipo = 'exito') {
     const id = Date.now() + Math.random()
@@ -177,6 +200,7 @@ export default function App() {
   }
 
   // Navegación con protección de rutas según rol (HU-02 y HU-07)
+  // El Coordinador no tiene acceso a 'comunicaciones'
   const irA = (name, orderId = null) => {
     const paginasComunes = ['inicio', 'detalle', 'aprobacion', 'historial', 'disenos']
     const itemMenu = ROLES[role]?.menu.find((m) => m.page === name)
@@ -218,9 +242,6 @@ export default function App() {
     notify('Sesión cerrada correctamente.', 'info')
   }
 
-  // Selector de roles para demostración:
-  // En operación real los permisos de escritura dependen del token JWT del usuario autenticado.
-  // Solo Gerencia puede previsualizar otros roles sin cerrar sesión; los demás perfiles no pueden elevar privilegios.
   function cambiarRol(nuevoRol) {
     const destino = normalizarRol(nuevoRol)
     const rolReal = normalizarRol(currentUser?.rolAutenticado || currentUser?.rol || role)
@@ -308,6 +329,44 @@ export default function App() {
     )
   }
 
+  // ---------------- Coordinación de responsables y presupuesto en una orden ----------------
+  function assignOrderTeam(id, datos) {
+    const ordenActual = orders.find((o) => o.id === id)
+    if (!ordenActual) return false
+
+    api.asignarEquipoOrden(id, datos)
+      .then((res) => {
+        if (res?.modoMock || !res?.data?.id) {
+          const cambios = {
+            disenador: datos.disenador || ordenActual.disenador,
+            responsable: datos.responsable || ordenActual.responsable,
+            presupuesto: datos.presupuesto !== undefined ? Number(datos.presupuesto) : ordenActual.presupuesto,
+            costoInterno: datos.costoInterno !== undefined ? Number(datos.costoInterno) : ordenActual.costoInterno,
+            fechaEntrega: datos.fechaEntrega || ordenActual.fechaEntrega,
+          }
+          updateOrder(
+            id,
+            cambios,
+            crearEvento(
+              `Coordinación de orden actualizada: Diseño (${cambios.disenador}), Responsable operativo (${cambios.responsable})`,
+              usuario,
+              'Completado',
+              true
+            )
+          )
+          notify(`Equipo y parámetros de la orden ${id} actualizados con éxito.`, 'exito')
+          return
+        }
+        replaceOrderFromServer(res.data)
+        notify(`Equipo y parámetros de la orden ${id} actualizados con éxito.`, 'exito')
+      })
+      .catch((err) => {
+        notify(err.message || 'No se pudo actualizar la asignación de la orden.', 'error')
+      })
+
+    return true
+  }
+
   // ---------------- Solicitudes (HU-03, HU-04, HU-05, HU-06) ----------------
   function addRequest(form) {
     api.crearSolicitud(form)
@@ -319,10 +378,18 @@ export default function App() {
           estado: 'Pendiente',
           ordenId: null,
           motivoRechazo: '',
+          archivosReferencia: form.archivosReferencia || [],
+        }
+        // Preservar los archivos adjuntos cargados en el formulario si el backend no los devolvió completos
+        if (form.archivosReferencia?.length > 0 && (!nueva.archivosReferencia || nueva.archivosReferencia.length === 0)) {
+          nueva.archivosReferencia = form.archivosReferencia
         }
         setRequests((prev) => [...prev, nueva])
         irA('solicitudes')
-        notify(`Solicitud ${nueva.id} registrada con éxito. Quedó pendiente de envío a validación.`, 'exito')
+        notify(
+          `Solicitud ${nueva.id} registrada con éxito${nueva.archivosReferencia?.length ? ` (${nueva.archivosReferencia.length} archivo(s) de referencia adjunto(s))` : ''}.`,
+          'exito'
+        )
       })
       .catch((err) => {
         notify(err.message || 'Error al registrar la solicitud.', 'error')
@@ -370,7 +437,7 @@ export default function App() {
       })
   }
 
-  // Validar solicitud y generar orden de producción (HU-06)
+  // Validar solicitud y generar orden de producción transfiriendo archivos de referencia (HU-06)
   function validateRequest(id) {
     const s = requests.find((r) => r.id === id)
     if (!s) {
@@ -418,6 +485,7 @@ export default function App() {
             costoInterno: Math.round((Number(s.presupuesto) || 0) * 0.6),
             requerimientos: s.requerimientos || 'Sin especificaciones adicionales',
             observaciones: s.observaciones || '',
+            archivosReferencia: s.archivosReferencia || [],
             entrega: {
               direccion: cliente.direccion ? `${cliente.direccion}, ${cliente.ciudad || 'Bogotá'}` : 'Dirección en sede comercial',
               metodo: 'Domicilio',
@@ -437,7 +505,12 @@ export default function App() {
         }
         const solActualizada = res?.data
         const ordenCreada = res?.orden
-        if (ordenCreada) replaceOrderFromServer(ordenCreada)
+        if (ordenCreada) {
+          if (s.archivosReferencia?.length > 0 && (!ordenCreada.archivosReferencia || ordenCreada.archivosReferencia.length === 0)) {
+            ordenCreada.archivosReferencia = s.archivosReferencia
+          }
+          replaceOrderFromServer(ordenCreada)
+        }
         if (solActualizada) updateRequest(id, solActualizada)
         notify(`Solicitud validada. Se generó la orden ${ordenCreada?.id || solActualizada?.ordenId} y se asignó a diseño.`, 'exito')
       })
@@ -564,7 +637,15 @@ export default function App() {
         if (res?.modoMock) {
           const ord = orders.find((o) => o.id === id)
           const numero = (ord?.versiones?.length || 0) + 1
-          const version = { numero, fecha: formatearFecha(), disenador: 'María López', estado: 'En proceso', comentario: '' }
+          const version = {
+            numero,
+            fecha: formatearFecha(),
+            disenador: ord?.disenador || 'María López',
+            estado: 'En proceso',
+            comentario: '',
+            archivoNombre,
+            observacionesDisenador,
+          }
           updateOrder(
             id,
             (o) => ({ versiones: [...o.versiones, version], disenoEstado: 'En proceso', estado: 'Diseño' }),
@@ -643,6 +724,44 @@ export default function App() {
 
   // ---------------- Actividades de taller (HU-08 y HU-10) ----------------
   const updateTask = (id, cambios) => setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...cambios } : t)))
+
+  function createTask(nuevaTarea) {
+    const tempId = `T-${tasks.length + 1}`
+    api.crearActividad(nuevaTarea)
+      .then((res) => {
+        const creada = res?.data || {
+          id: tempId,
+          ordenId: nuevaTarea.ordenId,
+          actividad: nuevaTarea.actividad,
+          etapa: nuevaTarea.etapa || 'Impresión',
+          responsable: nuevaTarea.responsable || 'Pedro Morales',
+          prioridad: nuevaTarea.prioridad || 'Media',
+          fechaLimite: nuevaTarea.fechaLimite || formatearFecha(),
+          estado: 'Pendiente',
+          pct: 0,
+          deps: [],
+          notas: [],
+          incidencias: [],
+        }
+        setTasks((prev) => [...prev, creada])
+        if (creada.ordenId) {
+          updateOrder(
+            creada.ordenId,
+            {},
+            crearEvento(
+              `Nueva actividad programada: "${creada.actividad}" asignada a ${creada.responsable}`,
+              usuario,
+              'Completado',
+              true
+            )
+          )
+        }
+        notify(`Actividad "${creada.actividad}" asignada a ${creada.responsable}.`, 'exito')
+      })
+      .catch((err) => {
+        notify(err.message || 'No se pudo crear la actividad.', 'error')
+      })
+  }
 
   function taskAction(id, accion) {
     const t = tasks.find((x) => x.id === id)
@@ -742,6 +861,105 @@ export default function App() {
       .catch((err) => {
         notify(err.message || 'No se pudo actualizar el avance de la actividad.', 'error')
       })
+  }
+
+  // ---------------- Inventario, proveedores y movimientos ----------------
+  function addInventoryMaterial(nuevo) {
+    const idMat = nuevo.id || `MAT-${String(inventory.length + 1).padStart(3, '0')}`
+    api.crearMaterialInventario({ ...nuevo, id: idMat })
+      .then((res) => {
+        const creado = res?.data || {
+          id: idMat,
+          ...nuevo,
+          fechaActualizacion: formatearFecha(),
+        }
+        setInventory((prev) => [...prev.filter((m) => m.id !== creado.id), creado])
+        notify(`Material "${creado.nombre}" registrado en inventario.`, 'exito')
+      })
+      .catch((err) => {
+        notify(err.message || 'No se pudo registrar el material.', 'error')
+      })
+  }
+
+  function addSupplier(nuevo) {
+    const idProv = nuevo.id || `PRV-${String(suppliers.length + 1).padStart(2, '0')}`
+    api.crearProveedor({ ...nuevo, id: idProv })
+      .then((res) => {
+        const creado = res?.data || {
+          id: idProv,
+          ...nuevo,
+          estado: nuevo.estado || 'Activo',
+        }
+        setSuppliers((prev) => [...prev.filter((p) => p.id !== creado.id), creado])
+        notify(`Proveedor "${creado.nombre}" registrado con éxito.`, 'exito')
+      })
+      .catch((err) => {
+        notify(err.message || 'No se pudo registrar el proveedor.', 'error')
+      })
+  }
+
+  function registerInventoryMovement(mov) {
+    const mat = inventory.find((m) => m.id === mov.materialId)
+    if (!mat) return false
+
+    const cant = Number(mov.cantidad || 0)
+    const esSalida = mov.tipo === 'Salida'
+    const idMov = `MOV-${String(inventoryMovements.length + 1).padStart(3, '0')}`
+    const payload = {
+      id: idMov,
+      fecha: formatearFecha(),
+      hora: formatearHora(),
+      tipo: mov.tipo,
+      materialId: mat.id,
+      material: mat.nombre,
+      cantidad: cant,
+      unidad: mat.unidad,
+      costoTotal: Math.round(cant * Number(mat.costoUnitario || 0)),
+      ordenId: mov.ordenId || null,
+      responsable: usuario,
+      observacion: mov.observacion || '',
+    }
+
+    api.registrarMovimientoInventario(payload)
+      .then((res) => {
+        const movCreado = res?.data || payload
+        setInventoryMovements((prev) => [movCreado, ...prev])
+        setInventory((prev) =>
+          prev.map((m) => {
+            if (m.id !== mat.id) return m
+            const nuevoStock = esSalida
+              ? Math.max(0, Number(m.stockActual) - cant)
+              : Number(m.stockActual) + cant
+            const nuevaUtilizada = esSalida
+              ? Number(m.cantidadUtilizada || 0) + cant
+              : Number(m.cantidadUtilizada || 0)
+            return {
+              ...m,
+              stockActual: nuevoStock,
+              cantidadUtilizada: nuevaUtilizada,
+              fechaActualizacion: formatearFecha(),
+            }
+          })
+        )
+        if (mov.ordenId) {
+          updateOrder(
+            mov.ordenId,
+            {},
+            crearEvento(
+              `${mov.tipo} de inventario: ${cant} ${mat.unidad} de "${mat.nombre}"`,
+              usuario,
+              'Completado',
+              true
+            )
+          )
+        }
+        notify(`Movimiento de ${mov.tipo.toLowerCase()} registrado para "${mat.nombre}".`, 'exito')
+      })
+      .catch((err) => {
+        notify(err.message || 'No se pudo registrar el movimiento de inventario.', 'error')
+      })
+
+    return true
   }
 
   // ---------------- Postventa (HU-18) ----------------
@@ -987,15 +1205,20 @@ export default function App() {
     rejectRequest,
     validateRequest,
     advanceStage,
+    assignOrderTeam,
     registerDelivery,
     designNewVersion,
     designSend,
     designApprove,
     designReject,
+    createTask,
     taskAction,
     addTaskNote,
     assignTask,
     updateTaskProgress,
+    addInventoryMaterial,
+    addSupplier,
+    registerInventoryMovement,
     sendCommMessage,
     createCase,
     updateCase,
@@ -1040,6 +1263,8 @@ export default function App() {
         return <Production {...props} />
       case 'tareas':
         return <Tasks {...props} />
+      case 'inventario':
+        return <Inventory {...props} />
       case 'entregas':
         return <Deliveries {...props} />
       case 'postventa':

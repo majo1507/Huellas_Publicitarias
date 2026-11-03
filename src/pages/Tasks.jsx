@@ -8,6 +8,7 @@ import ProgressBar from '../components/ProgressBar.jsx'
 import Icon from '../components/Icon.jsx'
 import { OPERARIOS } from '../data/mockData.js'
 import { ROLES } from '../data/roles.js'
+import { estaActiva } from '../utils/format.js'
 
 export default function Tasks({ data, actions, irA, role }) {
   const [pestaña, setPestaña] = useState('todas')
@@ -19,12 +20,24 @@ export default function Tasks({ data, actions, irA, role }) {
   // Modal HU-15: Registro de incidencia
   const [modalIncidencia, setModalIncidencia] = useState(null)
 
-  const usuarioActual = ROLES[role]?.usuario?.nombre || 'Carlos Ruiz'
+  // Modal para crear nueva actividad (Coordinador / Gerencia)
+  const [modalNuevaActividad, setModalNuevaActividad] = useState(false)
+  const [ordenNuevaAct, setOrdenNuevaAct] = useState('')
+  const [nombreNuevaAct, setNombreNuevaAct] = useState('')
+  const [etapaNuevaAct, setEtapaNuevaAct] = useState('Impresión')
+  const [respNuevaAct, setRespNuevaAct] = useState('Pedro Morales')
+  const [prioNuevaAct, setPrioNuevaAct] = useState('Media')
+  const [fechaNuevaAct, setFechaNuevaAct] = useState('12/10/2026')
+  const [errNuevaAct, setErrNuevaAct] = useState('')
+
+  const usuarioActual = ROLES[role]?.usuario?.nombre || 'Carlos Gómez'
   const orden = (ordenId) => data.orders.find((o) => o.id === ordenId)
   const puedeReasignar = ['coordinador', 'gerencia'].includes(role)
   const listaResponsables = data.users?.length
     ? data.users.filter((u) => u.estado === 'Activo' && u.rol !== 'Cliente').map((u) => u.nombre)
     : OPERARIOS
+
+  const ordenesActivas = data.orders.filter(estaActiva)
 
   // Filtrado por pestaña
   const filtradas = data.tasks.filter((t) => {
@@ -41,6 +54,35 @@ export default function Tasks({ data, actions, irA, role }) {
       producto: o?.producto || '',
     }
   })
+
+  function abrirModalNuevaActividad() {
+    const primeraOrden = ordenesActivas[0] || data.orders[0]
+    setOrdenNuevaAct(primeraOrden?.id || '')
+    setNombreNuevaAct('')
+    setEtapaNuevaAct('Impresión')
+    setRespNuevaAct(listaResponsables[0] || 'Pedro Morales')
+    setPrioNuevaAct('Media')
+    setFechaNuevaAct(primeraOrden?.fechaEntrega || '12/10/2026')
+    setErrNuevaAct('')
+    setModalNuevaActividad(true)
+  }
+
+  function handleCrearNuevaActividad(e) {
+    e.preventDefault()
+    if (!ordenNuevaAct || !nombreNuevaAct.trim()) {
+      setErrNuevaAct('Selecciona la orden e ingresa el nombre de la actividad.')
+      return
+    }
+    actions.createTask?.({
+      ordenId: ordenNuevaAct,
+      actividad: nombreNuevaAct.trim(),
+      etapa: etapaNuevaAct,
+      responsable: respNuevaAct,
+      prioridad: prioNuevaAct,
+      fechaLimite: fechaNuevaAct.trim() || '12/10/2026',
+    })
+    setModalNuevaActividad(false)
+  }
 
   function abrirModalEdicion(t) {
     setTareaSeleccionada(t)
@@ -134,7 +176,7 @@ export default function Tasks({ data, actions, irA, role }) {
             onChange={(e) => actions.assignTask(t.id, e.target.value)}
             title={!puedeReasignar ? 'Solo el coordinador o gerencia pueden reasignar responsables' : undefined}
           >
-            {listaResponsables.map((n) => <option key={n} value={n}>{n}</option>)}
+            {[...new Set([...listaResponsables, t.responsable])].map((n) => <option key={n} value={n}>{n}</option>)}
           </select>
         </span>
       ),
@@ -177,6 +219,13 @@ export default function Tasks({ data, actions, irA, role }) {
         titulo="Actividades y tareas de taller"
         subtitulo="Control de responsabilidades, dependencias, tiempos límite y avance porcentual."
         icono="list"
+        acciones={
+          puedeReasignar && (
+            <button className="btn btn-primary" onClick={abrirModalNuevaActividad}>
+              <Icon nombre="plus" tamano={15} /> Asignar nueva actividad
+            </button>
+          )
+        }
       />
 
       {/* Pestañas de estado */}
@@ -211,6 +260,84 @@ export default function Tasks({ data, actions, irA, role }) {
         ]}
         vacioTitulo="No se encontraron actividades"
       />
+
+      {/* MODAL PARA ASIGNAR NUEVA ACTIVIDAD A UNA ORDEN */}
+      {modalNuevaActividad && (
+        <div className="modal-backdrop" onClick={() => setModalNuevaActividad(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Asignar nueva actividad">
+            <div className="modal-head">
+              <span className="modal-icon modal-icon-primary"><Icon nombre="plus" tamano={20} /></span>
+              <div>
+                <h2>Programar y asignar nueva actividad</h2>
+                <p>Coordina qué integrante realizará esta tarea dentro de una orden de producción.</p>
+              </div>
+              <button className="icon-btn" onClick={() => setModalNuevaActividad(false)}><Icon nombre="x" /></button>
+            </div>
+            <form onSubmit={handleCrearNuevaActividad} className="modal-body" noValidate>
+              {errNuevaAct && (
+                <div className="ban rd" style={{ marginBottom: '12px' }}>
+                  <Icon nombre="alert-triangle" tamano={15} /> <span>{errNuevaAct}</span>
+                </div>
+              )}
+              <div className="form-grid">
+                <div className="field full">
+                  <label className="field-label" htmlFor="newTaskOrden">Orden de producción *</label>
+                  <select id="newTaskOrden" value={ordenNuevaAct} onChange={(e) => setOrdenNuevaAct(e.target.value)}>
+                    {data.orders.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.id} · {o.cliente} — {o.producto} ({o.estado})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field full">
+                  <label className="field-label" htmlFor="newTaskNombre">Actividad a realizar *</label>
+                  <input
+                    id="newTaskNombre"
+                    value={nombreNuevaAct}
+                    onChange={(e) => { setNombreNuevaAct(e.target.value); setErrNuevaAct('') }}
+                    placeholder="Ej. Impresión gran formato, Troquelado, Empaque..."
+                    autoFocus
+                  />
+                </div>
+                <div className="field">
+                  <label className="field-label" htmlFor="newTaskEtapa">Etapa del proceso</label>
+                  <select id="newTaskEtapa" value={etapaNuevaAct} onChange={(e) => setEtapaNuevaAct(e.target.value)}>
+                    <option value="Diseño">Diseño</option>
+                    <option value="Impresión">Impresión</option>
+                    <option value="Acabados">Acabados</option>
+                    <option value="Despacho">Despacho</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label className="field-label" htmlFor="newTaskResp">Responsable asignado</label>
+                  <select id="newTaskResp" value={respNuevaAct} onChange={(e) => setRespNuevaAct(e.target.value)}>
+                    {listaResponsables.map((n) => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label className="field-label" htmlFor="newTaskPrio">Prioridad</label>
+                  <select id="newTaskPrio" value={prioNuevaAct} onChange={(e) => setPrioNuevaAct(e.target.value)}>
+                    <option value="Alta">Alta</option>
+                    <option value="Media">Media</option>
+                    <option value="Baja">Baja</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label className="field-label" htmlFor="newTaskFecha">Fecha límite</label>
+                  <input id="newTaskFecha" value={fechaNuevaAct} onChange={(e) => setFechaNuevaAct(e.target.value)} placeholder="DD/MM/AAAA" />
+                </div>
+              </div>
+              <div className="modal-foot" style={{ marginTop: '20px', padding: 0, background: 'none', border: 'none' }}>
+                <button type="button" className="btn" onClick={() => setModalNuevaActividad(false)}>Cancelar</button>
+                <button type="submit" className="btn btn-primary"><Icon nombre="check" tamano={15} /> Asignar actividad</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* MODAL HU-14: Gestión de estado y avance porcentual coherente */}
       {tareaSeleccionada && (

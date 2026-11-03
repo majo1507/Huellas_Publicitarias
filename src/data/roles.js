@@ -52,11 +52,12 @@ export const ROLES = {
     menu: [
       { grupo: 'General', page: 'inicio', label: 'Panel de producción', icono: 'home' },
       { grupo: 'Gestión', page: 'solicitudes', label: 'Validar solicitudes', icono: 'inbox' },
-      { grupo: 'Gestión', page: 'comunicaciones', label: 'Comunicaciones', icono: 'message' },
       { grupo: 'Gestión', page: 'pedidos', label: 'Órdenes', icono: 'clipboard' },
       { grupo: 'Producción', page: 'produccion', label: 'Tablero de producción', icono: 'columns' },
       { grupo: 'Producción', page: 'tareas', label: 'Actividades', icono: 'list' },
+      { grupo: 'Producción', page: 'inventario', label: 'Inventario e insumos', icono: 'package' },
       { grupo: 'Producción', page: 'entregas', label: 'Entregas', icono: 'truck' },
+      { grupo: 'Análisis', page: 'reportes', label: 'Reportes y PDF', icono: 'bar-chart' },
     ],
     notificaciones: [
       { texto: '2 órdenes están retrasadas.', page: 'pedidos', tipo: 'error' },
@@ -95,6 +96,7 @@ export const ROLES = {
     buscador: true,
     menu: [
       { grupo: 'General', page: 'inicio', label: 'Casos', icono: 'life-buoy' },
+      { grupo: 'Atención', page: 'comunicaciones', label: 'Comunicaciones', icono: 'message' },
       { grupo: 'Consulta', page: 'pedidos', label: 'Órdenes entregadas', icono: 'package' },
     ],
     notificaciones: [{ texto: 'Hay 2 casos abiertos sin responsable.', page: 'inicio', tipo: 'aviso' }],
@@ -108,6 +110,7 @@ export const ROLES = {
     menu: [
       { grupo: 'General', page: 'inicio', label: 'Resumen general', icono: 'home' },
       { grupo: 'Análisis', page: 'comunicaciones', label: 'Comunicaciones', icono: 'message' },
+      { grupo: 'Análisis', page: 'inventario', label: 'Inventario e insumos', icono: 'package' },
       { grupo: 'Análisis', page: 'reportes', label: 'Reportes', icono: 'bar-chart' },
       { grupo: 'Administración', page: 'usuarios', label: 'Usuarios', icono: 'shield' },
     ],

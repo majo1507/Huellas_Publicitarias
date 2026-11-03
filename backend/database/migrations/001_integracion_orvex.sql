@@ -346,3 +346,38 @@ ALTER TABLE mensajes_entrantes ADD COLUMN IF NOT EXISTS hora_texto  VARCHAR(20) 
 ALTER TABLE mensajes_entrantes ADD COLUMN IF NOT EXISTS adjuntos    JSONB DEFAULT NULL;
 ALTER TABLE mensajes_entrantes ADD COLUMN IF NOT EXISTS duracion    VARCHAR(30) DEFAULT NULL;
 ALTER TABLE mensajes_entrantes ADD COLUMN IF NOT EXISTS resumen     TEXT DEFAULT NULL;
+
+-- 3.10 Archivos de referencia en solicitudes y órdenes + Inventario y Proveedores enriquecidos
+ALTER TABLE solicitudes ADD COLUMN IF NOT EXISTS archivos_referencia JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE ordenes     ADD COLUMN IF NOT EXISTS archivos_referencia JSONB DEFAULT '[]'::jsonb;
+
+CREATE TABLE IF NOT EXISTS proveedores (
+  id         SERIAL PRIMARY KEY,
+  codigo     VARCHAR(30) UNIQUE DEFAULT NULL,
+  nombre     VARCHAR(200) NOT NULL,
+  nit        VARCHAR(40)  DEFAULT '',
+  contacto   VARCHAR(150) DEFAULT '',
+  telefono   VARCHAR(40)  DEFAULT '',
+  correo     VARCHAR(255) DEFAULT '',
+  ciudad     VARCHAR(100) DEFAULT 'Bogotá',
+  productos  JSONB        DEFAULT '[]'::jsonb,
+  estado     VARCHAR(40)  DEFAULT 'Activo',
+  created_at TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE inventario ADD COLUMN IF NOT EXISTS codigo              VARCHAR(30) UNIQUE DEFAULT NULL;
+ALTER TABLE inventario ADD COLUMN IF NOT EXISTS descripcion         TEXT DEFAULT '';
+ALTER TABLE inventario ADD COLUMN IF NOT EXISTS categoria           VARCHAR(120) DEFAULT 'Insumos de impresión';
+ALTER TABLE inventario ADD COLUMN IF NOT EXISTS unidad              VARCHAR(60)  DEFAULT 'Unidades';
+ALTER TABLE inventario ADD COLUMN IF NOT EXISTS cantidad_utilizada  NUMERIC(12,2) DEFAULT 0;
+ALTER TABLE inventario ADD COLUMN IF NOT EXISTS costo_unitario      NUMERIC(14,2) DEFAULT 0;
+ALTER TABLE inventario ADD COLUMN IF NOT EXISTS proveedor_codigo    VARCHAR(30) DEFAULT '';
+ALTER TABLE inventario ADD COLUMN IF NOT EXISTS proveedor_nombre    VARCHAR(200) DEFAULT 'Por definir';
+ALTER TABLE inventario ADD COLUMN IF NOT EXISTS fecha_actualizacion VARCHAR(30) DEFAULT NULL;
+
+ALTER TABLE movimientos_inventario ADD COLUMN IF NOT EXISTS codigo             VARCHAR(30) DEFAULT NULL;
+ALTER TABLE movimientos_inventario ADD COLUMN IF NOT EXISTS fecha_texto        VARCHAR(30) DEFAULT NULL;
+ALTER TABLE movimientos_inventario ADD COLUMN IF NOT EXISTS hora_texto         VARCHAR(20) DEFAULT NULL;
+ALTER TABLE movimientos_inventario ADD COLUMN IF NOT EXISTS costo_total        NUMERIC(14,2) DEFAULT 0;
+ALTER TABLE movimientos_inventario ADD COLUMN IF NOT EXISTS responsable_nombre VARCHAR(150) DEFAULT NULL;
+ALTER TABLE movimientos_inventario ADD COLUMN IF NOT EXISTS observacion        TEXT DEFAULT '';

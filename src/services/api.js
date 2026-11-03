@@ -352,6 +352,15 @@ export const api = {
         }),
       { modoMock: true }
     ),
+  asignarEquipoOrden: (id, datos) =>
+    ejecutarConFallback(
+      () =>
+        pedir(`/ordenes/${id}/asignacion`, {
+          method: 'PATCH',
+          body: JSON.stringify(datos),
+        }),
+      { modoMock: true, data: datos }
+    ),
   registrarEntrega: (ordenId, datosEntrega) =>
     ejecutarConFallback(
       () =>
@@ -425,6 +434,15 @@ export const api = {
 
   // Actividades de taller (HU-08, HU-10, HU-14, HU-15)
   listarActividades: () => consultarLista('/actividades', mock.initialTasks),
+  crearActividad: (tarea) =>
+    ejecutarConFallback(
+      () =>
+        pedir('/actividades', {
+          method: 'POST',
+          body: JSON.stringify(tarea),
+        }),
+      { modoMock: true, data: null }
+    ),
   asignarActividad: (id, responsable) =>
     ejecutarConFallback(
       () =>
@@ -460,6 +478,26 @@ export const api = {
           body: JSON.stringify({ texto, esIncidencia }),
         }),
       { modoMock: true }
+    ),
+
+  // Inventario, proveedores y movimientos de bodega
+  listarInventario: () => consultarLista('/inventario', mock.initialInventory || []),
+  crearMaterialInventario: (material) =>
+    ejecutarConFallback(
+      () => pedir('/inventario', { method: 'POST', body: JSON.stringify(material) }),
+      { modoMock: true, data: null }
+    ),
+  listarProveedores: () => consultarLista('/inventario/proveedores', mock.initialSuppliers || []),
+  crearProveedor: (proveedor) =>
+    ejecutarConFallback(
+      () => pedir('/inventario/proveedores', { method: 'POST', body: JSON.stringify(proveedor) }),
+      { modoMock: true, data: null }
+    ),
+  listarMovimientosInventario: () => consultarLista('/inventario/movimientos', mock.initialInventoryMovements || []),
+  registrarMovimientoInventario: (movimiento) =>
+    ejecutarConFallback(
+      () => pedir('/inventario/movimientos', { method: 'POST', body: JSON.stringify(movimiento) }),
+      { modoMock: true, data: null }
     ),
 
   // Gestión de postventa (HU-18)
@@ -525,7 +563,18 @@ export const api = {
 
   // Carga inicial de toda la información que necesita la aplicación
   async cargarTodo() {
-    const [clients, orders, requests, tasks, cases, users, comms] = await Promise.all([
+    const [
+      clients,
+      orders,
+      requests,
+      tasks,
+      cases,
+      users,
+      comms,
+      inventory,
+      suppliers,
+      inventoryMovements,
+    ] = await Promise.all([
       this.listarClientes(),
       this.listarOrdenes(),
       this.listarSolicitudes(),
@@ -533,6 +582,9 @@ export const api = {
       this.listarCasos(),
       this.listarUsuarios(),
       this.listarComunicaciones(),
+      this.listarInventario(),
+      this.listarProveedores(),
+      this.listarMovimientosInventario(),
     ])
     // Si la base de datos conectó pero está vacía (sin seed), usar datos mock de demostración
     if (clients.length === 0 && orders.length === 0 && requests.length === 0) {
@@ -545,8 +597,24 @@ export const api = {
         cases: structuredClone(mock.initialCases),
         users: structuredClone(mock.initialUsers),
         comms: structuredClone(mock.initialComms),
+        inventory: structuredClone(mock.initialInventory || []),
+        suppliers: structuredClone(mock.initialSuppliers || []),
+        inventoryMovements: structuredClone(mock.initialInventoryMovements || []),
       }
     }
-    return { clients, orders, requests, tasks, cases, users, comms }
+    return {
+      clients,
+      orders,
+      requests,
+      tasks,
+      cases,
+      users,
+      comms,
+      inventory: inventory.length ? inventory : structuredClone(mock.initialInventory || []),
+      suppliers: suppliers.length ? suppliers : structuredClone(mock.initialSuppliers || []),
+      inventoryMovements: inventoryMovements.length
+        ? inventoryMovements
+        : structuredClone(mock.initialInventoryMovements || []),
+    }
   },
 }

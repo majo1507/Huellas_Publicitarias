@@ -380,8 +380,63 @@ const agregarNotaTarea = async (req, res) => {
   }
 };
 
+const crearTarea = async (req, res) => {
+  const { ordenId, orden_id, actividad, titulo, etapa, responsable, prioridad, fechaLimite } = req.body || {};
+  const targetOrden = ordenId || orden_id;
+  const targetTitulo = actividad || titulo;
+
+  if (!targetOrden || !targetTitulo) {
+    return res.status(400).json({ error: 'Campos obligatorios: ordenId y actividad.' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const ord = await resolverOrden(client, targetOrden);
+    if (!ord) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: `Orden ${targetOrden} no encontrada.` });
+    }
+
+    const usr = responsable ? await resolverUsuario(client, responsable) : null;
+    const nombreResp = usr ? usr.nombre_completo : (responsable || 'Pedro Morales');
+    const countRes = await client.query('SELECT COUNT(*)::int AS total FROM tareas');
+    const codigo = `T-${countRes.rows[0].total + 1}`;
+
+    const ins = await client.query(
+      `INSERT INTO tareas (
+        codigo, orden_id, owner_id, titulo, etapa, responsable_nombre, prioridad, fecha_limite, estado, porcentaje
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'Pendiente',0)
+      RETURNING *`,
+      [
+        codigo,
+        ord.id,
+        usr ? usr.id : null,
+        String(targetTitulo).trim(),
+        etapa || 'Impresión',
+        nombreResp,
+        prioridad || 'Media',
+        fechaLimite || formatearFechaHoy(),
+      ]
+    );
+
+    await client.query('COMMIT');
+    const creada = await fetchTareaByIdOrCodigo(ins.rows[0].id);
+    res.status(201).json({
+      mensaje: 'Actividad creada exitosamente.',
+      data: mapTareaRow(creada),
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+};
+
 module.exports = {
   listarTareas,
+  crearTarea,
   asignarTarea,
   ejecutarAccionTarea,
   actualizarAvanceTarea,

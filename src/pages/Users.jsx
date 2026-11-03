@@ -20,7 +20,8 @@ const ROLES_INFO = [
 const MODULOS_MATRIZ = [
   { mod: 'Dashboard operativo', permisos: { Comercial: 'Consulta', Diseñador: 'Consulta', Coordinador: 'Consulta', Operario: 'Consulta', Gerencia: 'Consulta', Postventa: 'Consulta' } },
   { mod: 'Clientes y contactos', permisos: { Comercial: 'Edita', Diseñador: 'Sin acceso', Coordinador: 'Consulta', Operario: 'Sin acceso', Gerencia: 'Consulta', Postventa: 'Consulta' } },
-  { mod: 'Bandeja de comunicaciones', permisos: { Comercial: 'Edita', Diseñador: 'Sin acceso', Coordinador: 'Consulta', Operario: 'Sin acceso', Gerencia: 'Consulta', Postventa: 'Edita' } },
+  { mod: 'Bandeja de comunicaciones', permisos: { Comercial: 'Edita', Diseñador: 'Sin acceso', Coordinador: 'Sin acceso', Operario: 'Sin acceso', Gerencia: 'Consulta', Postventa: 'Edita' } },
+  { mod: 'Inventario e insumos', permisos: { Comercial: 'Sin acceso', Diseñador: 'Sin acceso', Coordinador: 'Edita', Operario: 'Consulta', Gerencia: 'Edita', Postventa: 'Sin acceso' } },
   { mod: 'Órdenes de producción', permisos: { Comercial: 'Edita', Diseñador: 'Consulta', Coordinador: 'Edita', Operario: 'Consulta', Gerencia: 'Consulta', Postventa: 'Consulta' } },
   { mod: 'Diseño y aprobaciones', permisos: { Comercial: 'Consulta', Diseñador: 'Edita', Coordinador: 'Edita', Operario: 'Sin acceso', Gerencia: 'Consulta', Postventa: 'Sin acceso' } },
   { mod: 'Tablero de producción', permisos: { Comercial: 'Sin acceso', Diseñador: 'Sin acceso', Coordinador: 'Edita', Operario: 'Edita', Gerencia: 'Consulta', Postventa: 'Sin acceso' } },

@@ -24,6 +24,13 @@ router.patch(
   ordenesController.actualizarEtapa
 );
 
+router.patch(
+  '/:id/asignacion',
+  verificarToken,
+  verificarRol('coord', 'gerente'),
+  ordenesController.actualizarAsignacionOrden
+);
+
 router.post(
   '/:id/entrega',
   verificarToken,

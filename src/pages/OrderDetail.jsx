@@ -11,13 +11,12 @@ import EmptyState from '../components/EmptyState.jsx'
 import Icon from '../components/Icon.jsx'
 import Avatar from '../components/Avatar.jsx'
 import DesignPreview from '../components/DesignPreview.jsx'
-import { ETAPAS } from '../data/mockData.js'
+import { ETAPAS, OPERARIOS } from '../data/mockData.js'
 import {
   formatoCOP,
   progreso,
   etiquetaDiseno,
   estaRetrasada,
-  estaEnRiesgo,
   puedeAvanzar,
   textoPlazo,
   prioridadOrden,
@@ -25,6 +24,7 @@ import {
   ultimaVersion,
   validarCierreOrden,
 } from '../utils/format.js'
+import { generarReporteOrdenPDF } from '../utils/pdfReport.js'
 
 const PESTANAS = [
   ['resumen', 'De un vistazo', 'clipboard'],
@@ -56,6 +56,16 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
   const [motivoCierre, setMotivoCierre] = useState('Entrega conforme y satisfacción confirmada con el cliente.')
   const [motivoReapertura, setMotivoReapertura] = useState('Reapertura técnica para atención de postventa o garantía.')
 
+  // Modal de coordinación de responsables y presupuesto (Coordinador / Gerencia)
+  const [modalCoordinar, setModalCoordinar] = useState(false)
+  const [disenadorSel, setDisenadorSel] = useState('')
+  const [responsableSel, setResponsableSel] = useState('')
+  const [presupuestoEdit, setPresupuestoEdit] = useState(0)
+  const [costoEdit, setCostoEdit] = useState(0)
+
+  // Modal de vista previa de archivo adjunto
+  const [archivoPreview, setArchivoPreview] = useState(null)
+
   // Filtros del historial cronológico (HU-19)
   const [filtroHistorial, setFiltroHistorial] = useState('')
   const [categoriaHistorial, setCategoriaHistorial] = useState('todos')
@@ -78,12 +88,21 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
   const estaCerrada = order.estado === 'Cerrada'
   const validacionCierre = validarCierreOrden(order, data.tasks, data.cases)
 
+  const usuariosEquipo = data.users?.length
+    ? data.users.filter((u) => u.estado === 'Activo' && u.rol !== 'Cliente')
+    : []
+  const listaOperarios = usuariosEquipo.length
+    ? usuariosEquipo.map((u) => u.nombre)
+    : ['María López', ...OPERARIOS, 'Carlos Gómez']
+
   // Pestañas filtradas por permisos de rol (HU-07)
+  // IMPORTANTE: El Coordinador de producción NO tiene acceso al módulo ni pestaña de Comunicaciones
   const pestanasVisibles = PESTANAS.filter(([k]) => {
     if (esCliente) return ['resumen', 'diseno', 'seguimiento', 'archivos', 'historial'].includes(k)
     if (role === 'operario') return ['resumen', 'tareas', 'seguimiento', 'archivos', 'historial'].includes(k)
     if (role === 'disenador') return ['resumen', 'diseno', 'seguimiento', 'archivos', 'historial'].includes(k)
     if (role === 'comercial') return ['resumen', 'diseno', 'seguimiento', 'comunicaciones', 'archivos', 'historial'].includes(k)
+    if (role === 'coordinador') return ['resumen', 'diseno', 'seguimiento', 'tareas', 'archivos', 'historial'].includes(k)
     return true
   })
 
@@ -114,7 +133,7 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
       Solicitud: 'Ana Martínez (Comercial)',
       Diseño: `${order.disenador || 'María López'} (Diseño)`,
       Aprobación: `${order.cliente} (Cliente)`,
-      Impresión: 'Pedro Morales (Impresor)',
+      Impresión: `${order.responsable || 'Pedro Morales'} (Impresión)`,
       Acabados: 'Jorge Silva (Acabados)',
       Despacho: 'Luisa Peña (Despacho)',
       Entrega: 'Luisa Peña (Logística)',
@@ -131,8 +150,24 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
     }
   })
 
-  // Archivos generados para esta orden
+  // Archivos de referencia adjuntados desde la solicitud comercial
+  const solicitudVinculada = (data.requests || []).find(
+    (s) => s.id === order.solicitudId || s.ordenId === order.id
+  )
+  const archivosReferencia =
+    order.archivosReferencia?.length > 0
+      ? order.archivosReferencia
+      : solicitudVinculada?.archivosReferencia || []
+
+  // Archivos generados para esta orden + archivos de referencia del cliente
   const archivos = [
+    ...archivosReferencia.map((ref) => ({
+      ...ref,
+      nombre: ref.nombre,
+      tipo: `Archivo de referencia (${ref.tipo || 'Adjunto cliente'})`,
+      fecha: ref.fecha || order.fechaSolicitud,
+      esReferencia: true,
+    })),
     { nombre: `Brief_${order.cliente.replace(/\s+/g, '_')}.pdf`, tipo: 'Documento técnico', fecha: order.fechaSolicitud },
     { nombre: `Cotizacion_${order.id}.pdf`, tipo: 'Cotización comercial', fecha: order.fechaSolicitud },
     ...(order.versiones || []).map((v) => ({
@@ -152,6 +187,22 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
       { nombre: `Acta_entrega_${order.id}.pdf`, tipo: 'Evidencia de entrega y conformidad', fecha: order.fechaEntrega },
     ] : [])),
   ]
+
+  function descargarArchivoAdjunto(f) {
+    if (f.dataUrl) {
+      const link = document.createElement('a')
+      link.href = f.dataUrl
+      link.download = f.nombre || 'archivo_referencia'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      actions?.notify?.(`Descargando archivo ${f.nombre}...`, 'exito')
+      return
+    }
+    // Si es un documento técnico de la orden, descargamos el reporte PDF oficial de la orden
+    generarReporteOrdenPDF(order, data)
+    actions?.notify?.(`Documento PDF de ${order.id} descargado.`, 'exito')
+  }
 
   const datosGenerales = [
     ['Número de orden', order.id],
@@ -242,11 +293,45 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
     setModalReabrirOrden(false)
   }
 
+  function abrirModalCoordinar() {
+    setDisenadorSel(order.disenador || 'María López')
+    setResponsableSel(order.responsable || 'Pedro Morales')
+    setPresupuestoEdit(Number(order.presupuesto || 0))
+    setCostoEdit(Number(order.costoInterno || 0))
+    setModalCoordinar(true)
+  }
+
+  function handleGuardarCoordinacion(e) {
+    e.preventDefault()
+    actions.assignOrderTeam?.(order.id, {
+      disenador: disenadorSel,
+      responsable: responsableSel,
+      presupuesto: Number(presupuestoEdit) || 0,
+      costoInterno: Number(costoEdit) || 0,
+    })
+    setModalCoordinar(false)
+  }
+
   const accionesCabecera = (
-    <div className="row" style={{ gap: '8px' }}>
+    <div className="row" style={{ gap: '8px', flexWrap: 'wrap' }}>
+      <button
+        className="btn btn-soft"
+        onClick={() => {
+          generarReporteOrdenPDF(order, data)
+          actions?.notify?.(`Reporte PDF de ${order.id} descargado con éxito.`, 'exito')
+        }}
+        title="Descargar reporte oficial en PDF de esta orden"
+      >
+        <Icon nombre="download" tamano={15} /> Descargar PDF
+      </button>
       {esCliente && order.disenoEstado === 'Enviado' && (
         <button className="btn btn-success" onClick={() => irA('aprobacion', order.id)}>
           <Icon nombre="check-circle" tamano={16} /> Revisar y aprobar diseño
+        </button>
+      )}
+      {puedeGestionarEtapas && (
+        <button className="btn btn-soft" onClick={abrirModalCoordinar} title="Asignar diseñador, operario y presupuesto">
+          <Icon nombre="users" tamano={15} /> Coordinar equipo
         </button>
       )}
       {puedeVerMesaDiseno && (
@@ -363,15 +448,23 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
             </div>
             <div className="sm mut">Etapa: {order.estado}</div>
           </div>
-          <div>
-            <small>Comunicaciones</small>
-            <b>{commsDeOrden.length} {commsDeOrden.length === 1 ? 'conversación' : 'conversaciones'}</b>
-            <div className="sm mut">
-              {commsDeOrden.length > 0 ? (
-                <button className="link-inline sm" onClick={() => setTab('comunicaciones')}>Ver mensajes</button>
-              ) : 'Sin mensajes'}
+          {role === 'coordinador' ? (
+            <div>
+              <small>Presupuesto y costos</small>
+              <b>{formatoCOP(order.presupuesto)}</b>
+              <div className="sm mut">Costo int.: {formatoCOP(order.costoInterno)}</div>
             </div>
-          </div>
+          ) : (
+            <div>
+              <small>Comunicaciones</small>
+              <b>{commsDeOrden.length} {commsDeOrden.length === 1 ? 'conversación' : 'conversaciones'}</b>
+              <div className="sm mut">
+                {commsDeOrden.length > 0 && pestanasVisibles.some(([k]) => k === 'comunicaciones') ? (
+                  <button className="link-inline sm" onClick={() => setTab('comunicaciones')}>Ver mensajes</button>
+                ) : 'Sin mensajes'}
+              </div>
+            </div>
+          )}
         </div>
       </section>
 
@@ -426,12 +519,51 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
                 </dl>
               </Panel>
 
-              <Panel titulo="Observaciones y notas del brief" icono="message">
+              <Panel titulo="Observaciones, requerimientos y referencias" icono="message">
                 <p>{order.observaciones || 'Sin observaciones generales.'}</p>
                 {!esCliente && order.requerimientos && (
                   <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px solid var(--border-light)' }}>
                     <small className="mut">Requerimientos técnicos:</small>
                     <p className="sm" style={{ marginTop: '2px' }}>{order.requerimientos}</p>
+                  </div>
+                )}
+
+                {archivosReferencia.length > 0 && (
+                  <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid var(--border-light)' }}>
+                    <small className="mut" style={{ display: 'block', marginBottom: '6px' }}>
+                      Archivos de referencia adjuntos en la solicitud ({archivosReferencia.length}):
+                    </small>
+                    <div className="stack" style={{ gap: '6px' }}>
+                      {archivosReferencia.map((ref, idx) => (
+                        <div
+                          key={ref.id || idx}
+                          className="row"
+                          style={{
+                            justifyContent: 'space-between',
+                            padding: '6px 10px',
+                            background: 'var(--bg-subtle)',
+                            borderRadius: 'var(--radius-sm)',
+                            border: '1px solid var(--border-light)',
+                          }}
+                        >
+                          <div className="sm" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Icon nombre="paperclip" tamano={14} />
+                            <strong>{ref.nombre}</strong>
+                            {ref.tamano && <span className="mut">({ref.tamano})</span>}
+                          </div>
+                          <div className="row" style={{ gap: '4px' }}>
+                            {ref.dataUrl && (
+                              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setArchivoPreview(ref)}>
+                                <Icon nombre="eye" tamano={13} /> Ver
+                              </button>
+                            )}
+                            <button type="button" className="btn btn-soft btn-sm" onClick={() => descargarArchivoAdjunto(ref)}>
+                              <Icon nombre="download" tamano={13} /> Descargar
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </Panel>
@@ -582,7 +714,17 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
 
       {/* 4. TAREAS Y ACTIVIDADES DE TALLER */}
       {tab === 'tareas' && (
-        <Panel titulo="Actividades operativas en taller" icono="list">
+        <Panel
+          titulo="Actividades operativas en taller"
+          icono="list"
+          accion={
+            puedeGestionarEtapas && (
+              <button className="btn btn-soft btn-sm" onClick={abrirModalCoordinar}>
+                <Icon nombre="users" tamano={14} /> Coordinar responsables
+              </button>
+            )
+          }
+        >
           {tareasDeOrden.length === 0 ? (
             <EmptyState icono="list" titulo="Sin actividades asignadas" texto="El coordinador asignará las actividades de taller." />
           ) : (
@@ -610,7 +752,24 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
                           </span>
                         )}
                       </td>
-                      <td><Avatar nombre={t.responsable} tamano="xs" /> {t.responsable}</td>
+                      <td>
+                        <span className="person">
+                          <Avatar nombre={t.responsable} tamano="xs" />
+                          {puedeGestionarEtapas && !estaCerrada ? (
+                            <select
+                              className="inline-select"
+                              value={t.responsable}
+                              onChange={(e) => actions.assignTask(t.id, e.target.value)}
+                            >
+                              {[...new Set([...listaOperarios, t.responsable])].map((n) => (
+                                <option key={n} value={n}>{n}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            t.responsable
+                          )}
+                        </span>
+                      </td>
                       <td><StatusBadge estado={t.prioridad} /></td>
                       <td>{t.fechaLimite}</td>
                       <td style={{ width: '130px' }}>
@@ -639,8 +798,8 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
         </Panel>
       )}
 
-      {/* 5. COMUNICACIONES */}
-      {tab === 'comunicaciones' && (
+      {/* 5. COMUNICACIONES (Oculto para rol Coordinador) */}
+      {tab === 'comunicaciones' && role !== 'coordinador' && (
         <Panel titulo="Comunicaciones vinculadas a esta orden" icono="message">
           {commsDeOrden.length === 0 ? (
             <EmptyState icono="message" titulo="Sin mensajes registrados" texto="Las conversaciones asociadas a esta orden aparecerán aquí." />
@@ -669,7 +828,7 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
 
       {/* 6. ARCHIVOS Y BRIEF */}
       {tab === 'archivos' && (
-        <Panel titulo="Expediente digital de archivos" icono="file-text">
+        <Panel titulo="Expediente digital de archivos y referencias" icono="file-text">
           <div className="fgrid">
             {archivos.map((f, i) => (
               <div key={i} className="fi">
@@ -677,15 +836,29 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
                   <div style={{ height: '96px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-subtle)', borderRadius: '4px' }}>
                     <DesignPreview order={order} version={f.v} />
                   </div>
+                ) : f.esReferencia && f.dataUrl && f.dataUrl.startsWith('data:image') ? (
+                  <div style={{ height: '96px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-subtle)', borderRadius: '4px' }}>
+                    <img src={f.dataUrl} alt={f.nombre} style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} />
+                  </div>
                 ) : (
                   <div className="dc">
-                    <Icon nombre="file-text" tamano={28} />
+                    <Icon nombre={f.esReferencia ? 'paperclip' : 'file-text'} tamano={28} />
                   </div>
                 )}
                 <div className="sm" style={{ marginTop: '8px', wordBreak: 'break-all' }}>
                   <strong>{f.nombre}</strong>
                 </div>
                 <div className="sm mut">{f.tipo} · {f.fecha}</div>
+                <div className="row" style={{ gap: '6px', marginTop: '8px' }}>
+                  {f.dataUrl && (
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => setArchivoPreview(f)}>
+                      <Icon nombre="eye" tamano={12} /> Ver
+                    </button>
+                  )}
+                  <button type="button" className="btn btn-soft btn-sm" onClick={() => descargarArchivoAdjunto(f)}>
+                    <Icon nombre="download" tamano={12} /> Descargar
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -738,6 +911,97 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
           </div>
           <HistoryTimeline eventos={eventosFiltrados} mostrarResponsable={!esCliente} />
         </Panel>
+      )}
+
+      {/* MODAL DE COORDINACIÓN DE EQUIPO Y PRESUPUESTO DESDE EL DETALLE DE LA ORDEN */}
+      {modalCoordinar && (
+        <div className="modal-backdrop" onClick={() => setModalCoordinar(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Coordinar equipo">
+            <div className="modal-head">
+              <span className="modal-icon modal-icon-primary"><Icon nombre="users" tamano={20} /></span>
+              <div>
+                <h2>Coordinar responsables y costos: {order.id}</h2>
+                <p>{order.cliente} · {order.producto}</p>
+              </div>
+              <button className="icon-btn" onClick={() => setModalCoordinar(false)}><Icon nombre="x" /></button>
+            </div>
+            <form onSubmit={handleGuardarCoordinacion} className="modal-body">
+              <div className="form-grid">
+                <div className="field">
+                  <label className="field-label" htmlFor="detDisenador">Diseñador(a) gráfico(a)</label>
+                  <select id="detDisenador" value={disenadorSel} onChange={(e) => setDisenadorSel(e.target.value)}>
+                    {[...new Set(['María López', 'Carlos Gómez', disenadorSel])].map((n) => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label className="field-label" htmlFor="detResponsable">Responsable operativo / taller</label>
+                  <select id="detResponsable" value={responsableSel} onChange={(e) => setResponsableSel(e.target.value)}>
+                    {[...new Set([...listaOperarios, responsableSel])].map((n) => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label className="field-label" htmlFor="detPresupuesto">Presupuesto estimado (COP)</label>
+                  <input id="detPresupuesto" type="number" min="0" value={presupuestoEdit} onChange={(e) => setPresupuestoEdit(e.target.value)} />
+                </div>
+                <div className="field">
+                  <label className="field-label" htmlFor="detCosto">Costo interno estimado (COP)</label>
+                  <input id="detCosto" type="number" min="0" value={costoEdit} onChange={(e) => setCostoEdit(e.target.value)} />
+                </div>
+              </div>
+              <div className="modal-foot" style={{ marginTop: '20px', padding: 0, background: 'none', border: 'none' }}>
+                <button type="button" className="btn" onClick={() => setModalCoordinar(false)}>Cancelar</button>
+                <button type="submit" className="btn btn-primary"><Icon nombre="check" tamano={15} /> Guardar asignación</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL VISTA PREVIA DE ARCHIVO DE REFERENCIA */}
+      {archivoPreview && (
+        <div className="modal-backdrop" onClick={() => setArchivoPreview(null)}>
+          <div className="modal" style={{ maxWidth: '640px' }} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+            <div className="modal-head">
+              <span className="modal-icon modal-icon-primary"><Icon nombre="paperclip" tamano={20} /></span>
+              <div>
+                <h2>{archivoPreview.nombre}</h2>
+                <p>Archivo de referencia · {archivoPreview.fecha || order.fechaSolicitud}</p>
+              </div>
+              <button className="icon-btn" onClick={() => setArchivoPreview(null)}><Icon nombre="x" /></button>
+            </div>
+            <div className="modal-body" style={{ textAlign: 'center' }}>
+              {archivoPreview.dataUrl?.startsWith('data:image') ? (
+                <img
+                  src={archivoPreview.dataUrl}
+                  alt={archivoPreview.nombre}
+                  style={{ maxWidth: '100%', maxHeight: '420px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-light)' }}
+                />
+              ) : archivoPreview.dataUrl?.startsWith('data:application/pdf') ? (
+                <iframe
+                  title={archivoPreview.nombre}
+                  src={archivoPreview.dataUrl}
+                  style={{ width: '100%', height: '420px', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)' }}
+                />
+              ) : (
+                <div className="card p" style={{ background: 'var(--bg-subtle)' }}>
+                  <Icon nombre="file-text" tamano={36} />
+                  <p style={{ marginTop: '8px' }}><strong>{archivoPreview.nombre}</strong></p>
+                  <p className="sm mut">Archivo listo para descarga directa.</p>
+                </div>
+              )}
+            </div>
+            <div className="modal-foot">
+              <button type="button" className="btn" onClick={() => setArchivoPreview(null)}>Cerrar</button>
+              <button type="button" className="btn btn-primary" onClick={() => descargarArchivoAdjunto(archivoPreview)}>
+                <Icon nombre="download" tamano={15} /> Descargar archivo
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* MODAL HU-15: Registro de incidencia en tarea desde el detalle de la orden */}

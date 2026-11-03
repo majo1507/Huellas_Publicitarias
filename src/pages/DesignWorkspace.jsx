@@ -37,6 +37,7 @@ export default function DesignWorkspace({ order, data, actions, irA, role }) {
   const [enviando, setEnviando] = useState(false)
   const [observacionesEnvio, setObservacionesEnvio] = useState('')
   const [versionSeleccionada, setVersionSeleccionada] = useState(null)
+  const [archivoPreview, setArchivoPreview] = useState(null)
 
   // Estado para creación de nueva versión con archivo y notas (HU-11)
   const [modalNuevaVersion, setModalNuevaVersion] = useState(false)
@@ -146,6 +147,29 @@ export default function DesignWorkspace({ order, data, actions, irA, role }) {
   const puedeCrear = order.disenoEstado !== 'Enviado'
   const puedeEnviar = order.versiones.length > 0 && order.disenoEstado === 'En proceso'
   const esperando = order.disenoEstado === 'Enviado'
+
+  const solicitudVinculada = (data.requests || []).find(
+    (s) => s.id === order.solicitudId || s.ordenId === order.id
+  )
+  const archivosReferencia =
+    order.archivosReferencia?.length > 0
+      ? order.archivosReferencia
+      : solicitudVinculada?.archivosReferencia || []
+
+  function descargarAdjunto(a) {
+    if (!a) return
+    if (a.dataUrl) {
+      const link = document.createElement('a')
+      link.href = a.dataUrl
+      link.download = a.nombre || 'referencia_cliente'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      actions?.notify?.(`Descargando archivo ${a.nombre}...`, 'exito')
+      return
+    }
+    actions?.notify?.(`Archivo de referencia: ${a.nombre}`, 'info')
+  }
 
   function handleCrearVersionSubmit(e) {
     e.preventDefault()
@@ -265,6 +289,44 @@ export default function DesignWorkspace({ order, data, actions, irA, role }) {
                 {order.requerimientos || order.observaciones || 'Sin especificaciones adicionales.'}
               </p>
             </div>
+
+            {archivosReferencia.length > 0 && (
+              <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid var(--border-light)' }}>
+                <strong className="sm" style={{ display: 'block', marginBottom: '6px' }}>
+                  Archivos de referencia del cliente ({archivosReferencia.length}):
+                </strong>
+                <div className="stack" style={{ gap: '6px' }}>
+                  {archivosReferencia.map((ref, idx) => (
+                    <div
+                      key={ref.id || idx}
+                      className="row"
+                      style={{
+                        justifyContent: 'space-between',
+                        padding: '6px 10px',
+                        background: 'var(--bg-subtle)',
+                        borderRadius: 'var(--radius-sm)',
+                        border: '1px solid var(--border-light)',
+                      }}
+                    >
+                      <div className="sm" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Icon nombre="paperclip" tamano={14} />
+                        <strong>{ref.nombre}</strong>
+                      </div>
+                      <div className="row" style={{ gap: '4px' }}>
+                        {ref.dataUrl && (
+                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setArchivoPreview(ref)}>
+                            <Icon nombre="eye" tamano={13} /> Ver
+                          </button>
+                        )}
+                        <button type="button" className="btn btn-soft btn-sm" onClick={() => descargarAdjunto(ref)}>
+                          <Icon nombre="download" tamano={13} /> Descargar
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </Panel>
 
           <Panel titulo="Historial de versiones y archivos" icono="clock">
@@ -298,6 +360,37 @@ export default function DesignWorkspace({ order, data, actions, irA, role }) {
           </Panel>
         </div>
       </div>
+
+      {/* MODAL VISTA PREVIA DE ARCHIVO DE REFERENCIA */}
+      {archivoPreview && (
+        <div className="modal-backdrop" onClick={() => setArchivoPreview(null)}>
+          <div className="modal" style={{ maxWidth: '620px' }} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+            <div className="modal-head">
+              <span className="modal-icon modal-icon-primary"><Icon nombre="paperclip" tamano={20} /></span>
+              <div>
+                <h2>{archivoPreview.nombre}</h2>
+                <p>Archivo de referencia del cliente</p>
+              </div>
+              <button className="icon-btn" onClick={() => setArchivoPreview(null)}><Icon nombre="x" /></button>
+            </div>
+            <div className="modal-body" style={{ textAlign: 'center' }}>
+              {archivoPreview.dataUrl?.startsWith('data:image') ? (
+                <img src={archivoPreview.dataUrl} alt={archivoPreview.nombre} style={{ maxWidth: '100%', maxHeight: '400px', borderRadius: 'var(--radius-md)' }} />
+              ) : archivoPreview.dataUrl?.startsWith('data:application/pdf') ? (
+                <iframe title={archivoPreview.nombre} src={archivoPreview.dataUrl} style={{ width: '100%', height: '400px', border: '1px solid var(--border-light)' }} />
+              ) : (
+                <p className="sm mut">Archivo listo para descarga directa.</p>
+              )}
+            </div>
+            <div className="modal-foot">
+              <button type="button" className="btn" onClick={() => setArchivoPreview(null)}>Cerrar</button>
+              <button type="button" className="btn btn-primary" onClick={() => descargarAdjunto(archivoPreview)}>
+                <Icon nombre="download" tamano={14} /> Descargar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL HU-11: Crear nueva versión con selector de archivo y observaciones */}
       {modalNuevaVersion && (

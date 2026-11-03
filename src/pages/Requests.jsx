@@ -17,11 +17,27 @@ export default function Requests({ data, actions, irA, role }) {
   const [devolviendo, setDevolviendo] = useState(null) // id de solicitud a devolver para corrección
   const [validando, setValidando] = useState(null) // solicitud a validar (objeto completo)
   const [detalle, setDetalle] = useState(null) // solicitud a inspeccionar en modal de detalle
+  const [archivoPreview, setArchivoPreview] = useState(null)
 
   const esCoordinador = role === 'coordinador' || role === 'gerencia'
   const porValidar = data.requests.filter((s) => s.estado === 'En validación').length
   const porEnviar = data.requests.filter((s) => s.estado === 'Pendiente').length
   const devueltas = data.requests.filter((s) => s.estado === 'Devuelta para corrección').length
+
+  function descargarAdjunto(a) {
+    if (!a) return
+    if (a.dataUrl) {
+      const link = document.createElement('a')
+      link.href = a.dataUrl
+      link.download = a.nombre || 'archivo_referencia'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      actions?.notify?.(`Descargando archivo ${a.nombre}...`, 'exito')
+      return
+    }
+    actions?.notify?.(`Archivo de referencia: ${a.nombre}`, 'info')
+  }
 
   const columnas = [
     {
@@ -29,14 +45,21 @@ export default function Requests({ data, actions, irA, role }) {
       titulo: 'Solicitud',
       ordenar: true,
       render: (s) => (
-        <button
-          className="link-inline"
-          onClick={() => setDetalle(s)}
-          title="Ver detalle de la solicitud"
-          style={{ fontWeight: 600 }}
-        >
-          {s.id}
-        </button>
+        <div>
+          <button
+            className="link-inline"
+            onClick={() => setDetalle(s)}
+            title="Ver detalle de la solicitud"
+            style={{ fontWeight: 600 }}
+          >
+            {s.id}
+          </button>
+          {s.archivosReferencia?.length > 0 && (
+            <small className="cell-sub" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Icon nombre="paperclip" tamano={12} /> {s.archivosReferencia.length} adjunto(s)
+            </small>
+          )}
+        </div>
       ),
     },
     { clave: 'cliente', titulo: 'Cliente', ordenar: true },
@@ -140,7 +163,7 @@ export default function Requests({ data, actions, irA, role }) {
         subtitulo={
           esCoordinador
             ? 'Supervisión técnica, verificación de viabilidad y generación de órdenes de producción.'
-            : 'Recepción, especificaciones y seguimiento del estado de validación.'
+            : 'Recepción, especificaciones, archivos de referencia y seguimiento del estado de validación.'
         }
         icono="inbox"
         acciones={
@@ -233,6 +256,46 @@ export default function Requests({ data, actions, irA, role }) {
                   </div>
                 )}
               </dl>
+
+              {/* Archivos de referencia adjuntos a la solicitud */}
+              {detalle.archivosReferencia?.length > 0 && (
+                <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid var(--border-light)' }}>
+                  <strong className="sm" style={{ display: 'block', marginBottom: '8px' }}>
+                    Archivos de referencia adjuntos ({detalle.archivosReferencia.length}):
+                  </strong>
+                  <div className="stack" style={{ gap: '6px' }}>
+                    {detalle.archivosReferencia.map((ref, idx) => (
+                      <div
+                        key={ref.id || idx}
+                        className="row"
+                        style={{
+                          justifyContent: 'space-between',
+                          padding: '6px 10px',
+                          background: 'var(--bg-subtle)',
+                          borderRadius: 'var(--radius-sm)',
+                          border: '1px solid var(--border-light)',
+                        }}
+                      >
+                        <div className="sm" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Icon nombre="paperclip" tamano={14} />
+                          <strong>{ref.nombre}</strong>
+                          {ref.tamano && <span className="mut">({ref.tamano})</span>}
+                        </div>
+                        <div className="row" style={{ gap: '4px' }}>
+                          {ref.dataUrl && (
+                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setArchivoPreview(ref)}>
+                              <Icon nombre="eye" tamano={13} /> Ver
+                            </button>
+                          )}
+                          <button type="button" className="btn btn-soft btn-sm" onClick={() => descargarAdjunto(ref)}>
+                            <Icon nombre="download" tamano={13} /> Descargar
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="modal-foot">
@@ -290,6 +353,12 @@ export default function Requests({ data, actions, irA, role }) {
                   <span className="mut">Presupuesto cliente:</span>
                   <span>{formatoCOP(validando.presupuesto)}</span>
                 </div>
+                {validando.archivosReferencia?.length > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span className="mut">Archivos de referencia adjuntos:</span>
+                    <strong>{validando.archivosReferencia.length} archivo(s)</strong>
+                  </div>
+                )}
                 {validando.requerimientos && (
                   <div style={{ marginTop: '4px', paddingTop: '6px', borderTop: '1px solid var(--border-light)' }}>
                     <span className="mut" style={{ display: 'block', fontSize: '0.8rem' }}>Requerimientos:</span>
@@ -299,7 +368,7 @@ export default function Requests({ data, actions, irA, role }) {
               </div>
 
               <p className="sm mut" style={{ margin: 0 }}>
-                Al confirmar, se creará una nueva orden en etapa de <strong>Diseño</strong>, asignada a María López, y se registrará el evento en la trazabilidad.
+                Al confirmar, se creará una nueva orden en etapa de <strong>Diseño</strong>, asignada a María López, transfiriendo los archivos de referencia y registrando el evento en la trazabilidad.
               </p>
             </div>
 
@@ -314,6 +383,37 @@ export default function Requests({ data, actions, irA, role }) {
                 }}
               >
                 <Icon nombre="check" tamano={15} /> Confirmar y generar orden
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL VISTA PREVIA DE ARCHIVO DE REFERENCIA */}
+      {archivoPreview && (
+        <div className="modal-backdrop" onClick={() => setArchivoPreview(null)}>
+          <div className="modal" style={{ maxWidth: '620px' }} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+            <div className="modal-head">
+              <span className="modal-icon modal-icon-primary"><Icon nombre="paperclip" tamano={20} /></span>
+              <div>
+                <h2>{archivoPreview.nombre}</h2>
+                <p>Archivo de referencia del cliente</p>
+              </div>
+              <button className="icon-btn" onClick={() => setArchivoPreview(null)}><Icon nombre="x" /></button>
+            </div>
+            <div className="modal-body" style={{ textAlign: 'center' }}>
+              {archivoPreview.dataUrl?.startsWith('data:image') ? (
+                <img src={archivoPreview.dataUrl} alt={archivoPreview.nombre} style={{ maxWidth: '100%', maxHeight: '400px', borderRadius: 'var(--radius-md)' }} />
+              ) : archivoPreview.dataUrl?.startsWith('data:application/pdf') ? (
+                <iframe title={archivoPreview.nombre} src={archivoPreview.dataUrl} style={{ width: '100%', height: '400px', border: '1px solid var(--border-light)' }} />
+              ) : (
+                <p className="sm mut">Archivo adjunto listo para descarga.</p>
+              )}
+            </div>
+            <div className="modal-foot">
+              <button type="button" className="btn" onClick={() => setArchivoPreview(null)}>Cerrar</button>
+              <button type="button" className="btn btn-primary" onClick={() => descargarAdjunto(archivoPreview)}>
+                <Icon nombre="download" tamano={14} /> Descargar
               </button>
             </div>
           </div>

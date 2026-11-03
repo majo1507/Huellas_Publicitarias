@@ -17,6 +17,7 @@ const disenosRouter = require('./routes/disenos');
 const tareasRouter = require('./routes/tareas');
 const postventaRouter = require('./routes/postventa');
 const comunicacionesRouter = require('./routes/comunicaciones');
+const inventarioRouter = require('./routes/inventario');
 const dashboardRouter = require('./routes/dashboard');
 
 const app = express();
@@ -99,6 +100,7 @@ app.use('/api/actividades', tareasRouter);
 app.use('/api/postventa', postventaRouter);
 app.use('/api/casos', postventaRouter);
 app.use('/api/comunicaciones', comunicacionesRouter);
+app.use('/api/inventario', inventarioRouter);
 app.use('/api/dashboard', dashboardRouter);
 
 // Manejo de rutas inexistentes (404)
