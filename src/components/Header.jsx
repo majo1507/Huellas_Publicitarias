@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ROLES } from '../data/roles.js'
+import { ROLES, normalizarRol, obtenerConfigRol } from '../data/roles.js'
 import Icon from './Icon.jsx'
 import StatusBadge from './StatusBadge.jsx'
 import ThemeToggle from './ThemeToggle.jsx'
@@ -12,7 +12,8 @@ const TITULOS_ORDEN = { detalle: 'Detalle de la orden', aprobacion: 'Aprobación
 // Barra superior: botón de menú lateral, título de la pantalla, buscador global, notificaciones y rol activo.
 // El selector de rol vive ahora en la barra lateral (Contexto de trabajo).
 export default function Header({ role, current, data, irA, colapsado = false, abierto = false, onMenu, onLogout }) {
-  const actual = ROLES[role]
+  const rolClave = normalizarRol(role)
+  const actual = obtenerConfigRol(rolClave)
   const [busqueda, setBusqueda] = useState('')
   const [verNotif, setVerNotif] = useState(false)
   const [leidas, setLeidas] = useState({}) // { rol: true } cuando ya se marcaron como leídas
@@ -36,12 +37,12 @@ export default function Header({ role, current, data, irA, colapsado = false, ab
 
   // Resultados del buscador: el cliente solo busca entre sus propios pedidos
   const q = busqueda.trim().toLowerCase()
-  const ordenesVisibles = role === 'cliente' ? data.orders.filter((o) => o.clienteId === actual.clienteId) : data.orders
+  const ordenesVisibles = rolClave === 'cliente' ? data.orders.filter((o) => o.clienteId === actual.clienteId) : data.orders
   const resultados = q
     ? ordenesVisibles.filter((o) => `${o.id} ${o.cliente} ${o.producto}`.toLowerCase().includes(q)).slice(0, 6)
     : []
 
-  const sinLeer = leidas[role] ? 0 : actual.notificaciones.length
+  const sinLeer = leidas[rolClave] ? 0 : actual.notificaciones.length
 
   function abrirOrden(id) {
     irA(actual.ordenPage, id)
@@ -88,7 +89,7 @@ export default function Header({ role, current, data, irA, colapsado = false, ab
                 resultados.map((o) => (
                   <button key={o.id} className="search-item" onClick={() => abrirOrden(o.id)}>
                     <Icon nombre="clipboard" tamano={16} />
-                    <span><strong>{o.id}</strong> · {o.producto}<small>{role === 'cliente' ? o.fechaEntrega : o.cliente}</small></span>
+                    <span><strong>{o.id}</strong> · {o.producto}<small>{rolClave === 'cliente' ? o.fechaEntrega : o.cliente}</small></span>
                     <StatusBadge estado={o.estado} />
                   </button>
                 ))
@@ -111,10 +112,10 @@ export default function Header({ role, current, data, irA, colapsado = false, ab
           <div className="dropdown notif-panel">
             <div className="dropdown-head">
               <strong>Notificaciones</strong>
-              {sinLeer > 0 && <button className="link-inline" onClick={() => setLeidas({ ...leidas, [role]: true })}>Marcar como leídas</button>}
+              {sinLeer > 0 && <button className="link-inline" onClick={() => setLeidas({ ...leidas, [rolClave]: true })}>Marcar como leídas</button>}
             </div>
             {actual.notificaciones.map((n) => (
-              <button key={n.texto} className={leidas[role] ? 'notif-item' : 'notif-item unread'} onClick={() => abrirNotificacion(n)}>
+              <button key={n.texto} className={leidas[rolClave] ? 'notif-item' : 'notif-item unread'} onClick={() => abrirNotificacion(n)}>
                 <span className={`notif-icon notif-${n.tipo}`}><Icon nombre={ICONO_AVISO[n.tipo]} tamano={16} /></span>
                 <span>{n.texto}</span>
               </button>

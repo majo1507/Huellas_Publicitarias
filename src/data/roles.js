@@ -1,4 +1,4 @@
-// Roles simulados del prototipo ORVEX.
+// Roles del sistema ORVEX.
 // Cada rol tiene su propio menú lateral (agrupado por módulos), un usuario de ejemplo y notificaciones.
 // El campo "page" de cada opción del menú debe coincidir con una pantalla en App.jsx.
 // La opción 'inicio' de cada rol muestra un dashboard distinto (ver "dashboards" en App.jsx).
@@ -114,6 +114,63 @@ export const ROLES = {
     notificaciones: [{ texto: 'Diseño es la etapa que concentra más órdenes.', page: 'reportes', tipo: 'info' }],
   },
 }
+
+// Mapa de compatibilidad entre el ENUM de PostgreSQL (rol_usuario), etiquetas de interfaz y claves de ROLES
+const ALIAS_ROLES = {
+  cliente: 'cliente',
+  comercial: 'comercial',
+  ejecutiva: 'comercial',
+  'comercial / recepción': 'comercial',
+  coordinador: 'coordinador',
+  coord: 'coordinador',
+  'coordinador de producción': 'coordinador',
+  disenador: 'disenador',
+  diseñador: 'disenador',
+  'diseñador gráfico': 'disenador',
+  'diseñadora gráfica': 'disenador',
+  operario: 'operario',
+  produccion: 'operario',
+  producción: 'operario',
+  'operario de taller': 'operario',
+  postventa: 'postventa',
+  'atención postventa': 'postventa',
+  gerencia: 'gerencia',
+  gerente: 'gerencia',
+  'gerencia general': 'gerencia',
+}
+
+// Normaliza cualquier identificador de rol (BD o UI) a una clave válida de ROLES
+export function normalizarRol(rolInput) {
+  if (!rolInput) return 'coordinador'
+  const limpio = String(rolInput).trim().toLowerCase()
+  return ALIAS_ROLES[limpio] || (ROLES[limpio] ? limpio : 'coordinador')
+}
+
+export function obtenerConfigRol(rolInput) {
+  return ROLES[normalizarRol(rolInput)] || ROLES.coordinador
+}
+
+// Definir alias no enumerables en ROLES para que cualquier acceso directo ROLES['coord'], ROLES['ejecutiva'], etc. nunca sea undefined
+Object.entries({
+  coord: 'coordinador',
+  ejecutiva: 'comercial',
+  produccion: 'operario',
+  gerente: 'gerencia',
+  Comercial: 'comercial',
+  Coordinador: 'coordinador',
+  Diseñador: 'disenador',
+  Operario: 'operario',
+  Postventa: 'postventa',
+  Gerencia: 'gerencia',
+  Cliente: 'cliente',
+}).forEach(([alias, target]) => {
+  if (!(alias in ROLES)) {
+    Object.defineProperty(ROLES, alias, {
+      get: () => ROLES[target],
+      enumerable: false,
+    })
+  }
+})
 
 // Orden en que aparecen en el selector del header
 export const LISTA_ROLES = [

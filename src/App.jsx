@@ -27,7 +27,7 @@ import Tasks from './pages/Tasks.jsx'
 import Reports from './pages/Reports.jsx'
 import Users from './pages/Users.jsx'
 import Login from './pages/Login.jsx'
-import { ROLES } from './data/roles.js'
+import { ROLES, normalizarRol } from './data/roles.js'
 import { api, getAuthToken, setAuthToken } from './services/api.js'
 import { formatearFecha, formatearHora, puedeAvanzar, validarCierreOrden } from './utils/format.js'
 
@@ -79,7 +79,17 @@ export default function App() {
       if (sessionStorage.getItem('orvex_auth_logged_out') === 'true') return null
       const token = getAuthToken()
       const guardado = sessionStorage.getItem('orvex_auth_user')
-      if (guardado && (token || api.usarMock)) return JSON.parse(guardado)
+      if (guardado && (token || api.usarMock)) {
+        const parsed = JSON.parse(guardado)
+        if (parsed && typeof parsed === 'object') {
+          const rolNormalizado = normalizarRol(parsed.rolUi || parsed.rol || 'coordinador')
+          return {
+            ...parsed,
+            rol: rolNormalizado,
+            rolAutenticado: normalizarRol(parsed.rolAutenticado || rolNormalizado),
+          }
+        }
+      }
       return null
     } catch {
       return null
@@ -90,7 +100,8 @@ export default function App() {
   const [role, setRole] = useState(() => {
     try {
       if (sessionStorage.getItem('orvex_auth_logged_out') === 'true') return 'coordinador'
-      return sessionStorage.getItem('orvex_auth_role') || 'coordinador'
+      const guardadoRol = sessionStorage.getItem('orvex_auth_role')
+      return normalizarRol(guardadoRol || 'coordinador')
     } catch {
       return 'coordinador'
     }
@@ -179,19 +190,21 @@ export default function App() {
 
   // Inicio de sesión (HU-02)
   function handleLogin(usuarioElegido, rolElegido) {
+    const rolSeguro = normalizarRol(rolElegido || usuarioElegido?.rolUi || usuarioElegido?.rol || 'coordinador')
     const usrConRolBase = {
       ...usuarioElegido,
-      rolAutenticado: usuarioElegido.rolAutenticado || rolElegido,
+      rol: rolSeguro,
+      rolAutenticado: normalizarRol(usuarioElegido.rolAutenticado || rolSeguro),
     }
     setCurrentUser(usrConRolBase)
-    setRole(rolElegido)
+    setRole(rolSeguro)
     try {
       sessionStorage.removeItem('orvex_auth_logged_out')
       sessionStorage.setItem('orvex_auth_user', JSON.stringify(usrConRolBase))
-      sessionStorage.setItem('orvex_auth_role', rolElegido)
+      sessionStorage.setItem('orvex_auth_role', rolSeguro)
     } catch {}
     setPage({ name: 'inicio', orderId: null })
-    notify(`Bienvenido/a, ${usuarioElegido.nombre}. Sesión activa como ${ROLES[rolElegido]?.nombre || rolElegido}.`, 'exito')
+    notify(`Bienvenido/a, ${usuarioElegido.nombre}. Sesión activa como ${ROLES[rolSeguro]?.nombre || rolSeguro}.`, 'exito')
   }
 
   // Cierre de sesión (HU-02)
@@ -209,21 +222,22 @@ export default function App() {
   // En operación real los permisos de escritura dependen del token JWT del usuario autenticado.
   // Solo Gerencia puede previsualizar otros roles sin cerrar sesión; los demás perfiles no pueden elevar privilegios.
   function cambiarRol(nuevoRol) {
-    const rolReal = currentUser?.rolAutenticado || currentUser?.rol || role
-    if (!api.usarMock && rolReal !== 'gerencia' && nuevoRol !== rolReal) {
+    const destino = normalizarRol(nuevoRol)
+    const rolReal = normalizarRol(currentUser?.rolAutenticado || currentUser?.rol || role)
+    if (!api.usarMock && rolReal !== 'gerencia' && destino !== rolReal) {
       notify(
-        `Por seguridad, tu sesión autenticada (${ROLES[rolReal]?.nombre || rolReal}) no permite elevar privilegios a ${ROLES[nuevoRol]?.nombre || nuevoRol}. Cierra sesión e ingresa con la cuenta correspondiente.`,
+        `Por seguridad, tu sesión autenticada (${ROLES[rolReal]?.nombre || rolReal}) no permite elevar privilegios a ${ROLES[destino]?.nombre || destino}. Cierra sesión e ingresa con la cuenta correspondiente.`,
         'aviso'
       )
       return
     }
 
-    setRole(nuevoRol)
+    setRole(destino)
     try {
-      sessionStorage.setItem('orvex_auth_role', nuevoRol)
+      sessionStorage.setItem('orvex_auth_role', destino)
     } catch {}
     setPage({ name: 'inicio', orderId: null })
-    notify(`Vista cambiada a: ${ROLES[nuevoRol]?.nombre || nuevoRol}`, 'info')
+    notify(`Vista cambiada a: ${ROLES[destino]?.nombre || destino}`, 'info')
   }
 
   // ---------------- Gestión de usuarios (HU-01) ----------------
@@ -675,12 +689,13 @@ export default function App() {
     notify,
   }
 
-  const props = { data, actions, irA, role, order: selectedOrder, usuarioActual: currentUser }
+  const rolActivo = normalizarRol(role)
+  const props = { data, actions, irA, role: rolActivo, order: selectedOrder, usuarioActual: currentUser }
 
   function renderPage() {
     switch (page.name) {
       case 'inicio': {
-        const Dashboard = dashboards[role]
+        const Dashboard = dashboards[rolActivo] || CoordinatorDashboard
         return <Dashboard {...props} />
       }
       case 'solicitudes':
@@ -744,7 +759,7 @@ export default function App() {
   return (
     <div className={`app${sidebarColapsado ? ' app-sidebar-collapsed' : ''}`}>
       <Sidebar
-        role={role}
+        role={rolActivo}
         current={page.name}
         irA={irA}
         onChangeRole={cambiarRol}
@@ -756,7 +771,7 @@ export default function App() {
       />
       <div className="main">
         <Header
-          role={role}
+          role={rolActivo}
           current={page.name}
           data={data}
           irA={irA}
@@ -767,7 +782,7 @@ export default function App() {
           onToggleColapso={toggleMenu}
         />
         <main className="content">
-          <div key={`${role}-${page.name}-${page.orderId || ''}`} className="page-transition">
+          <div key={`${rolActivo}-${page.name}-${page.orderId || ''}`} className="page-transition">
             {renderPage()}
           </div>
         </main>

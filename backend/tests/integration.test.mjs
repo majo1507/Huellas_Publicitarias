@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { ROLES, normalizarRol, obtenerConfigRol } from '../../src/data/roles.js';
 
 const require = createRequire(import.meta.url);
 process.env.PORT = '3099';
@@ -50,6 +51,8 @@ async function runTests() {
       body: { identificador: 'carlos.gomez@huellas.co', clave: 'coord123' },
     });
     assert.equal(loginCoord.status, 200);
+    assert.equal(loginCoord.data.usuario.rol, 'coordinador');
+    assert.equal(loginCoord.data.usuario.rolUi, 'coordinador');
     const tokenCoord = loginCoord.data.token;
 
     const loginComercial = await req('/auth/login', {
@@ -57,6 +60,8 @@ async function runTests() {
       body: { identificador: 'ana.martinez@huellas.co', clave: 'comercial123' },
     });
     assert.equal(loginComercial.status, 200);
+    assert.equal(loginComercial.data.usuario.rol, 'comercial');
+    assert.equal(loginComercial.data.usuario.rolUi, 'comercial');
     const tokenComercial = loginComercial.data.token;
 
     const loginDisenador = await req('/auth/login', {
@@ -64,6 +69,8 @@ async function runTests() {
       body: { identificador: 'maria.lopez@huellas.co', clave: 'diseno123' },
     });
     assert.equal(loginDisenador.status, 200);
+    assert.equal(loginDisenador.data.usuario.rol, 'disenador');
+    assert.equal(loginDisenador.data.usuario.rolUi, 'disenador');
     const tokenDisenador = loginDisenador.data.token;
 
     const loginOperario = await req('/auth/login', {
@@ -71,6 +78,8 @@ async function runTests() {
       body: { identificador: 'pedro.morales@huellas.co', clave: 'taller123' },
     });
     assert.equal(loginOperario.status, 200);
+    assert.equal(loginOperario.data.usuario.rol, 'operario');
+    assert.equal(loginOperario.data.usuario.rolUi, 'operario');
     const tokenOperario = loginOperario.data.token;
 
     const loginPostventa = await req('/auth/login', {
@@ -78,6 +87,8 @@ async function runTests() {
       body: { identificador: 'sofia.herrera@huellas.co', clave: 'post123' },
     });
     assert.equal(loginPostventa.status, 200);
+    assert.equal(loginPostventa.data.usuario.rol, 'postventa');
+    assert.equal(loginPostventa.data.usuario.rolUi, 'postventa');
     const tokenPostventa = loginPostventa.data.token;
 
     const loginGerencia = await req('/auth/login', {
@@ -85,6 +96,8 @@ async function runTests() {
       body: { identificador: 'laura.sanchez@huellas.co', clave: 'gerencia123' },
     });
     assert.equal(loginGerencia.status, 200);
+    assert.equal(loginGerencia.data.usuario.rol, 'gerencia');
+    assert.equal(loginGerencia.data.usuario.rolUi, 'gerencia');
     const tokenGerencia = loginGerencia.data.token;
 
     const loginCliente = await req('/auth/login', {
@@ -93,7 +106,39 @@ async function runTests() {
     });
     assert.equal(loginCliente.status, 200);
     assert.equal(loginCliente.data.usuario.rol, 'cliente');
-    console.log('  ✅ 3. Login real con JWT verificado para los 7 perfiles (y bloqueo 401 en clave errónea).');
+    assert.equal(loginCliente.data.usuario.rolUi, 'cliente');
+
+    // Verificar compatibilidad de los 7 roles devueltos por el backend con ROLES del frontend y /auth/me
+    const logins = [
+      loginCoord,
+      loginComercial,
+      loginDisenador,
+      loginOperario,
+      loginPostventa,
+      loginGerencia,
+      loginCliente,
+    ];
+    for (const lg of logins) {
+      const rKey = lg.data.usuario.rol;
+      assert.ok(ROLES[rKey], `ROLES['${rKey}'] debe existir`);
+      assert.ok(Array.isArray(ROLES[rKey].menu) && ROLES[rKey].menu.length > 0, `ROLES['${rKey}'].menu debe tener elementos`);
+      assert.ok(ROLES[rKey].usuario, `ROLES['${rKey}'].usuario debe existir`);
+
+      const perfilRes = await req('/auth/perfil', { token: lg.data.token });
+      assert.equal(perfilRes.status, 200);
+      assert.equal(perfilRes.data.perfil.rol, rKey, `/auth/perfil debe devolver rol canónico '${rKey}'`);
+      assert.ok(ROLES[perfilRes.data.perfil.rol]?.menu, `ROLES[perfil.rol].menu debe estar definido`);
+    }
+
+    // Verificar también alias directos de BD (coord, ejecutiva, produccion, gerente) en ROLES y normalizarRol
+    for (const alias of ['coord', 'ejecutiva', 'produccion', 'gerente', 'disenador', 'postventa', 'cliente']) {
+      const norm = normalizarRol(alias);
+      assert.ok(ROLES[norm]?.menu, `normalizarRol('${alias}') -> '${norm}' debe tener menu`);
+      assert.ok(ROLES[alias]?.menu, `ROLES['${alias}'].menu debe existir vía alias getter`);
+      assert.ok(obtenerConfigRol(alias)?.menu, `obtenerConfigRol('${alias}').menu debe existir`);
+    }
+
+    console.log('  ✅ 3. Login real con JWT y compatibilidad ROLES[role].menu verificada para los 7 perfiles.');
 
     // 4. Control de permisos por rol (403) y gestión de usuarios por Gerencia
     const forbiddenUserCreate = await req('/usuarios', {

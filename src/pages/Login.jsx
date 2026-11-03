@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import Icon from '../components/Icon.jsx'
-import { ROLES } from '../data/roles.js'
+import { ROLES, normalizarRol } from '../data/roles.js'
 import { api } from '../services/api.js'
 import './Login.css'
 
@@ -152,18 +152,18 @@ export default function Login({ onLogin }) {
         clave,
       })
       const usr = res?.usuario || {}
-      const rolUi = usr.rol || 'coordinador'
+      const rolUi = normalizarRol(usr.rolUi || usr.rol || 'coordinador')
       setRolActivo(rolUi)
       setCargando(false)
       onLogin(
         {
           id: usr.id,
           dbId: usr.dbId,
-          nombre: usr.nombre,
+          nombre: usr.nombre || ROLES[rolUi]?.usuario?.nombre || 'Usuario',
           correo: usr.correo || usr.email || identificador.trim(),
           cargo: usr.cargo || ROLES[rolUi]?.usuario?.cargo || rolUi,
           rol: rolUi,
-          rolBd: usr.rolBd,
+          rolBd: usr.rolBd || usr.rol,
         },
         rolUi
       )

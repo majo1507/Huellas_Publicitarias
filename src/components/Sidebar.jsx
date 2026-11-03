@@ -1,4 +1,4 @@
-import { LISTA_ROLES, ROLES } from '../data/roles.js'
+import { LISTA_ROLES, ROLES, normalizarRol, obtenerConfigRol } from '../data/roles.js'
 import Icon from './Icon.jsx'
 import Avatar from './Avatar.jsx'
 
@@ -49,7 +49,9 @@ function Marca({ colapsado, onToggleColapso }) {
 
 // Barra lateral: perfil / selector de rol + menú agrupado por módulos (depende del rol)
 export default function Sidebar({ role, current, irA, onChangeRole, abierto, colapsado = false, onClose, onLogout, onToggleColapso }) {
-  const { menu, usuario } = ROLES[role]
+  const rolClave = normalizarRol(role)
+  const rolConfig = obtenerConfigRol(rolClave)
+  const { menu, usuario } = rolConfig
   const tienePedidos = menu.some((m) => m.page === 'pedidos')
   const paginaActiva = pantallasDeOrden.includes(current) ? (tienePedidos ? 'pedidos' : 'inicio') : current
   const grupos = [...new Set(menu.map((m) => m.grupo))]
@@ -69,11 +71,11 @@ export default function Sidebar({ role, current, irA, onChangeRole, abierto, col
               <small>{usuario.cargo}</small>
             </div>
           </div>
-          <label className="role-select" title={`Cambiar rol activo (${ROLES[role].nombre})`}>
+          <label className="role-select" title={`Cambiar rol activo (${rolConfig.nombre})`}>
             <span className="sr-only">Vista actual (rol)</span>
             <div className="role-select-box">
               <Icon nombre="users" tamano={15} />
-              <select value={role} onChange={(e) => onChangeRole(e.target.value)} aria-label="Vista actual (rol)">
+              <select value={rolClave} onChange={(e) => onChangeRole(e.target.value)} aria-label="Vista actual (rol)">
                 {LISTA_ROLES.map((r) => <option key={r.id} value={r.id}>{r.nombre}</option>)}
               </select>
               <Icon nombre="chevron-down" tamano={15} />
