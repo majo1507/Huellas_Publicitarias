@@ -1,21 +1,24 @@
 // ============================================================
-// index.js — Servidor Express para el Sistema Empresarial Huellas
+// index.js — Servidor Express para ORVEX — Huellas Publicidad
 // ============================================================
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const { pool, testConnection } = require('./db');
 
 // Importar rutas modulares
 const authRouter = require('./routes/auth');
 const usuariosRouter = require('./routes/usuarios');
 const clientesRouter = require('./routes/clientes');
+const solicitudesRouter = require('./routes/solicitudes');
 const ordenesRouter = require('./routes/ordenes');
 const disenosRouter = require('./routes/disenos');
+const tareasRouter = require('./routes/tareas');
 const postventaRouter = require('./routes/postventa');
+const comunicacionesRouter = require('./routes/comunicaciones');
 const dashboardRouter = require('./routes/dashboard');
 
-const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -23,8 +26,17 @@ const swaggerUi = require('swagger-ui-express');
 const swaggerDoc = require('./docs/swagger');
 
 // Middlewares globales
-app.use(cors());
-app.use(express.json());
+const allowedOrigins = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(',').map((o) => o.trim())
+  : null;
+
+app.use(
+  cors({
+    origin: allowedOrigins || true,
+    credentials: true,
+  })
+);
+app.use(express.json({ limit: '10mb' }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Documentación Swagger / OpenAPI
@@ -33,32 +45,21 @@ app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerDoc));
 // Endpoint raíz informativo
 app.get('/', (_req, res) => {
   res.json({
-    sistema: 'Huellas Publicitarias - API Backend',
-    version: '1.0.0',
+    sistema: 'ORVEX — Huellas Publicidad API Backend',
+    version: '2.0.0',
     motor_bd: 'PostgreSQL',
     rutas_disponibles: {
       health: 'GET /api/health',
-      usuarios: {
-        listar: 'GET /api/usuarios',
-        crear: 'POST /api/usuarios',
-        detalle: 'GET /api/usuarios/:id',
-      },
-      clientes: {
-        listar: 'GET /api/clientes',
-        crear: 'POST /api/clientes',
-        detalle: 'GET /api/clientes/:id',
-      },
-      ordenes: {
-        listar: 'GET /api/ordenes',
-        crear: 'POST /api/ordenes',
-        detalle: 'GET /api/ordenes/:id',
-        actualizar_etapa: 'PATCH /api/ordenes/:id/etapa',
-      },
-      disenos: {
-        versiones_por_orden: 'GET /api/disenos/orden/:orden_id',
-        nueva_version: 'POST /api/disenos/orden/:orden_id',
-        aprobacion: 'PATCH /api/disenos/:id/aprobacion',
-      },
+      auth: 'POST /api/auth/login | GET /api/auth/perfil | POST /api/auth/register',
+      usuarios: 'GET /api/usuarios | POST /api/usuarios | PATCH /api/usuarios/:id | PATCH /api/usuarios/:id/estado',
+      clientes: 'GET /api/clientes | POST /api/clientes | PATCH /api/clientes/:id',
+      solicitudes: 'GET /api/solicitudes | POST /api/solicitudes | PATCH /api/solicitudes/:id/enviar | POST /api/solicitudes/:id/validar',
+      ordenes: 'GET /api/ordenes | POST /api/ordenes | PATCH /api/ordenes/:id/etapa | POST /api/ordenes/:id/entrega | POST /api/ordenes/:id/cerrar',
+      disenos: 'POST /api/disenos/orden/:orden_id | PATCH /api/disenos/orden/:orden_id/aprobacion',
+      tareas: 'GET /api/tareas | PATCH /api/tareas/:id/avance | PATCH /api/tareas/:id/accion | POST /api/tareas/:id/notas',
+      postventa: 'GET /api/postventa | POST /api/postventa | PATCH /api/postventa/:id',
+      comunicaciones: 'GET /api/comunicaciones | POST /api/comunicaciones/:id/mensajes',
+      dashboard: 'GET /api/dashboard',
     },
   });
 });
@@ -90,14 +91,33 @@ app.get('/api/health', async (_req, res) => {
 app.use('/api/auth', authRouter);
 app.use('/api/usuarios', usuariosRouter);
 app.use('/api/clientes', clientesRouter);
+app.use('/api/solicitudes', solicitudesRouter);
 app.use('/api/ordenes', ordenesRouter);
 app.use('/api/disenos', disenosRouter);
+app.use('/api/tareas', tareasRouter);
+app.use('/api/actividades', tareasRouter);
 app.use('/api/postventa', postventaRouter);
+app.use('/api/casos', postventaRouter);
+app.use('/api/comunicaciones', comunicacionesRouter);
 app.use('/api/dashboard', dashboardRouter);
 
 // Manejo de rutas inexistentes (404)
 app.use((_req, res) => {
   res.status(404).json({ error: 'Ruta no encontrada' });
+});
+
+// Middleware global de manejo de errores (incluye errores de Multer y JSON inválido)
+app.use((err, _req, res, _next) => {
+  if (err && (err.name === 'MulterError' || /Formato no permitido/i.test(err.message || ''))) {
+    return res.status(400).json({ error: err.message });
+  }
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    return res.status(400).json({ error: 'JSON mal formado en el cuerpo de la petición.' });
+  }
+  console.error('[API Error]', err);
+  return res.status(err.status || 500).json({
+    error: err.message || 'Error interno del servidor.',
+  });
 });
 
 // Inicio del servidor
@@ -127,3 +147,5 @@ const gracefulShutdown = async () => {
 
 process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
+
+module.exports = { app, server };

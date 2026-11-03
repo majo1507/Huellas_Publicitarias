@@ -1,11 +1,9 @@
-// ============================================================
-// routes/dashboard.js — Rutas de Dashboard delegadas a Controlador
-// ============================================================
 const express = require('express');
 const router = express.Router();
+const { verificarToken } = require('../middleware/auth');
 const dashboardController = require('../controllers/dashboardController');
 
-// GET /api/dashboard - Resumen ejecutivo de producción y operaciones
+router.use(verificarToken);
 router.get('/', dashboardController.obtenerMetricas);
 
 module.exports = router;

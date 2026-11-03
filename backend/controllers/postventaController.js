@@ -2,6 +2,53 @@
 // controllers/postventaController.js — Controlador de Postventa y Calidad
 // ============================================================
 const { pool } = require('../db');
+const {
+  esUuid,
+  formatearFechaHoy,
+  formatearHoraAhora,
+  resolverOrden,
+  resolverUsuario,
+  obtenerUsuarioPorDefecto,
+} = require('../utils/resolvers');
+const { cargarOrdenesEnriquecidas } = require('./ordenesController');
+
+function formatearCasoPostventa(pv) {
+  const ordenCodigo = pv.orden_codigo || `OP-2026-${String(pv.orden_id).padStart(4, '0')}`;
+  return {
+    id: pv.codigo || pv.id,
+    uuid: pv.id,
+    codigo: pv.codigo,
+    ordenId: ordenCodigo,
+    orden_id: pv.orden_id,
+    producto: pv.producto,
+    cliente: pv.cliente_empresa,
+    cliente_empresa: pv.cliente_empresa,
+    ejecutiva_nombre: pv.ejecutiva_nombre,
+    tipo: pv.tipo,
+    prioridad: pv.prioridad || 'Media',
+    fecha: pv.fecha_texto || formatearFechaHoy(new Date(pv.created_at)),
+    descripcion: pv.descripcion || '',
+    responsable: pv.responsable_nombre !== null && pv.responsable_nombre !== undefined ? pv.responsable_nombre : '',
+    estado: pv.estado || 'Abierto',
+    solucion: pv.solucion || '',
+    fechaSolucion: pv.fecha_solucion || null,
+    resueltoPor: pv.resuelto_por || null,
+    calificacion: pv.nivel_conformidad !== null && pv.nivel_conformidad !== undefined ? Number(pv.nivel_conformidad) : null,
+    nivel_conformidad: pv.nivel_conformidad !== null && pv.nivel_conformidad !== undefined ? Number(pv.nivel_conformidad) : null,
+    created_at: pv.created_at,
+  };
+}
+
+async function resolverCaso(dbOrClient, idOrCodigo) {
+  if (!idOrCodigo) return null;
+  const str = String(idOrCodigo).trim();
+  if (esUuid(str)) {
+    const res = await dbOrClient.query('SELECT * FROM postventa WHERE id = $1', [str]);
+    if (res.rowCount > 0) return res.rows[0];
+  }
+  const res = await dbOrClient.query('SELECT * FROM postventa WHERE codigo = $1', [str]);
+  return res.rowCount > 0 ? res.rows[0] : null;
+}
 
 // Listar registros de postventa
 const listarPostventa = async (req, res) => {
@@ -10,12 +57,8 @@ const listarPostventa = async (req, res) => {
   try {
     let queryText = `
       SELECT
-        pv.id,
-        pv.orden_id,
-        pv.tipo,
-        pv.nivel_conformidad,
-        pv.descripcion,
-        pv.created_at,
+        pv.*,
+        o.codigo AS orden_codigo,
         o.producto,
         c.empresa AS cliente_empresa,
         u.nombre_completo AS ejecutiva_nombre
@@ -28,48 +71,61 @@ const listarPostventa = async (req, res) => {
     const params = [];
 
     if (orden_id) {
-      params.push(parseInt(orden_id, 10));
-      queryText += ` AND pv.orden_id = $${params.length}`;
+      const ord = await resolverOrden(pool, orden_id);
+      if (ord) {
+        params.push(ord.id);
+        queryText += ` AND pv.orden_id = $${params.length}`;
+      }
     }
     if (tipo) {
       params.push(tipo);
       queryText += ` AND pv.tipo = $${params.length}`;
     }
 
-    queryText += ' ORDER BY pv.created_at DESC';
+    queryText += ' ORDER BY pv.created_at DESC, COALESCE(pv.codigo, pv.id::text) ASC';
 
     const result = await pool.query(queryText, params);
     res.json({
       total: result.rowCount,
-      data: result.rows,
+      data: result.rows.map(formatearCasoPostventa),
     });
   } catch (error) {
     console.error('postventaController.listarPostventa error:', error.message);
-    res.status(500).json({ error: 'Error al consultar postventa.', detalle: error.message });
+    res.status(500).json({ error: 'Error al consultar postventa.' });
   }
 };
 
-// Crear evaluación, reclamo, garantía o acta de postventa (con soporte de archivo adjunto)
+// Crear evaluación, reclamo, garantía o acta de postventa
 const crearPostventa = async (req, res) => {
-  const { orden_id, ejecutiva_id, tipo, nivel_conformidad, descripcion } = req.body;
+  const targetOrden = req.body.orden_id || req.body.ordenId;
+  const {
+    ejecutiva_id,
+    tipo,
+    nivel_conformidad,
+    calificacion,
+    descripcion,
+    prioridad,
+    responsable,
+  } = req.body;
 
-  const ordenIdInt = parseInt(orden_id, 10);
-  if (isNaN(ordenIdInt) || !ejecutiva_id || !tipo) {
+  if (!targetOrden || !tipo) {
     return res.status(400).json({
-      error: 'Campos obligatorios: orden_id (número), ejecutiva_id, tipo (Ajuste, Garantía, Reclamo, Comentario).',
+      error: 'Campos obligatorios: orden_id/ordenId y tipo (Ajuste, Garantía, Reclamo, Comentario, Reimpresión).',
     });
   }
 
-  const tiposPermitidos = ['Ajuste', 'Garantía', 'Reclamo', 'Comentario'];
+  const tiposPermitidos = ['Ajuste', 'Garantía', 'Reclamo', 'Comentario', 'Reimpresión'];
   if (!tiposPermitidos.includes(tipo)) {
     return res.status(400).json({
       error: `Tipo de postventa no válido. Opciones: ${tiposPermitidos.join(', ')}`,
     });
   }
 
-  if (nivel_conformidad !== undefined && nivel_conformidad !== null && nivel_conformidad !== '') {
-    const calif = parseInt(nivel_conformidad, 10);
-    if (isNaN(calif) || calif < 1 || calif > 5) {
+  const valorCalif = nivel_conformidad !== undefined ? nivel_conformidad : calificacion;
+  let califInt = null;
+  if (valorCalif !== undefined && valorCalif !== null && valorCalif !== '') {
+    califInt = parseInt(valorCalif, 10);
+    if (isNaN(califInt) || califInt < 1 || califInt > 5) {
       return res.status(400).json({ error: 'El nivel de conformidad debe ser un número entero entre 1 y 5.' });
     }
   }
@@ -78,24 +134,23 @@ const crearPostventa = async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    // 1. Validar orden
-    const ordenRes = await client.query('SELECT id FROM ordenes WHERE id = $1', [ordenIdInt]);
-    if (ordenRes.rowCount === 0) {
+    const orden = await resolverOrden(client, targetOrden);
+    if (!orden) {
       await client.query('ROLLBACK');
-      return res.status(404).json({ error: `Orden ${ordenIdInt} no encontrada.` });
+      return res.status(404).json({ error: `Orden ${targetOrden} no encontrada.` });
     }
 
-    // 2. Validar ejecutiva
-    const ejecRes = await client.query(
-      "SELECT id, nombre_completo FROM usuarios WHERE id = $1 AND rol = 'ejecutiva'",
-      [ejecutiva_id]
-    );
-    if (ejecRes.rowCount === 0) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'La ejecutiva especificada no existe o no tiene dicho rol.' });
+    let ejec = null;
+    if (ejecutiva_id) {
+      ejec = await resolverUsuario(client, ejecutiva_id);
+    }
+    if (!ejec) {
+      ejec = await resolverUsuario(client, orden.ejecutiva_id);
+    }
+    if (!ejec) {
+      ejec = await obtenerUsuarioPorDefecto(client, 'ejecutiva');
     }
 
-    // Si se subió un archivo físico (ej. acta de entrega o foto)
     let descripcionFinal = descripcion ? descripcion.trim() : '';
     let archivoInfo = null;
     if (req.file) {
@@ -110,39 +165,162 @@ const crearPostventa = async (req, res) => {
         : `[Adjunto: ${rutaRelativa}]`;
     }
 
-    const insertRes = await client.query(`
-      INSERT INTO postventa (orden_id, ejecutiva_id, tipo, nivel_conformidad, descripcion)
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING *
-    `, [
-      ordenIdInt,
-      ejecutiva_id,
-      tipo,
-      nivel_conformidad ? parseInt(nivel_conformidad, 10) : null,
-      descripcionFinal || null,
-    ]);
+    const countRes = await client.query('SELECT COUNT(*)::int AS total FROM postventa');
+    const nuevoNum = countRes.rows[0].total + 1;
+    const codigo = req.body.id || req.body.codigo || `CAS-${String(nuevoNum).padStart(3, '0')}`;
+    const fechaHoy = formatearFechaHoy();
 
-    // Registrar en auditoría inmutable
-    await client.query(`
-      INSERT INTO registro_sesion (orden_id, usuario_responsable_id, accion_texto)
-      VALUES ($1, $2, $3)
-    `, [
-      ordenIdInt,
-      ejecutiva_id,
-      `Registro de postventa tipo "${tipo}" con nivel de conformidad ${nivel_conformidad || 'N/A'}${archivoInfo ? ' (con archivo adjunto)' : ''}.`,
-    ]);
+    const insertRes = await client.query(
+      `INSERT INTO postventa (
+        codigo, orden_id, ejecutiva_id, tipo, nivel_conformidad, descripcion,
+        fecha_texto, responsable_nombre, estado, prioridad, solucion
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Abierto', $9, '')
+      RETURNING *`,
+      [
+        codigo,
+        orden.id,
+        ejec.id,
+        tipo,
+        califInt,
+        descripcionFinal || null,
+        fechaHoy,
+        responsable || '',
+        prioridad || 'Media',
+      ]
+    );
+
+    const autorNombre = req.usuario?.nombre_completo || ejec.nombre_completo;
+    const autorId = (req.usuario?.id && req.usuario.rol !== 'cliente') ? req.usuario.id : ejec.id;
+
+    await client.query(
+      `INSERT INTO registro_sesion (
+        orden_id, usuario_responsable_id, accion_texto,
+        fecha_texto, hora_texto, responsable_nombre, estado_evento, interno, motivo
+      ) VALUES ($1, $2, $3, $4, $5, $6, 'Pendiente', false, $7)`,
+      [
+        orden.id,
+        autorId,
+        `Caso de postventa ${codigo} registrado (${tipo}): ${descripcionFinal}`,
+        fechaHoy,
+        formatearHoraAhora(),
+        autorNombre,
+        `Clasificación: ${tipo}`,
+      ]
+    );
 
     await client.query('COMMIT');
 
+    const fullRes = await pool.query(
+      `SELECT pv.*, o.codigo AS orden_codigo, o.producto, c.empresa AS cliente_empresa, u.nombre_completo AS ejecutiva_nombre
+       FROM postventa pv
+       INNER JOIN ordenes o ON pv.orden_id = o.id
+       INNER JOIN clientes c ON o.cliente_id = c.id
+       INNER JOIN usuarios u ON pv.ejecutiva_id = u.id
+       WHERE pv.id = $1`,
+      [insertRes.rows[0].id]
+    );
+    const [ordenCompleta] = await cargarOrdenesEnriquecidas(pool, 'AND o.id = $1', [orden.id]);
+
     res.status(201).json({
       message: 'Registro de postventa creado exitosamente.',
-      data: insertRes.rows[0],
+      data: formatearCasoPostventa(fullRes.rows[0]),
+      orden: ordenCompleta,
       adjunto: archivoInfo,
     });
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('postventaController.crearPostventa error:', error.message);
-    res.status(500).json({ error: 'Error al registrar postventa.', detalle: error.message });
+    res.status(500).json({ error: 'Error al registrar postventa.' });
+  } finally {
+    client.release();
+  }
+};
+
+// Actualizar caso de postventa (asignar responsable, resolver caso, calificar atención)
+const actualizarPostventa = async (req, res) => {
+  const { estado, responsable, solucion, fechaSolucion, resueltoPor, calificacion, nivel_conformidad } = req.body;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const actual = await resolverCaso(client, req.params.id);
+    if (!actual) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: `Caso de postventa ${req.params.id} no encontrado.` });
+    }
+
+    const nuevoEstado = estado || (solucion ? 'Resuelto' : actual.estado);
+    const nuevoResp = responsable !== undefined ? responsable : actual.responsable_nombre;
+    const nuevaSol = solucion !== undefined ? solucion : actual.solucion;
+    const nuevaFechaSol = fechaSolucion || (nuevoEstado === 'Resuelto' && !actual.fecha_solucion ? formatearFechaHoy() : actual.fecha_solucion);
+    const nuevoResueltoPor = resueltoPor || (nuevoEstado === 'Resuelto' ? (req.usuario?.nombre_completo || 'Sofía Herrera') : actual.resuelto_por);
+
+    const rawCalif = calificacion !== undefined ? calificacion : nivel_conformidad;
+    const nuevaCalif = rawCalif !== undefined && rawCalif !== null ? parseInt(rawCalif, 10) : actual.nivel_conformidad;
+
+    await client.query(
+      `UPDATE postventa
+       SET estado = $1,
+           responsable_nombre = $2,
+           solucion = $3,
+           fecha_solucion = $4,
+           resuelto_por = $5,
+           nivel_conformidad = $6
+       WHERE id = $7`,
+      [nuevoEstado, nuevoResp, nuevaSol, nuevaFechaSol, nuevoResueltoPor, nuevaCalif, actual.id]
+    );
+
+    if (estado && estado !== actual.estado) {
+      const autorUser = (req.usuario?.id && req.usuario.rol !== 'cliente')
+        ? (await resolverUsuario(client, req.usuario.id))
+        : (await resolverUsuario(client, actual.ejecutiva_id));
+      const autorNombre = req.usuario?.nombre_completo || autorUser.nombre_completo;
+      const codigoCaso = actual.codigo || actual.id;
+
+      await client.query(
+        `INSERT INTO registro_sesion (
+          orden_id, usuario_responsable_id, accion_texto,
+          fecha_texto, hora_texto, responsable_nombre, estado_evento, interno,
+          estado_anterior, nuevo_estado, motivo
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,false,$8,$9,$10)`,
+        [
+          actual.orden_id,
+          autorUser.id,
+          `Caso postventa ${codigoCaso}: ${nuevoEstado}${nuevaSol ? ` - Solución: ${nuevaSol}` : ''}`,
+          formatearFechaHoy(),
+          formatearHoraAhora(),
+          autorNombre,
+          nuevoEstado === 'Resuelto' ? 'Completado' : 'Pendiente',
+          actual.estado,
+          nuevoEstado,
+          nuevaSol || null,
+        ]
+      );
+    }
+
+    await client.query('COMMIT');
+
+    const fullRes = await pool.query(
+      `SELECT pv.*, o.codigo AS orden_codigo, o.producto, c.empresa AS cliente_empresa, u.nombre_completo AS ejecutiva_nombre
+       FROM postventa pv
+       INNER JOIN ordenes o ON pv.orden_id = o.id
+       INNER JOIN clientes c ON o.cliente_id = c.id
+       INNER JOIN usuarios u ON pv.ejecutiva_id = u.id
+       WHERE pv.id = $1`,
+      [actual.id]
+    );
+    const [ordenCompleta] = await cargarOrdenesEnriquecidas(pool, 'AND o.id = $1', [actual.orden_id]);
+
+    res.json({
+      message: 'Caso de postventa actualizado exitosamente.',
+      data: formatearCasoPostventa(fullRes.rows[0]),
+      orden: ordenCompleta,
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('postventaController.actualizarPostventa error:', error.message);
+    res.status(500).json({ error: 'Error al actualizar caso de postventa.' });
   } finally {
     client.release();
   }
@@ -151,4 +329,5 @@ const crearPostventa = async (req, res) => {
 module.exports = {
   listarPostventa,
   crearPostventa,
+  actualizarPostventa,
 };

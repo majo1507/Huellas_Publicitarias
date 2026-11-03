@@ -6,6 +6,11 @@ const path = require('path');
 const { pool } = require('../db');
 
 async function runMigration() {
+  if (process.env.ALLOW_DESTRUCTIVE_RESET !== 'true') {
+    console.error('🛑  PROTECCIÓN ACTIVA: schema.sql contiene DROP TABLE CASCADE.');
+    console.error('    Usa "npm run migrate:safe" para ejecutar la migración aditiva no destructiva.');
+    process.exit(1);
+  }
   const schemaPath = path.join(__dirname, 'schema.sql');
   console.log(`⏳  Leyendo esquema DDL desde: ${schemaPath}`);
 

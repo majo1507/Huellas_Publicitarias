@@ -1,21 +1,48 @@
 // ============================================================
-// routes/disenos.js — Rutas de Diseños y Aprobación
+// routes/disenos.js — Rutas para el módulo de Archivos de Arte
 // ============================================================
 const express = require('express');
 const router = express.Router();
 const disenosController = require('../controllers/disenosController');
 const upload = require('../middleware/upload');
+const { verificarToken, verificarRol } = require('../middleware/auth');
 
-// GET /api/disenos/orden/:orden_id - Listar versiones de arte de una orden
-router.get('/orden/:orden_id', disenosController.listarVersionesPorOrden);
+router.get('/orden/:orden_id', verificarToken, disenosController.listarVersionesPorOrden);
 
-// POST /api/disenos/orden/:orden_id - Registrar nueva versión de arte
-router.post('/orden/:orden_id', disenosController.crearVersion);
+router.post(
+  '/orden/:orden_id',
+  verificarToken,
+  verificarRol('disenador', 'coord', 'gerente'),
+  disenosController.crearVersion
+);
 
-// PATCH /api/disenos/:id/aprobacion - Aprobar o rechazar un diseño
-router.patch('/:id/aprobacion', disenosController.aprobarORechazarDiseno);
+router.patch(
+  '/orden/:orden_id/enviar',
+  verificarToken,
+  verificarRol('disenador', 'coord', 'gerente'),
+  disenosController.enviarDiseno
+);
 
-// POST /api/disenos/upload/orden/:orden_id - Subir archivo físico y registrar versión
-router.post('/upload/orden/:orden_id', upload.single('archivo'), disenosController.subirArchivoVersion);
+router.patch(
+  '/orden/:orden_id/aprobacion',
+  verificarToken,
+  verificarRol('ejecutiva', 'coord', 'disenador', 'gerente', 'cliente'),
+  disenosController.aprobarORechazarDiseno
+);
+
+router.patch(
+  '/:id/aprobacion',
+  verificarToken,
+  verificarRol('ejecutiva', 'coord', 'disenador', 'gerente', 'cliente'),
+  disenosController.aprobarORechazarDiseno
+);
+
+router.post(
+  '/upload/orden/:orden_id',
+  verificarToken,
+  verificarRol('disenador', 'coord', 'gerente'),
+  upload.single('archivo'),
+  disenosController.subirArchivoVersion
+);
 
 module.exports = router;

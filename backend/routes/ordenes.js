@@ -1,20 +1,55 @@
 // ============================================================
-// routes/ordenes.js — Rutas del Flujo Productivo de Órdenes
+// routes/ordenes.js — Rutas para el módulo de Órdenes
 // ============================================================
 const express = require('express');
 const router = express.Router();
 const ordenesController = require('../controllers/ordenesController');
+const { verificarToken, verificarRol } = require('../middleware/auth');
 
-// GET /api/ordenes - Listar todas las órdenes con filtros
-router.get('/', ordenesController.listarOrdenes);
+router.get('/', verificarToken, ordenesController.listarOrdenes);
+router.get('/:id', verificarToken, ordenesController.obtenerOrdenPorId);
+router.get('/:id/historial', verificarToken, ordenesController.obtenerHistorialOrden);
 
-// GET /api/ordenes/:id - Detalle de una orden e historial
-router.get('/:id', ordenesController.obtenerOrdenPorId);
+router.post(
+  '/',
+  verificarToken,
+  verificarRol('ejecutiva', 'coord', 'gerente'),
+  ordenesController.crearOrden
+);
 
-// POST /api/ordenes - Crear una orden (transacción con auditoría inmutable)
-router.post('/', ordenesController.crearOrden);
+router.patch(
+  '/:id/etapa',
+  verificarToken,
+  verificarRol('ejecutiva', 'coord', 'produccion', 'disenador', 'postventa', 'gerente'),
+  ordenesController.actualizarEtapa
+);
 
-// PATCH /api/ordenes/:id/etapa - Avanzar etapa (con candado de calidad y descuento de insumos)
-router.patch('/:id/etapa', ordenesController.actualizarEtapa);
+router.post(
+  '/:id/entrega',
+  verificarToken,
+  verificarRol('ejecutiva', 'coord', 'produccion', 'postventa', 'gerente'),
+  ordenesController.registrarEntrega
+);
+
+router.post(
+  '/:id/cerrar',
+  verificarToken,
+  verificarRol('coord', 'postventa', 'ejecutiva', 'gerente'),
+  ordenesController.cerrarOrden
+);
+
+router.post(
+  '/:id/reabrir',
+  verificarToken,
+  verificarRol('coord', 'postventa', 'ejecutiva', 'gerente'),
+  ordenesController.reabrirOrden
+);
+
+router.post(
+  '/:id/clonar',
+  verificarToken,
+  verificarRol('coord', 'postventa', 'ejecutiva', 'gerente'),
+  ordenesController.clonarOrden
+);
 
 module.exports = router;

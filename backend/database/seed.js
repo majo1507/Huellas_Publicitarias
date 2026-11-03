@@ -2,6 +2,11 @@ const bcrypt = require('bcryptjs');
 const { pool } = require('../db');
 
 async function seed() {
+  if (process.env.ALLOW_DESTRUCTIVE_RESET !== 'true') {
+    console.error('🛑  PROTECCIÓN ACTIVA: seed.js contiene TRUNCATE CASCADE.');
+    console.error('    Usa "npm run seed:safe" para poblar datos de forma idempotente sin borrar información.');
+    process.exit(1);
+  }
   const client = await pool.connect();
   console.log('🌱  Iniciando proceso de poblamiento (Seed)...');
 

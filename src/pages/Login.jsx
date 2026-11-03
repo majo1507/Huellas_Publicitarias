@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Icon from '../components/Icon.jsx'
 import { ROLES } from '../data/roles.js'
+import { api } from '../services/api.js'
 import './Login.css'
 
 // Credenciales oficiales de prueba para el prototipo
@@ -139,42 +140,40 @@ export default function Login({ onLogin }) {
     return Object.keys(err).length === 0
   }
 
-  function ejecutarInicio(usuarioElegido, rolElegido) {
-    setCargando(true)
-    setErrorGlobal('')
-    setTimeout(() => {
-      setCargando(false)
-      onLogin(usuarioElegido, rolElegido)
-    }, 450)
-  }
-
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
     setErrorGlobal('')
     if (!validarCampos()) return
 
-    const cuenta = CUENTAS_DEMO.find(
-      (c) =>
-        (c.usuario.toLowerCase() === identificador.trim().toLowerCase() ||
-          c.nombre.toLowerCase() === identificador.trim().toLowerCase()) &&
-        c.clave === clave
-    )
-
-    if (!cuenta) {
-      setErrorGlobal('Credenciales incorrectas. Verifica tu usuario y contraseña, o utiliza uno de los accesos de prueba.')
-      return
+    setCargando(true)
+    try {
+      const res = await api.login({
+        identificador: identificador.trim(),
+        clave,
+      })
+      const usr = res?.usuario || {}
+      const rolUi = usr.rol || 'coordinador'
+      setRolActivo(rolUi)
+      setCargando(false)
+      onLogin(
+        {
+          id: usr.id,
+          dbId: usr.dbId,
+          nombre: usr.nombre,
+          correo: usr.correo || usr.email || identificador.trim(),
+          cargo: usr.cargo || ROLES[rolUi]?.usuario?.cargo || rolUi,
+          rol: rolUi,
+          rolBd: usr.rolBd,
+        },
+        rolUi
+      )
+    } catch (err) {
+      setCargando(false)
+      setErrorGlobal(
+        err.message ||
+          'Credenciales incorrectas. Verifica tu usuario y contraseña, o utiliza uno de los accesos de demostración.'
+      )
     }
-
-    setRolActivo(cuenta.rol)
-    ejecutarInicio(
-      {
-        nombre: cuenta.nombre,
-        correo: cuenta.usuario,
-        cargo: cuenta.cargo,
-        rol: cuenta.rol,
-      },
-      cuenta.rol
-    )
   }
 
   function handleAccesoRapido(cuenta) {
@@ -400,7 +399,7 @@ export default function Login({ onLogin }) {
               </div>
 
               <div className="orvex-demo-grid">
-                {CUENTAS_DEMO.map((cuenta, idx) => {
+                {CUENTAS_DEMO.map((cuenta) => {
                   const esCliente = cuenta.rol === 'cliente'
                   const inicial = cuenta.nombre.charAt(0)
                   const nombreRol = cuenta.rol.charAt(0).toUpperCase() + cuenta.rol.slice(1)

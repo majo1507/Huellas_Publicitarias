@@ -1,17 +1,15 @@
 // ============================================================
-// routes/usuarios.js — Rutas de Personal / Usuarios
+// routes/usuarios.js — Rutas para el módulo de Usuarios
 // ============================================================
 const express = require('express');
 const router = express.Router();
 const usuariosController = require('../controllers/usuariosController');
+const { verificarToken, verificarRol } = require('../middleware/auth');
 
-// GET /api/usuarios - Listar todos los usuarios activos
-router.get('/', usuariosController.listarUsuarios);
-
-// GET /api/usuarios/:id - Obtener un usuario por ID
-router.get('/:id', usuariosController.obtenerUsuarioPorId);
-
-// POST /api/usuarios - Crear un nuevo usuario
-router.post('/', usuariosController.crearUsuario);
+router.get('/', verificarToken, usuariosController.listarUsuarios);
+router.get('/:id', verificarToken, usuariosController.obtenerUsuarioPorId);
+router.post('/', verificarToken, verificarRol('gerente'), usuariosController.crearUsuario);
+router.patch('/:id', verificarToken, verificarRol('gerente'), usuariosController.actualizarUsuario);
+router.patch('/:id/estado', verificarToken, verificarRol('gerente'), usuariosController.cambiarEstadoUsuario);
 
 module.exports = router;

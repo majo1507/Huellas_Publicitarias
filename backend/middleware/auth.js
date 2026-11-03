@@ -3,6 +3,10 @@
 // ============================================================
 const jwt = require('jsonwebtoken');
 
+function getJwtSecret() {
+  return process.env.JWT_SECRET || 'orvex_huellas_jwt_secret_2026_enterprise_secure_key';
+}
+
 /**
  * Middleware para validar que la petición incluye un token Bearer válido
  */
@@ -18,7 +22,7 @@ function verificarToken(req, res, next) {
   const token = authHeader.split(' ')[1];
 
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET || 'huellas_default_secret');
+    const payload = jwt.verify(token, getJwtSecret());
     req.usuario = payload;
     next();
   } catch (error) {
@@ -31,7 +35,7 @@ function verificarToken(req, res, next) {
 
 /**
  * Middleware para restringir acceso según los roles permitidos
- * @param  {...string} rolesPermitidos - Ej: 'gerente', 'coord', 'ejecutiva'
+ * @param  {...string} rolesPermitidos - Ej: 'gerente', 'coord', 'ejecutiva', 'disenador', 'produccion', 'postventa'
  */
 function verificarRol(...rolesPermitidos) {
   return (req, res, next) => {
@@ -41,7 +45,8 @@ function verificarRol(...rolesPermitidos) {
 
     if (!rolesPermitidos.includes(req.usuario.rol)) {
       return res.status(403).json({
-        error: `Acceso denegado. Se requiere uno de los siguientes roles: ${rolesPermitidos.join(', ')}. Tu rol actual es: ${req.usuario.rol}`,
+        error: `Acceso denegado. Tu rol actual (${req.usuario.rol}) no tiene permisos para ejecutar esta operación.`,
+        roles_requeridos: rolesPermitidos,
       });
     }
 
@@ -50,6 +55,7 @@ function verificarRol(...rolesPermitidos) {
 }
 
 module.exports = {
+  getJwtSecret,
   verificarToken,
   verificarRol,
 };

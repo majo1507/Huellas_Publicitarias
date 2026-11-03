@@ -1,16 +1,20 @@
 {
   "name": "huellas-backend",
-  "version": "1.0.0",
-  "description": "Backend para el sistema empresarial Huellas con Express y PostgreSQL",
+  "version": "2.0.0",
+  "description": "Backend para el sistema empresarial ORVEX — Huellas Publicidad con Express y PostgreSQL",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
+    "migrate:safe": "node database/migrate-safe.js",
+    "seed:safe": "node database/seed-safe.js",
+    "test:integration": "node tests/integration.test.mjs",
     "migrate": "node database/migrate.js",
     "seed": "node database/seed.js"
   },
   "keywords": [
     "huellas",
+    "orvex",
     "backend",
     "express",
     "postgresql"
