@@ -199,9 +199,10 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
       actions?.notify?.(`Descargando archivo ${f.nombre}...`, 'exito')
       return
     }
-    // Si es un documento técnico de la orden, descargamos el reporte PDF oficial de la orden
-    generarReporteOrdenPDF(order, data)
-    actions?.notify?.(`Documento PDF de ${order.id} descargado.`, 'exito')
+    if (role === 'coordinador') {
+      generarReporteOrdenPDF(order, data)
+      actions?.notify?.(`Reporte de orden ${order.id} (PDF) descargado.`, 'exito')
+    }
   }
 
   const datosGenerales = [
@@ -314,16 +315,18 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
 
   const accionesCabecera = (
     <div className="row" style={{ gap: '8px', flexWrap: 'wrap' }}>
-      <button
-        className="btn btn-soft"
-        onClick={() => {
-          generarReporteOrdenPDF(order, data)
-          actions?.notify?.(`Reporte PDF de ${order.id} descargado con éxito.`, 'exito')
-        }}
-        title="Descargar reporte oficial en PDF de esta orden"
-      >
-        <Icon nombre="download" tamano={15} /> Descargar PDF
-      </button>
+      {role === 'coordinador' && (
+        <button
+          className="btn btn-soft"
+          onClick={() => {
+            generarReporteOrdenPDF(order, data)
+            actions?.notify?.(`Reporte de orden ${order.id} (PDF) descargado.`, 'exito')
+          }}
+          title="Descargar reporte de orden de producción en PDF"
+        >
+          <Icon nombre="download" tamano={15} /> Reporte de orden (PDF)
+        </button>
+      )}
       {esCliente && order.disenoEstado === 'Enviado' && (
         <button className="btn btn-success" onClick={() => irA('aprobacion', order.id)}>
           <Icon nombre="check-circle" tamano={16} /> Revisar y aprobar diseño
@@ -855,9 +858,11 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
                       <Icon nombre="eye" tamano={12} /> Ver
                     </button>
                   )}
-                  <button type="button" className="btn btn-soft btn-sm" onClick={() => descargarArchivoAdjunto(f)}>
-                    <Icon nombre="download" tamano={12} /> Descargar
-                  </button>
+                  {(f.dataUrl || role === 'coordinador') && (
+                    <button type="button" className="btn btn-soft btn-sm" onClick={() => descargarArchivoAdjunto(f)}>
+                      <Icon nombre="download" tamano={12} /> Descargar
+                    </button>
+                  )}
                 </div>
               </div>
             ))}

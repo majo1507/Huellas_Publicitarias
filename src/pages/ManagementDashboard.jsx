@@ -6,11 +6,13 @@ import DonutChart from '../components/DonutChart.jsx'
 import ColumnChart from '../components/ColumnChart.jsx'
 import Alert from '../components/Alert.jsx'
 import ActivityFeed from '../components/ActivityFeed.jsx'
+import Icon from '../components/Icon.jsx'
 import { ETAPAS, TIEMPO_PROMEDIO_ETAPA, OPERARIOS } from '../data/mockData.js'
 import { estaActiva, estaRetrasada, serieSemanal } from '../utils/format.js'
+import { generarReporteGeneralPDF } from '../utils/pdfReport.js'
 
 // GERENCIA: indicadores generales con gráficos sencillos
-export default function ManagementDashboard({ data, irA }) {
+export default function ManagementDashboard({ data, actions, irA }) {
   const activas = data.orders.filter(estaActiva)
   const entregadas = data.orders.length - activas.length
   const retrasadas = activas.filter(estaRetrasada).length
@@ -26,8 +28,27 @@ export default function ManagementDashboard({ data, irA }) {
 
   return (
     <div>
-      <PageHeader titulo="Resumen general" subtitulo="Indicadores de las órdenes de producción de Huellas Publicidad." icono="home"
-        acciones={<button className="btn btn-primary" onClick={() => irA('reportes')}>Ver reportes detallados</button>} />
+      <PageHeader
+        titulo="Resumen general"
+        subtitulo="Indicadores de las órdenes de producción de Huellas Publicidad."
+        icono="home"
+        acciones={
+          <div className="row" style={{ gap: '8px', flexWrap: 'wrap' }}>
+            <button
+              className="btn btn-soft"
+              onClick={() => {
+                generarReporteGeneralPDF(data)
+                actions?.notify?.('Reporte general de producción y presupuesto (PDF) descargado.', 'exito')
+              }}
+            >
+              <Icon nombre="download" tamano={15} /> Reporte general y presupuesto (PDF)
+            </button>
+            <button className="btn btn-primary" onClick={() => irA('reportes')}>
+              Ver reportes detallados
+            </button>
+          </div>
+        }
+      />
 
       <div className="kpis">
         <StatCard titulo="Total de órdenes" valor={data.orders.length} icono="clipboard" />

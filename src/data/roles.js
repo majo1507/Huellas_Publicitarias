@@ -57,7 +57,6 @@ export const ROLES = {
       { grupo: 'Producción', page: 'tareas', label: 'Actividades', icono: 'list' },
       { grupo: 'Producción', page: 'inventario', label: 'Inventario e insumos', icono: 'package' },
       { grupo: 'Producción', page: 'entregas', label: 'Entregas', icono: 'truck' },
-      { grupo: 'Análisis', page: 'reportes', label: 'Reportes y PDF', icono: 'bar-chart' },
     ],
     notificaciones: [
       { texto: '2 órdenes están retrasadas.', page: 'pedidos', tipo: 'error' },

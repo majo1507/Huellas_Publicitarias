@@ -6,7 +6,7 @@ import Avatar from '../components/Avatar.jsx'
 import Icon from '../components/Icon.jsx'
 import { ETAPAS } from '../data/mockData.js'
 import { estaActiva, estaRetrasada, estaEnRiesgo, prioridadOrden, textoPlazo, formatoCOP } from '../utils/format.js'
-import { generarReporteOrdenPDF, generarReporteGeneralPDF } from '../utils/pdfReport.js'
+import { generarReporteOrdenPDF } from '../utils/pdfReport.js'
 
 // Listado de órdenes. Comercial, coordinador y postventa la usan con pequeñas diferencias.
 export default function Orders({ data, actions, irA, role }) {
@@ -52,16 +52,18 @@ export default function Orders({ data, actions, irA, role }) {
           <button className="btn btn-soft btn-sm" onClick={() => irA('detalle', o.id)}>
             <Icon nombre="eye" tamano={14} /> Ver pedido
           </button>
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={() => {
-              generarReporteOrdenPDF(o, data)
-              actions?.notify?.(`Reporte PDF de ${o.id} descargado.`, 'exito')
-            }}
-            title={`Descargar reporte PDF de ${o.id}`}
-          >
-            <Icon nombre="download" tamano={14} /> PDF
-          </button>
+          {role === 'coordinador' && (
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => {
+                generarReporteOrdenPDF(o, data)
+                actions?.notify?.(`Reporte de orden ${o.id} (PDF) descargado.`, 'exito')
+              }}
+              title={`Descargar reporte PDF de ${o.id}`}
+            >
+              <Icon nombre="download" tamano={14} /> PDF
+            </button>
+          )}
         </div>
       ),
     },
@@ -74,22 +76,11 @@ export default function Orders({ data, actions, irA, role }) {
         subtitulo={`${base.length} órdenes. Consulta su prioridad, responsable, presupuesto y plazo de entrega.`}
         icono="clipboard"
         acciones={
-          <div className="row" style={{ gap: '8px' }}>
-            <button
-              className="btn btn-soft"
-              onClick={() => {
-                generarReporteGeneralPDF(data)
-                actions?.notify?.('Reporte general PDF descargado.', 'exito')
-              }}
-            >
-              <Icon nombre="download" tamano={15} /> Reporte PDF general
+          role === 'comercial' && (
+            <button className="btn btn-primary" onClick={() => irA('nuevo')}>
+              <Icon nombre="plus" tamano={16} /> Registrar solicitud
             </button>
-            {role === 'comercial' && (
-              <button className="btn btn-primary" onClick={() => irA('nuevo')}>
-                <Icon nombre="plus" tamano={16} /> Registrar solicitud
-              </button>
-            )}
-          </div>
+          )
         }
       />
 

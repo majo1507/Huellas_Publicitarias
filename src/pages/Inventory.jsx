@@ -7,7 +7,7 @@ import StatusBadge from '../components/StatusBadge.jsx'
 import Alert from '../components/Alert.jsx'
 import Icon from '../components/Icon.jsx'
 import { formatoCOP } from '../utils/format.js'
-import { generarReporteGeneralPDF } from '../utils/pdfReport.js'
+import { generarReporteInventarioPDF } from '../utils/pdfReport.js'
 
 const CATEGORIAS_MATERIAL = [
   'Sustratos gran formato',
@@ -49,7 +49,7 @@ const FORM_MOVIMIENTO_VACIO = {
   observacion: '',
 }
 
-export default function Inventory({ data, actions, irA }) {
+export default function Inventory({ data, actions, irA, role }) {
   const [tab, setTab] = useState('materiales') // 'materiales' | 'proveedores' | 'movimientos'
   const [modalMaterial, setModalMaterial] = useState(false)
   const [modalProveedor, setModalProveedor] = useState(false)
@@ -359,15 +359,17 @@ export default function Inventory({ data, actions, irA }) {
         icono="package"
         acciones={
           <div className="row" style={{ gap: '8px', flexWrap: 'wrap' }}>
-            <button
-              className="btn btn-soft"
-              onClick={() => {
-                generarReporteGeneralPDF(data)
-                actions.notify('Reporte PDF de producción e inventario descargado.', 'exito')
-              }}
-            >
-              <Icon nombre="download" tamano={15} /> Reporte PDF
-            </button>
+            {role === 'coordinador' && (
+              <button
+                className="btn btn-soft"
+                onClick={() => {
+                  generarReporteInventarioPDF(data)
+                  actions.notify('Reporte de inventario (PDF) descargado.', 'exito')
+                }}
+              >
+                <Icon nombre="download" tamano={15} /> Reporte de inventario (PDF)
+              </button>
+            )}
             <button
               className="btn"
               onClick={() => {

@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import PageHeader from '../components/PageHeader.jsx'
 import Panel from '../components/Panel.jsx'
 import StatCard from '../components/StatCard.jsx'
@@ -8,18 +7,15 @@ import DonutChart from '../components/DonutChart.jsx'
 import DataTable from '../components/DataTable.jsx'
 import Icon from '../components/Icon.jsx'
 import { estaActiva, estaRetrasada, estaEnRiesgo, formatoCOP, textoPlazo } from '../utils/format.js'
-import { generarReporteOrdenPDF, generarReporteGeneralPDF } from '../utils/pdfReport.js'
+import { generarReporteGeneralPDF } from '../utils/pdfReport.js'
 
-export default function Reports({ data, actions, irA }) {
-  const [ordenSeleccionadaId, setOrdenSeleccionadaId] = useState(() => data.orders[0]?.id || '')
-
+export default function Reports({ data, actions, irA, role }) {
   const activas = data.orders.filter(estaActiva)
   const problemas = activas
     .filter((o) => estaRetrasada(o) || estaEnRiesgo(o))
     .map((o) => ({ ...o, alerta: estaRetrasada(o) ? 'Retrasada' : 'En riesgo' }))
 
   const facturado = data.orders.reduce((s, o) => s + (Number(o.presupuesto) || 0), 0)
-  const costoInternoTotal = data.orders.reduce((s, o) => s + (Number(o.costoInterno) || 0), 0)
 
   // Metas vs Tiempos reales por etapa (en días)
   const comparativaMetas = [
@@ -71,100 +67,27 @@ export default function Reports({ data, actions, irA }) {
       ),
     },
     { clave: 'alerta', titulo: 'Severidad', render: (o) => <StatusBadge estado={o.alerta} /> },
-    {
-      clave: 'pdf',
-      titulo: 'Reporte PDF',
-      render: (o) => (
-        <button
-          className="btn btn-soft btn-sm"
-          onClick={() => {
-            generarReporteOrdenPDF(o, data)
-            actions?.notify?.(`Reporte PDF de ${o.id} descargado.`, 'exito')
-          }}
-        >
-          <Icon nombre="download" tamano={13} /> PDF
-        </button>
-      ),
-    },
   ]
-
-  function handleDescargarOrdenSeleccionada() {
-    const ord = data.orders.find((o) => o.id === ordenSeleccionadaId) || data.orders[0]
-    if (!ord) return
-    generarReporteOrdenPDF(ord, data)
-    actions?.notify?.(`Reporte PDF de la orden ${ord.id} descargado con éxito.`, 'exito')
-  }
 
   function handleDescargarReporteGeneral() {
     generarReporteGeneralPDF(data)
-    actions?.notify?.('Reporte general PDF de producción e inventario descargado con éxito.', 'exito')
+    actions?.notify?.('Reporte general de producción y presupuesto (PDF) descargado.', 'exito')
   }
 
   return (
     <div>
       <PageHeader
-        titulo="Reportes ejecutivos, producción y exportación PDF"
-        subtitulo="Cifras de cumplimiento, costos, inventario y generación de reportes oficiales en PDF de ORVEX — Huellas Publicidad."
+        titulo="Reportes ejecutivos y desempeño"
+        subtitulo="Cifras de cumplimiento, cuellos de botella y presupuesto general de ORVEX — Huellas Publicidad."
         icono="bar-chart"
         acciones={
-          <button className="btn btn-primary" onClick={handleDescargarReporteGeneral}>
-            <Icon nombre="download" tamano={16} /> Descargar reporte general PDF
-          </button>
+          role === 'gerencia' && (
+            <button className="btn btn-primary" onClick={handleDescargarReporteGeneral}>
+              <Icon nombre="download" tamano={16} /> Reporte general y presupuesto (PDF)
+            </button>
+          )
         }
       />
-
-      {/* CENTRO DE EXPORTACIÓN DE REPORTES EN PDF */}
-      <Panel
-        etiqueta="CENTRO DE DOCUMENTACIÓN OFICIAL"
-        titulo="Generación y descarga de reportes en PDF"
-        subtitulo="Genera reportes individuales por orden de producción o el informe consolidado de planta e inventario."
-        icono="file-text"
-        style={{ marginBottom: '22px' }}
-      >
-        <div className="grid-2" style={{ alignItems: 'center' }}>
-          <div className="card p" style={{ background: 'var(--bg-subtle)' }}>
-            <div className="row" style={{ justifyContent: 'space-between', marginBottom: '6px' }}>
-              <strong>Reporte individual de Orden de Producción (PDF)</strong>
-              <span className="pill">Ficha completa</span>
-            </div>
-            <p className="sm mut" style={{ marginBottom: '12px' }}>
-              Incluye logo ORVEX, número de reporte, cliente, responsables asignados, actividades, materiales utilizados, costos, presupuesto, fechas, observaciones y firmas.
-            </p>
-            <div className="row" style={{ gap: '8px', flexWrap: 'wrap' }}>
-              <select
-                value={ordenSeleccionadaId}
-                onChange={(e) => setOrdenSeleccionadaId(e.target.value)}
-                style={{ flex: 1, minWidth: '220px' }}
-                aria-label="Seleccionar orden para PDF"
-              >
-                {data.orders.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.id} · {o.cliente} — {o.producto} ({o.estado})
-                  </option>
-                ))}
-              </select>
-              <button className="btn btn-primary" onClick={handleDescargarOrdenSeleccionada}>
-                <Icon nombre="download" tamano={15} /> Generar PDF de orden
-              </button>
-            </div>
-          </div>
-
-          <div className="card p" style={{ background: 'var(--bg-subtle)' }}>
-            <div className="row" style={{ justifyContent: 'space-between', marginBottom: '6px' }}>
-              <strong>Reporte general de Producción, Costos e Inventario (PDF)</strong>
-              <span className="pill">Consolidado</span>
-            </div>
-            <p className="sm mut" style={{ marginBottom: '12px' }}>
-              Incluye resumen ejecutivo de todas las órdenes ({data.orders.length}), estado de planta, presupuesto consolidado ({formatoCOP(facturado)}), costos internos ({formatoCOP(costoInternoTotal)}), existencias de inventario y alertas de stock.
-            </p>
-            <div className="row" style={{ justifyContent: 'flex-end' }}>
-              <button className="btn btn-soft" onClick={handleDescargarReporteGeneral}>
-                <Icon nombre="download" tamano={15} /> Descargar reporte general PDF
-              </button>
-            </div>
-          </div>
-        </div>
-      </Panel>
 
       {/* Tarjetas ejecutivas */}
       <div className="kpis">
