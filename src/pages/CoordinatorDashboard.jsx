@@ -24,7 +24,7 @@ import {
   formatoCOP,
   progreso,
 } from '../utils/format.js'
-import { generarReporteOrdenPDF, generarReporteResponsablesPDF, generarReporteInventarioPDF } from '../utils/pdfReport.js'
+import { generarReporteOrdenPDF, generarReporteInventarioPDF } from '../utils/pdfReport.js'
 
 // COORDINADOR DE PRODUCCIÓN: control general, asignación de responsables, plazos, presupuesto e inventario
 export default function CoordinatorDashboard({ data, actions, irA }) {
@@ -179,20 +179,11 @@ export default function CoordinatorDashboard({ data, actions, irA }) {
             <button
               className="btn btn-soft"
               onClick={() => {
-                generarReporteResponsablesPDF(data)
-                actions?.notify?.('Reporte de asignación de responsables (PDF) descargado.', 'exito')
-              }}
-            >
-              <Icon nombre="download" tamano={16} /> Reporte de responsables (PDF)
-            </button>
-            <button
-              className="btn btn-soft"
-              onClick={() => {
                 generarReporteInventarioPDF(data)
-                actions?.notify?.('Reporte de inventario (PDF) descargado.', 'exito')
+                actions?.notify?.('Informe de inventario y materiales (PDF) descargado.', 'exito')
               }}
             >
-              <Icon nombre="download" tamano={16} /> Reporte de inventario (PDF)
+              <Icon nombre="download" tamano={16} /> Informe de inventario (PDF)
             </button>
             <button className="btn btn-primary" onClick={() => irA('produccion')}>
               <Icon nombre="columns" tamano={16} /> Tablero de producción

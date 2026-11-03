@@ -197,11 +197,6 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
       link.click()
       document.body.removeChild(link)
       actions?.notify?.(`Descargando archivo ${f.nombre}...`, 'exito')
-      return
-    }
-    if (role === 'coordinador') {
-      generarReporteOrdenPDF(order, data)
-      actions?.notify?.(`Reporte de orden ${order.id} (PDF) descargado.`, 'exito')
     }
   }
 
@@ -320,11 +315,11 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
           className="btn btn-soft"
           onClick={() => {
             generarReporteOrdenPDF(order, data)
-            actions?.notify?.(`Reporte de orden ${order.id} (PDF) descargado.`, 'exito')
+            actions?.notify?.(`Orden de producción ${order.id} (PDF) descargada.`, 'exito')
           }}
-          title="Descargar reporte de orden de producción en PDF"
+          title="Descargar documento de orden de producción en PDF"
         >
-          <Icon nombre="download" tamano={15} /> Reporte de orden (PDF)
+          <Icon nombre="download" tamano={15} /> Orden de producción (PDF)
         </button>
       )}
       {esCliente && order.disenoEstado === 'Enviado' && (
@@ -854,14 +849,14 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
                 <div className="sm mut">{f.tipo} · {f.fecha}</div>
                 <div className="row" style={{ gap: '6px', marginTop: '8px' }}>
                   {f.dataUrl && (
-                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => setArchivoPreview(f)}>
-                      <Icon nombre="eye" tamano={12} /> Ver
-                    </button>
-                  )}
-                  {(f.dataUrl || role === 'coordinador') && (
-                    <button type="button" className="btn btn-soft btn-sm" onClick={() => descargarArchivoAdjunto(f)}>
-                      <Icon nombre="download" tamano={12} /> Descargar
-                    </button>
+                    <>
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setArchivoPreview(f)}>
+                        <Icon nombre="eye" tamano={12} /> Ver
+                      </button>
+                      <button type="button" className="btn btn-soft btn-sm" onClick={() => descargarArchivoAdjunto(f)}>
+                        <Icon nombre="download" tamano={12} /> Descargar
+                      </button>
+                    </>
                   )}
                 </div>
               </div>

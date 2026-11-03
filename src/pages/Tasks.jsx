@@ -9,7 +9,6 @@ import Icon from '../components/Icon.jsx'
 import { OPERARIOS } from '../data/mockData.js'
 import { ROLES } from '../data/roles.js'
 import { estaActiva } from '../utils/format.js'
-import { generarReporteResponsablesPDF } from '../utils/pdfReport.js'
 
 export default function Tasks({ data, actions, irA, role }) {
   const [pestaña, setPestaña] = useState('todas')
@@ -222,22 +221,9 @@ export default function Tasks({ data, actions, irA, role }) {
         icono="list"
         acciones={
           puedeReasignar && (
-            <div className="row" style={{ gap: '8px', flexWrap: 'wrap' }}>
-              {role === 'coordinador' && (
-                <button
-                  className="btn btn-soft"
-                  onClick={() => {
-                    generarReporteResponsablesPDF(data)
-                    actions?.notify?.('Reporte de asignación de responsables (PDF) descargado.', 'exito')
-                  }}
-                >
-                  <Icon nombre="download" tamano={15} /> Reporte de responsables (PDF)
-                </button>
-              )}
-              <button className="btn btn-primary" onClick={abrirModalNuevaActividad}>
-                <Icon nombre="plus" tamano={15} /> Asignar nueva actividad
-              </button>
-            </div>
+            <button className="btn btn-primary" onClick={abrirModalNuevaActividad}>
+              <Icon nombre="plus" tamano={15} /> Asignar nueva actividad
+            </button>
           )
         }
       />

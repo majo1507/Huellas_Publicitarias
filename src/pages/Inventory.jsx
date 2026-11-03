@@ -364,10 +364,10 @@ export default function Inventory({ data, actions, irA, role }) {
                 className="btn btn-soft"
                 onClick={() => {
                   generarReporteInventarioPDF(data)
-                  actions.notify('Reporte de inventario (PDF) descargado.', 'exito')
+                  actions.notify('Informe de inventario y materiales (PDF) descargado.', 'exito')
                 }}
               >
-                <Icon nombre="download" tamano={15} /> Reporte de inventario (PDF)
+                <Icon nombre="download" tamano={15} /> Informe de inventario (PDF)
               </button>
             )}
             <button

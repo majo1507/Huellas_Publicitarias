@@ -1,10 +1,52 @@
 // ============================================================================
 // Generador minimalista de reportes PDF nativos (PDF 1.4 estándar, sin librerías externas)
-// Diseño sobrio: fondo blanco, sin logos ni elementos decorativos, tipografía legible,
-// acento azul institucional discreto y tablas limpias con información puntual.
+// Tres documentos administrativos oficiales con datos reales de ORVEX:
+// 1. Orden de producción (Coordinador)
+// 2. Informe de inventario y materiales (Coordinador)
+// 3. Informe de gestión de producción por periodo (Gerencia)
 // ============================================================================
 
-import { formatoCOP, formatearFecha, formatearHora, progreso, estaActiva } from './format.js'
+import {
+  formatoCOP,
+  formatearFecha,
+  formatearHora,
+  parseFecha,
+  FECHA_DEMO,
+  estaActiva,
+  estaRetrasada,
+} from './format.js'
+
+export const PERIODOS_GESTION = [
+  { id: 'todo', label: 'Todo el registro histórico' },
+  { id: 'ultimos_7', label: 'Últimos 7 días' },
+  { id: 'ultimos_15', label: 'Últimos 15 días' },
+  { id: 'octubre_2026', label: 'Octubre 2026' },
+  { id: 'septiembre_2026', label: 'Septiembre 2026' },
+]
+
+export function filtrarOrdenesPorPeriodo(orders = [], periodo = 'todo') {
+  if (!periodo || periodo === 'todo') return orders
+  const DIA_MS = 86400000
+
+  return orders.filter((o) => {
+    const f = parseFecha(o.fechaSolicitud)
+    if (periodo === 'ultimos_7') {
+      const diff = (FECHA_DEMO - f) / DIA_MS
+      return diff >= -365 && diff <= 7
+    }
+    if (periodo === 'ultimos_15') {
+      const diff = (FECHA_DEMO - f) / DIA_MS
+      return diff >= -365 && diff <= 15
+    }
+    if (periodo === 'octubre_2026') {
+      return f.getMonth() === 9 && f.getFullYear() === 2026
+    }
+    if (periodo === 'septiembre_2026') {
+      return f.getMonth() === 8 && f.getFullYear() === 2026
+    }
+    return true
+  })
+}
 
 const WIN1252_EXT = {
   0x20ac: 128, 0x201a: 130, 0x0192: 131, 0x201e: 132, 0x2026: 133,
@@ -41,12 +83,12 @@ function truncar(texto, maxLen) {
   return s.slice(0, Math.max(1, maxLen - 1)).trim() + '…'
 }
 
-// Paleta sobria e institucional sobre fondo blanco
+// Paleta minimalista en fondo blanco
 const COLOR_AZUL = [0.11, 0.31, 0.65]       // Azul institucional discreto (#1C4FA6)
 const COLOR_TEXTO = [0.12, 0.16, 0.22]      // Gris carbón legible (#1E2938)
 const COLOR_SUB = [0.42, 0.47, 0.55]        // Gris secundario (#6B788C)
 const COLOR_BORDE = [0.85, 0.88, 0.92]      // Línea divisoria sutil (#D9E0EB)
-const COLOR_CABECERA = [0.95, 0.97, 0.99]   // Fondo muy tenue para encabezado de tabla
+const COLOR_CABECERA = [0.96, 0.97, 0.99]   // Gris/azul muy tenue para encabezado de tabla
 
 class MinimalPdfBuilder {
   constructor() {
@@ -71,10 +113,9 @@ class MinimalPdfBuilder {
   addPage() {
     this.currentCmds = []
     this.pages.push(this.currentCmds)
-    // Fondo blanco limpio con encabezado sobrio sin logotipo
     this.y = this.height - this.margin
 
-    // Título principal a la izquierda y fecha a la derecha
+    // Título sobrio sin logotipo ni bloques decorativos
     this.text(this.margin, this.y, this.meta.titulo, {
       size: 13,
       bold: true,
@@ -96,9 +137,8 @@ class MinimalPdfBuilder {
       this.y -= 10
     }
 
-    // Línea de acento azul institucional discreta
-    this.line(this.margin, this.y, this.width - this.margin, this.y, ...COLOR_AZUL, 1)
-    this.y -= 20
+    this.line(this.margin, this.y, this.width - this.margin, this.y, ...COLOR_AZUL, 0.9)
+    this.y -= 18
   }
 
   ensureSpace(neededHeight) {
@@ -127,25 +167,24 @@ class MinimalPdfBuilder {
   }
 
   drawSectionTitle(titulo) {
-    this.ensureSpace(34)
-    this.y -= 4
+    this.ensureSpace(32)
+    this.y -= 2
     this.text(this.margin, this.y, titulo, {
-      size: 10,
+      size: 9.5,
       bold: true,
       color: COLOR_AZUL,
     })
-    this.y -= 6
+    this.y -= 5
     this.line(this.margin, this.y, this.width - this.margin, this.y, ...COLOR_BORDE, 0.6)
     this.y -= 12
   }
 
-  // Tabla de pares Clave / Valor en 2 columnas limpias
   drawKeyValueTable(pairs) {
     const contentW = this.width - this.margin * 2
     const colW = contentW / 2
     const rowH = 18
     const rows = Math.ceil(pairs.length / 2)
-    this.ensureSpace(rows * rowH + 12)
+    this.ensureSpace(rows * rowH + 10)
 
     this.line(this.margin, this.y + 4, this.width - this.margin, this.y + 4, ...COLOR_BORDE, 0.5)
 
@@ -161,12 +200,12 @@ class MinimalPdfBuilder {
           size: 8.5,
           bold: true,
           color: COLOR_SUB,
-          maxLen: 24,
+          maxLen: 25,
         })
-        this.text(x + 108, rowBottom + 5, String(item[1] ?? '—'), {
+        this.text(x + 112, rowBottom + 5, String(item[1] ?? '—'), {
           size: 8.5,
           color: COLOR_TEXTO,
-          maxLen: 32,
+          maxLen: 31,
         })
       }
 
@@ -174,14 +213,13 @@ class MinimalPdfBuilder {
       this.y -= rowH
     }
 
-    this.y -= 12
+    this.y -= 10
   }
 
-  // Tabla tabular limpia y minimalista
   drawTable(columns, rows) {
     const contentW = this.width - this.margin * 2
-    const headH = 20
-    const rowH = 18
+    const headH = 19
+    const rowH = 17
 
     this.ensureSpace(headH + rowH + 10)
 
@@ -189,13 +227,13 @@ class MinimalPdfBuilder {
       const top = this.y + 4
       const bottom = top - headH
       this.rectFill(this.margin, bottom, contentW, headH, ...COLOR_CABECERA)
-      this.line(this.margin, top, this.width - this.margin, top, ...COLOR_AZUL, 0.7)
+      this.line(this.margin, top, this.width - this.margin, top, ...COLOR_AZUL, 0.6)
       this.line(this.margin, bottom, this.width - this.margin, bottom, ...COLOR_BORDE, 0.6)
 
-      let cx = this.margin + 6
+      let cx = this.margin + 5
       columns.forEach((col) => {
-        this.text(cx, bottom + 6, col.title, {
-          size: 8.5,
+        this.text(cx, bottom + 5, col.title, {
+          size: 8,
           bold: true,
           color: COLOR_AZUL,
           maxLen: col.maxLen || 28,
@@ -209,12 +247,12 @@ class MinimalPdfBuilder {
 
     if (!rows || rows.length === 0) {
       const bottom = this.y + 4 - rowH
-      this.text(this.margin + 6, bottom + 5, 'Sin registros para mostrar.', {
-        size: 8.5,
+      this.text(this.margin + 5, bottom + 5, 'Sin registros en este apartado.', {
+        size: 8,
         color: COLOR_SUB,
       })
       this.line(this.margin, bottom, this.width - this.margin, bottom, ...COLOR_BORDE, 0.4)
-      this.y -= rowH + 12
+      this.y -= rowH + 10
       return
     }
 
@@ -225,15 +263,15 @@ class MinimalPdfBuilder {
       }
       const top = this.y + 4
       const bottom = top - rowH
-      let cx = this.margin + 6
+      let cx = this.margin + 5
 
       columns.forEach((col) => {
         const val = r[col.key] ?? '—'
         this.text(cx, bottom + 5, String(val), {
-          size: 8.5,
+          size: 8,
           bold: Boolean(col.bold),
           color: COLOR_TEXTO,
-          maxLen: col.maxLen || Math.max(8, Math.floor(col.width / 4.8)),
+          maxLen: col.maxLen || Math.max(8, Math.floor(col.width / 4.6)),
         })
         cx += col.width
       })
@@ -242,23 +280,7 @@ class MinimalPdfBuilder {
       this.y -= rowH
     })
 
-    this.y -= 12
-  }
-
-  drawNote(label, texto) {
-    if (!texto) return
-    this.ensureSpace(26)
-    this.text(this.margin, this.y, `${label}: `, {
-      size: 8.5,
-      bold: true,
-      color: COLOR_SUB,
-    })
-    this.text(this.margin + (label.length + 2) * 4.5, this.y, String(texto), {
-      size: 8.5,
-      color: COLOR_TEXTO,
-      maxLen: 95,
-    })
-    this.y -= 14
+    this.y -= 10
   }
 
   drawFooters() {
@@ -267,7 +289,7 @@ class MinimalPdfBuilder {
       this.currentCmds = cmds
       const fy = 32
       this.line(this.margin, fy + 10, this.width - this.margin, fy + 10, ...COLOR_BORDE, 0.5)
-      this.text(this.margin, fy, 'Huellas Publicidad · Documento interno', {
+      this.text(this.margin, fy, 'Huellas Publicidad · Documento administrativo interno', {
         size: 7.5,
         color: COLOR_SUB,
       })
@@ -342,250 +364,222 @@ export function descargarBytesPDF(bytes, filename) {
 }
 
 // ============================================================================
-// 1. COORDINADOR: Reporte de orden de producción
+// 1. COORDINADOR: Orden de producción
+// Información esencial de la orden: especificaciones, cantidad, responsables, fechas y estado.
 // ============================================================================
-export function generarReporteOrdenPDF(order, data = {}, options = {}) {
+export function generarReporteOrdenPDF(order, _data = {}, options = {}) {
   if (!order) return null
-  const tasks = (data.tasks || []).filter((t) => t.ordenId === order.id)
-  const avance = progreso(order)
-
-  const costoActividades = tasks.length * 45000
-  const costoMaterialBase = Math.round((Number(order.presupuesto) || 0) * 0.42)
-  const costoEstimado = order.costoInterno || order.costoEstimado || costoMaterialBase + costoActividades
 
   const pdf = new MinimalPdfBuilder()
   pdf.initDocument({
-    titulo: `Reporte de Orden de Producción — ${order.id}`,
-    subtitulo: `${order.cliente || 'Cliente'} · ${order.producto || 'Producto'}`,
+    titulo: `Orden de Producción — ${order.id}`,
+    subtitulo: `Cliente: ${order.cliente || '—'} · Estado: ${order.estado || '—'}`,
   })
 
-  pdf.drawSectionTitle('1. Información de la orden')
+  pdf.drawSectionTitle('1. Datos generales, fechas y responsables')
   pdf.drawKeyValueTable([
     ['Código de orden', order.id],
-    ['Estado actual', `${order.estado} (${avance}%)`],
-    ['Cliente', order.cliente],
-    ['Prioridad', order.prioridad || 'Media'],
-    ['Producto', order.producto],
-    ['Cantidad', order.cantidad || '—'],
-    ['Material', order.material || '—'],
-    ['Dimensiones', order.dimensiones || '—'],
-    ['Fecha de inicio', order.fechaSolicitud || '—'],
+    ['Estado actual', order.estado || '—'],
+    ['Cliente', order.cliente || '—'],
+    ['Estado de diseño', order.disenoEstado || '—'],
+    ['Fecha de solicitud', order.fechaSolicitud || '—'],
     ['Fecha de entrega', order.fechaEntrega || '—'],
-    ['Diseñador(a)', order.disenador || 'Por asignar'],
-    ['Responsable planta', order.operario || 'Por asignar'],
-    ['Presupuesto orden', formatoCOP(order.presupuesto || 0)],
-    ['Costo estimado', formatoCOP(costoEstimado)],
+    ['Diseñador(a) asignado(a)', order.disenador || 'Por asignar'],
+    ['Responsable producción', order.responsable || 'Por asignar'],
+    ['Método de entrega', order.entrega?.metodo || '—'],
+    ['Contacto recepción', order.entrega?.contacto || order.cliente || '—'],
+    ['Presupuesto registrado', formatoCOP(Number(order.presupuesto || 0))],
+    ['Costo registrado', order.costoInterno !== undefined ? formatoCOP(Number(order.costoInterno || 0)) : '—'],
   ])
 
-  if (order.observaciones) {
-    pdf.drawNote('Especificaciones técnicas', order.observaciones)
+  pdf.drawSectionTitle('2. Especificaciones del producto')
+  pdf.drawTable(
+    [
+      { key: 'producto', title: 'Producto', width: 135, maxLen: 26, bold: true },
+      { key: 'cantidad', title: 'Cantidad', width: 58, maxLen: 12 },
+      { key: 'material', title: 'Material', width: 95, maxLen: 18 },
+      { key: 'dimensiones', title: 'Dimensiones', width: 78, maxLen: 15 },
+      { key: 'colores', title: 'Colores', width: 75, maxLen: 15 },
+      { key: 'acabados', title: 'Acabados', width: 75, maxLen: 15 },
+    ],
+    [
+      {
+        producto: order.producto || '—',
+        cantidad: `${order.cantidad || 0} uds`,
+        material: order.material || '—',
+        dimensiones: order.dimensiones || '—',
+        colores: order.colores || '—',
+        acabados: order.acabados || '—',
+      },
+    ]
+  )
+
+  const detallesAdicionales = []
+  if (order.requerimientos) detallesAdicionales.push(['Requerimientos técnicos', order.requerimientos])
+  if (order.observaciones) detallesAdicionales.push(['Observaciones', order.observaciones])
+  if (order.entrega?.direccion) detallesAdicionales.push(['Dirección de entrega', order.entrega.direccion])
+
+  if (detallesAdicionales.length > 0) {
+    pdf.drawSectionTitle('3. Requerimientos y observaciones registradas')
+    pdf.drawTable(
+      [
+        { key: 'concepto', title: 'Concepto', width: 140, maxLen: 26, bold: true },
+        { key: 'detalle', title: 'Detalle registrado', width: 376, maxLen: 78 },
+      ],
+      detallesAdicionales.map(([concepto, detalle]) => ({ concepto, detalle }))
+    )
   }
 
-  pdf.drawSectionTitle('2. Actividades y responsables asignados')
-  pdf.drawTable(
-    [
-      { key: 'actividad', title: 'Actividad', width: 175, maxLen: 34, bold: true },
-      { key: 'etapa', title: 'Etapa', width: 75, maxLen: 14 },
-      { key: 'responsable', title: 'Responsable', width: 115, maxLen: 22 },
-      { key: 'fechaLimite', title: 'Fecha límite', width: 75, maxLen: 14 },
-      { key: 'estado', title: 'Estado', width: 76, maxLen: 14 },
-    ],
-    tasks.map((t) => ({
-      actividad: t.actividad,
-      etapa: t.etapa || 'Taller',
-      responsable: t.responsable || 'Sin asignar',
-      fechaLimite: t.fechaLimite || order.fechaEntrega || '—',
-      estado: t.estado,
-    }))
-  )
-
   const bytes = pdf.buildBytes()
-  const filename = `Reporte_Orden_${order.id}.pdf`
+  const filename = `Orden_Produccion_${order.id}.pdf`
   if (options.skipDownload) return { filename, bytes }
   return descargarBytesPDF(bytes, filename)
 }
 
 // ============================================================================
-// 2. COORDINADOR: Reporte de asignación de responsables
-// ============================================================================
-export function generarReporteResponsablesPDF(data = {}, options = {}) {
-  const orders = data.orders || []
-  const tasks = data.tasks || []
-  const activas = orders.filter(estaActiva)
-
-  const pdf = new MinimalPdfBuilder()
-  pdf.initDocument({
-    titulo: 'Reporte de Asignación de Responsables',
-    subtitulo: 'Coordinación de Producción · Responsables por orden y actividades de taller',
-  })
-
-  pdf.drawSectionTitle('1. Responsables asignados por orden activa')
-  pdf.drawTable(
-    [
-      { key: 'id', title: 'Orden', width: 72, maxLen: 14, bold: true },
-      { key: 'cliente', title: 'Cliente', width: 100, maxLen: 19 },
-      { key: 'producto', title: 'Producto', width: 108, maxLen: 21 },
-      { key: 'estado', title: 'Etapa', width: 58, maxLen: 11 },
-      { key: 'disenador', title: 'Diseñador(a)', width: 88, maxLen: 17 },
-      { key: 'operario', title: 'Operario planta', width: 90, maxLen: 17 },
-    ],
-    activas.map((o) => ({
-      id: o.id,
-      cliente: o.cliente,
-      producto: o.producto,
-      estado: o.estado,
-      disenador: o.disenador || 'Por asignar',
-      operario: o.operario || 'Por asignar',
-    }))
-  )
-
-  pdf.drawSectionTitle('2. Actividades de taller y responsables')
-  pdf.drawTable(
-    [
-      { key: 'ordenId', title: 'Orden', width: 72, maxLen: 14, bold: true },
-      { key: 'actividad', title: 'Actividad', width: 156, maxLen: 30 },
-      { key: 'etapa', title: 'Etapa', width: 68, maxLen: 12 },
-      { key: 'responsable', title: 'Responsable', width: 100, maxLen: 19 },
-      { key: 'fechaLimite', title: 'Vencimiento', width: 62, maxLen: 12 },
-      { key: 'estado', title: 'Estado', width: 58, maxLen: 12 },
-    ],
-    tasks.map((t) => ({
-      ordenId: t.ordenId,
-      actividad: t.actividad,
-      etapa: t.etapa || 'Taller',
-      responsable: t.responsable || 'Sin asignar',
-      fechaLimite: t.fechaLimite || '—',
-      estado: t.estado,
-    }))
-  )
-
-  const bytes = pdf.buildBytes()
-  const filename = 'Reporte_Asignacion_Responsables.pdf'
-  if (options.skipDownload) return { filename, bytes }
-  return descargarBytesPDF(bytes, filename)
-}
-
-// ============================================================================
-// 3. COORDINADOR: Reporte de inventario
+// 2. COORDINADOR: Informe de inventario y materiales
+// Existencias actuales, materiales con stock bajo o agotados y necesidades de reposición.
 // ============================================================================
 export function generarReporteInventarioPDF(data = {}, options = {}) {
   const inventory = data.inventory || []
-  const suppliers = data.suppliers || []
+  const criticos = inventory.filter((m) => Number(m.stockActual || 0) <= Number(m.stockMinimo || 0))
 
   const pdf = new MinimalPdfBuilder()
   pdf.initDocument({
-    titulo: 'Reporte de Inventario de Materiales',
-    subtitulo: 'Existencias disponibles, consumo acumulado y proveedores asociados',
+    titulo: 'Informe de Inventario y Materiales',
+    subtitulo: `Materiales registrados: ${inventory.length} · En nivel crítico o agotados: ${criticos.length}`,
   })
 
-  pdf.drawSectionTitle('1. Existencias de materiales e insumos')
+  pdf.drawSectionTitle('1. Existencias actuales de materiales')
   pdf.drawTable(
     [
-      { key: 'id', title: 'Código', width: 56, maxLen: 10, bold: true },
-      { key: 'nombre', title: 'Material', width: 146, maxLen: 28 },
-      { key: 'categoria', title: 'Categoría', width: 72, maxLen: 14 },
-      { key: 'disponible', title: 'Disponible', width: 64, maxLen: 12 },
-      { key: 'utilizado', title: 'Utilizado', width: 60, maxLen: 12 },
-      { key: 'costo', title: 'Costo unit.', width: 64, maxLen: 13 },
-      { key: 'estado', title: 'Estado', width: 54, maxLen: 11 },
+      { key: 'id', title: 'Código', width: 52, maxLen: 10, bold: true },
+      { key: 'nombre', title: 'Material', width: 148, maxLen: 29 },
+      { key: 'categoria', title: 'Categoría', width: 92, maxLen: 18 },
+      { key: 'actual', title: 'Existencia', width: 64, maxLen: 13 },
+      { key: 'minimo', title: 'Stock mín.', width: 60, maxLen: 12 },
+      { key: 'costo', title: 'Costo unit.', width: 52, maxLen: 12 },
+      { key: 'estado', title: 'Estado', width: 48, maxLen: 10 },
     ],
     inventory.map((m) => {
       const actual = Number(m.stockActual || 0)
       const min = Number(m.stockMinimo || 0)
-      const estado = actual === 0 ? 'Agotado' : actual <= min ? 'Bajo stock' : 'Disponible'
+      const estado = actual <= 0 ? 'Agotado' : actual <= min ? 'Stock bajo' : 'Normal'
       return {
         id: m.id,
         nombre: m.nombre,
-        categoria: m.categoria,
-        disponible: `${actual} ${m.unidad || ''}`.trim(),
-        utilizado: `${Number(m.cantidadUtilizada || 0)} ${m.unidad || ''}`.trim(),
-        costo: formatoCOP(m.costoUnitario || 0),
+        categoria: m.categoria || '—',
+        actual: `${actual} ${m.unidad || ''}`.trim(),
+        minimo: `${min} ${m.unidad || ''}`.trim(),
+        costo: formatoCOP(Number(m.costoUnitario || 0)),
         estado,
       }
     })
   )
 
-  if (suppliers.length > 0) {
-    pdf.drawSectionTitle('2. Proveedores registrados')
-    pdf.drawTable(
-      [
-        { key: 'nombre', title: 'Proveedor', width: 120, maxLen: 22, bold: true },
-        { key: 'contacto', title: 'Contacto', width: 95, maxLen: 18 },
-        { key: 'telefono', title: 'Teléfono', width: 85, maxLen: 16 },
-        { key: 'productos', title: 'Insumos suministrados', width: 216, maxLen: 42 },
-      ],
-      suppliers.map((p) => ({
-        nombre: p.nombre,
-        contacto: p.contacto || '—',
-        telefono: p.telefono || '—',
-        productos: Array.isArray(p.productos) ? p.productos.join(', ') : (p.productos || '—'),
-      }))
-    )
-  }
+  pdf.drawSectionTitle('2. Materiales con stock bajo o agotados y necesidades de reposición')
+  pdf.drawTable(
+    [
+      { key: 'id', title: 'Código', width: 52, maxLen: 10, bold: true },
+      { key: 'nombre', title: 'Material en alerta', width: 138, maxLen: 27 },
+      { key: 'actual', title: 'Actual', width: 58, maxLen: 12 },
+      { key: 'minimo', title: 'Mínimo', width: 58, maxLen: 12 },
+      { key: 'reponer', title: 'Por reponer', width: 68, maxLen: 14, bold: true },
+      { key: 'proveedor', title: 'Proveedor asignado', width: 142, maxLen: 28 },
+    ],
+    criticos.map((m) => {
+      const actual = Number(m.stockActual || 0)
+      const min = Number(m.stockMinimo || 0)
+      const faltante = Math.max(1, min - actual)
+      return {
+        id: m.id,
+        nombre: m.nombre,
+        actual: `${actual} ${m.unidad || ''}`.trim(),
+        minimo: `${min} ${m.unidad || ''}`.trim(),
+        reponer: `${faltante} ${m.unidad || ''}`.trim(),
+        proveedor: m.proveedor || '—',
+      }
+    })
+  )
 
   const bytes = pdf.buildBytes()
-  const filename = 'Reporte_Inventario_Materiales.pdf'
+  const filename = 'Informe_Inventario_Materiales.pdf'
   if (options.skipDownload) return { filename, bytes }
   return descargarBytesPDF(bytes, filename)
 }
 
 // ============================================================================
-// 4. GERENCIA: Reporte general de producción y presupuesto
+// 3. GERENCIA: Informe de gestión de producción (con selección de periodo)
+// Órdenes recibidas, terminadas, pendientes y retrasadas, cumplimiento de entregas
+// y comparación entre presupuesto y costos registrados.
 // ============================================================================
-export function generarReporteGeneralPDF(data = {}, options = {}) {
-  const orders = data.orders || []
-  const tasks = data.tasks || []
-  const activas = orders.filter(estaActiva)
-  const cerradas = orders.filter((o) => o.estado === 'Entrega' || o.estado === 'Cerrada')
+export function generarInformeGestionPDF(data = {}, options = {}) {
+  const periodoId = options.periodo || 'todo'
+  const periodoObj = PERIODOS_GESTION.find((p) => p.id === periodoId) || PERIODOS_GESTION[0]
+  const ordenes = filtrarOrdenesPorPeriodo(data.orders || [], periodoObj.id)
 
-  const presupuestoTotal = orders.reduce((acc, o) => acc + Number(o.presupuesto || 0), 0)
-  const calcularCostoOrden = (o) => {
-    const numTareas = tasks.filter((t) => t.ordenId === o.id).length
-    return o.costoInterno || o.costoEstimado || Math.round(Number(o.presupuesto || 0) * 0.42 + numTareas * 45000)
-  }
-  const costoTotal = orders.reduce((acc, o) => acc + calcularCostoOrden(o), 0)
-  const margenEstimado = Math.max(0, presupuestoTotal - costoTotal)
+  const recibidas = ordenes.length
+  const terminadas = ordenes.filter((o) => !estaActiva(o))
+  const pendientes = ordenes.filter(estaActiva)
+  const retrasadas = ordenes.filter(estaRetrasada)
+
+  // Cumplimiento de entregas sobre las órdenes del periodo (órdenes sin retraso / total)
+  const enPlazo = Math.max(0, recibidas - retrasadas.length)
+  const cumplimientoPct = recibidas > 0 ? Math.round((enPlazo / recibidas) * 100) : 100
+
+  // Comparación estrictamente con presupuesto y costoInterno registrados en ORVEX
+  const presupuestoTotal = ordenes.reduce((acc, o) => acc + Number(o.presupuesto || 0), 0)
+  const costoTotal = ordenes.reduce((acc, o) => acc + Number(o.costoInterno || 0), 0)
+  const diferenciaTotal = presupuestoTotal - costoTotal
 
   const pdf = new MinimalPdfBuilder()
   pdf.initDocument({
-    titulo: 'Reporte General de Producción y Presupuesto',
-    subtitulo: 'Gerencia · Consolidado operativo y financiero de órdenes de producción',
+    titulo: 'Informe de Gestión de Producción',
+    subtitulo: `Periodo: ${periodoObj.label}`,
   })
 
-  pdf.drawSectionTitle('1. Resumen general y presupuestal')
+  pdf.drawSectionTitle('1. Balance de órdenes y cumplimiento de entregas')
   pdf.drawKeyValueTable([
-    ['Total de órdenes', `${orders.length} registradas`],
-    ['Órdenes en producción', `${activas.length} activas`],
-    ['Órdenes entregadas / cerradas', `${cerradas.length} completadas`],
-    ['Presupuesto total acumulado', formatoCOP(presupuestoTotal)],
-    ['Costo interno estimado', formatoCOP(costoTotal)],
-    ['Margen operativo estimado', formatoCOP(margenEstimado)],
+    ['Periodo evaluado', periodoObj.label],
+    ['Órdenes recibidas', `${recibidas}`],
+    ['Órdenes terminadas / entregadas', `${terminadas.length}`],
+    ['Órdenes pendientes (en curso)', `${pendientes.length}`],
+    ['Órdenes retrasadas', `${retrasadas.length}`],
+    ['Cumplimiento de entregas', `${cumplimientoPct}% (${enPlazo} de ${recibidas} en plazo)`],
+    ['Presupuesto total registrado', formatoCOP(presupuestoTotal)],
+    ['Costos registrados', formatoCOP(costoTotal)],
+    ['Diferencia presupuesto vs. costo', formatoCOP(diferenciaTotal)],
   ])
 
-  pdf.drawSectionTitle('2. Detalle de órdenes y presupuesto')
+  pdf.drawSectionTitle('2. Detalle de órdenes, presupuesto y costos registrados')
   pdf.drawTable(
     [
-      { key: 'id', title: 'Orden', width: 70, maxLen: 14, bold: true },
-      { key: 'cliente', title: 'Cliente', width: 96, maxLen: 18 },
-      { key: 'producto', title: 'Producto', width: 108, maxLen: 21 },
-      { key: 'estado', title: 'Estado', width: 58, maxLen: 11 },
-      { key: 'entrega', title: 'Entrega', width: 56, maxLen: 11 },
-      { key: 'presupuesto', title: 'Presupuesto', width: 64, maxLen: 13 },
-      { key: 'costo', title: 'Costo est.', width: 64, maxLen: 13 },
+      { key: 'id', title: 'Orden', width: 66, maxLen: 13, bold: true },
+      { key: 'cliente', title: 'Cliente', width: 92, maxLen: 18 },
+      { key: 'producto', title: 'Producto', width: 100, maxLen: 19 },
+      { key: 'solicitud', title: 'Recibida', width: 52, maxLen: 10 },
+      { key: 'entrega', title: 'Entrega', width: 52, maxLen: 10 },
+      { key: 'estado', title: 'Estado', width: 54, maxLen: 11 },
+      { key: 'presupuesto', title: 'Presupuesto', width: 50, maxLen: 12 },
+      { key: 'costo', title: 'Costo reg.', width: 50, maxLen: 12 },
     ],
-    orders.map((o) => ({
+    ordenes.map((o) => ({
       id: o.id,
-      cliente: o.cliente,
-      producto: o.producto,
-      estado: o.estado,
+      cliente: o.cliente || '—',
+      producto: o.producto || '—',
+      solicitud: o.fechaSolicitud || '—',
       entrega: o.fechaEntrega || '—',
-      presupuesto: formatoCOP(o.presupuesto || 0),
-      costo: formatoCOP(calcularCostoOrden(o)),
+      estado: estaRetrasada(o) ? 'Retrasada' : o.estado,
+      presupuesto: formatoCOP(Number(o.presupuesto || 0)),
+      costo: formatoCOP(Number(o.costoInterno || 0)),
     }))
   )
 
   const bytes = pdf.buildBytes()
-  const filename = 'Reporte_General_Produccion_Presupuesto.pdf'
+  const filename = `Informe_Gestion_Produccion_${periodoObj.id}.pdf`
   if (options.skipDownload) return { filename, bytes }
   return descargarBytesPDF(bytes, filename)
 }
+
+// Alias de compatibilidad
+export const generarReporteGeneralPDF = generarInformeGestionPDF

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import PageHeader from '../components/PageHeader.jsx'
 import Panel from '../components/Panel.jsx'
 import StatCard from '../components/StatCard.jsx'
@@ -9,10 +10,12 @@ import ActivityFeed from '../components/ActivityFeed.jsx'
 import Icon from '../components/Icon.jsx'
 import { ETAPAS, TIEMPO_PROMEDIO_ETAPA, OPERARIOS } from '../data/mockData.js'
 import { estaActiva, estaRetrasada, serieSemanal } from '../utils/format.js'
-import { generarReporteGeneralPDF } from '../utils/pdfReport.js'
+import { generarInformeGestionPDF, PERIODOS_GESTION } from '../utils/pdfReport.js'
 
-// GERENCIA: indicadores generales con gráficos sencillos
+// GERENCIA: indicadores generales con gráficos sencillos e Informe de Gestión de Producción por periodo
 export default function ManagementDashboard({ data, actions, irA }) {
+  const [periodoReporte, setPeriodoReporte] = useState('todo')
+
   const activas = data.orders.filter(estaActiva)
   const entregadas = data.orders.length - activas.length
   const retrasadas = activas.filter(estaRetrasada).length
@@ -34,14 +37,27 @@ export default function ManagementDashboard({ data, actions, irA }) {
         icono="home"
         acciones={
           <div className="row" style={{ gap: '8px', flexWrap: 'wrap' }}>
+            <select
+              className="inline-select"
+              value={periodoReporte}
+              onChange={(e) => setPeriodoReporte(e.target.value)}
+              aria-label="Seleccionar periodo del informe de gestión"
+              style={{ height: '36px' }}
+            >
+              {PERIODOS_GESTION.map((p) => (
+                <option key={p.id} value={p.id}>
+                  Periodo: {p.label}
+                </option>
+              ))}
+            </select>
             <button
               className="btn btn-soft"
               onClick={() => {
-                generarReporteGeneralPDF(data)
-                actions?.notify?.('Reporte general de producción y presupuesto (PDF) descargado.', 'exito')
+                generarInformeGestionPDF(data, { periodo: periodoReporte })
+                actions?.notify?.('Informe de gestión de producción (PDF) descargado.', 'exito')
               }}
             >
-              <Icon nombre="download" tamano={15} /> Reporte general y presupuesto (PDF)
+              <Icon nombre="download" tamano={15} /> Informe de gestión (PDF)
             </button>
             <button className="btn btn-primary" onClick={() => irA('reportes')}>
               Ver reportes detallados

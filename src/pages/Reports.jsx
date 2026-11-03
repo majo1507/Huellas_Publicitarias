@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import PageHeader from '../components/PageHeader.jsx'
 import Panel from '../components/Panel.jsx'
 import StatCard from '../components/StatCard.jsx'
@@ -7,15 +8,18 @@ import DonutChart from '../components/DonutChart.jsx'
 import DataTable from '../components/DataTable.jsx'
 import Icon from '../components/Icon.jsx'
 import { estaActiva, estaRetrasada, estaEnRiesgo, formatoCOP, textoPlazo } from '../utils/format.js'
-import { generarReporteGeneralPDF } from '../utils/pdfReport.js'
+import { generarInformeGestionPDF, PERIODOS_GESTION, filtrarOrdenesPorPeriodo } from '../utils/pdfReport.js'
 
 export default function Reports({ data, actions, irA, role }) {
-  const activas = data.orders.filter(estaActiva)
+  const [periodo, setPeriodo] = useState('todo')
+
+  const ordenesPeriodo = filtrarOrdenesPorPeriodo(data.orders, periodo)
+  const activas = ordenesPeriodo.filter(estaActiva)
   const problemas = activas
     .filter((o) => estaRetrasada(o) || estaEnRiesgo(o))
     .map((o) => ({ ...o, alerta: estaRetrasada(o) ? 'Retrasada' : 'En riesgo' }))
 
-  const facturado = data.orders.reduce((s, o) => s + (Number(o.presupuesto) || 0), 0)
+  const facturado = ordenesPeriodo.reduce((s, o) => s + (Number(o.presupuesto) || 0), 0)
 
   // Metas vs Tiempos reales por etapa (en días)
   const comparativaMetas = [
@@ -69,9 +73,9 @@ export default function Reports({ data, actions, irA, role }) {
     { clave: 'alerta', titulo: 'Severidad', render: (o) => <StatusBadge estado={o.alerta} /> },
   ]
 
-  function handleDescargarReporteGeneral() {
-    generarReporteGeneralPDF(data)
-    actions?.notify?.('Reporte general de producción y presupuesto (PDF) descargado.', 'exito')
+  function handleDescargarInformeGestion() {
+    generarInformeGestionPDF(data, { periodo })
+    actions?.notify?.('Informe de gestión de producción (PDF) descargado.', 'exito')
   }
 
   return (
@@ -82,9 +86,24 @@ export default function Reports({ data, actions, irA, role }) {
         icono="bar-chart"
         acciones={
           role === 'gerencia' && (
-            <button className="btn btn-primary" onClick={handleDescargarReporteGeneral}>
-              <Icon nombre="download" tamano={16} /> Reporte general y presupuesto (PDF)
-            </button>
+            <div className="row" style={{ gap: '8px', flexWrap: 'wrap' }}>
+              <select
+                className="inline-select"
+                value={periodo}
+                onChange={(e) => setPeriodo(e.target.value)}
+                aria-label="Seleccionar periodo del informe de gestión"
+                style={{ height: '36px' }}
+              >
+                {PERIODOS_GESTION.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    Periodo: {p.label}
+                  </option>
+                ))}
+              </select>
+              <button className="btn btn-primary" onClick={handleDescargarInformeGestion}>
+                <Icon nombre="download" tamano={16} /> Informe de gestión (PDF)
+              </button>
+            </div>
           )
         }
       />
