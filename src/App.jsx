@@ -278,6 +278,23 @@ export default function App() {
       })
   }
 
+  // ---------------- Gestión de clientes ----------------
+  async function addClient(nuevo) {
+    try {
+      const res = await api.crearCliente(nuevo)
+      const creado = res?.data || {
+        id: `C${clients.length + 1}`,
+        ...nuevo,
+      }
+      setClients((prev) => [...prev.filter((c) => c.id !== creado.id), creado])
+      notify(`Cliente ${creado.nombre} registrado con éxito.`, 'exito')
+      return creado
+    } catch (err) {
+      notify(err.message || 'No se pudo registrar el cliente.', 'error')
+      throw err
+    }
+  }
+
   const selectedOrder = orders.find((o) => o.id === page.orderId)
   const tituloMenu = ROLES[role]?.menu.find((m) => m.page === page.name)?.label || 'Módulo'
 
@@ -686,6 +703,7 @@ export default function App() {
     addUser,
     updateUser,
     toggleUserStatus,
+    addClient,
     notify,
   }
 
@@ -701,7 +719,7 @@ export default function App() {
       case 'solicitudes':
         return <Requests {...props} />
       case 'nuevo':
-        return <NewOrder clients={clients} onSubmit={addRequest} irA={irA} />
+        return <NewOrder clients={clients} onSubmit={addRequest} irA={irA} clienteInicialId={page.orderId} />
       case 'clientes':
         return <Clients {...props} />
       case 'pedidos':

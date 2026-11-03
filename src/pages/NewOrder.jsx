@@ -41,8 +41,11 @@ function validar(f) {
 }
 
 // Formulario para registrar una solicitud de cliente (la usa Comercial / Recepción)
-export default function NewOrder({ clients, onSubmit, irA }) {
-  const [form, setForm] = useState(formVacio)
+export default function NewOrder({ clients, onSubmit, irA, clienteInicialId }) {
+  const [form, setForm] = useState(() => ({
+    ...formVacio,
+    clienteId: clienteInicialId && clients.some((c) => c.id === clienteInicialId) ? clienteInicialId : '',
+  }))
   const [errores, setErrores] = useState({})
   const [confirmar, setConfirmar] = useState(false)
 

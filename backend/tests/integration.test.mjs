@@ -193,12 +193,39 @@ async function runTests() {
     assert.equal(loginInactive.status, 403, 'Usuario inactivo no puede iniciar sesión (403)');
     console.log('  ✅ 4. Autorización por rol (403), CRUD de usuarios y bloqueo de cuenta inactiva verificados.');
 
-    // 5. Flujo completo Solicitud -> Validación -> Orden -> Candado de Diseño -> Aprobación -> Producción -> Entrega -> Postventa -> Cierre
+    // 5. Registro de nuevo cliente por Comercial -> Consulta -> Selección en nueva solicitud -> Validación -> Orden
+    const uniqueNit = `901.${Date.now().toString().slice(-6)}-8`;
+    const createdClient = await req('/clientes', {
+      method: 'POST',
+      token: tokenComercial,
+      body: {
+        nombre: 'Editorial Aurora S.A.S.',
+        nit: uniqueNit,
+        contacto: 'Valeria Gómez',
+        correo: 'valeria@editorialaurora.co',
+        telefono: '310 456 7890',
+        ciudad: 'Bogotá',
+        direccion: 'Cra 15 # 93-40 Of. 302',
+      },
+    });
+    assert.equal(createdClient.status, 201, 'Comercial registra nuevo cliente en PostgreSQL');
+    const nuevoCliente = createdClient.data.data;
+    assert.equal(nuevoCliente.nombre, 'Editorial Aurora S.A.S.');
+    assert.equal(nuevoCliente.contacto, 'Valeria Gómez');
+    assert.ok(nuevoCliente.id.startsWith('C'), 'El nuevo cliente recibe código secuencial C#');
+
+    const clientesList = await req('/clientes', { token: tokenComercial });
+    assert.equal(clientesList.status, 200);
+    const encontradoEnLista = clientesList.data.data.find((c) => c.id === nuevoCliente.id);
+    assert.ok(encontradoEnLista, 'El nuevo cliente debe aparecer en el listado GET /api/clientes');
+    assert.equal(encontradoEnLista.nombre, 'Editorial Aurora S.A.S.');
+
     const createSol = await req('/solicitudes', {
       method: 'POST',
       token: tokenComercial,
       body: {
-        clienteId: 'C1',
+        clienteId: nuevoCliente.id,
+        cliente: nuevoCliente.nombre,
         producto: 'Backing corporativo feria 3x2m',
         cantidad: 2,
         dimensiones: '3m x 2m',
@@ -209,8 +236,10 @@ async function runTests() {
         observaciones: 'Urgente para evento corporativo.',
       },
     });
-    assert.equal(createSol.status, 201, 'Comercial crea solicitud');
+    assert.equal(createSol.status, 201, 'Comercial crea solicitud seleccionando el nuevo cliente');
     const solId = createSol.data.data.id;
+    assert.equal(createSol.data.data.clienteId, nuevoCliente.id);
+    assert.equal(createSol.data.data.cliente, 'Editorial Aurora S.A.S.');
     assert.equal(createSol.data.data.estado, 'Pendiente');
 
     const sendSol = await req(`/solicitudes/${solId}/enviar`, {

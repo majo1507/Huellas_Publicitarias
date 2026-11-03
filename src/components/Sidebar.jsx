@@ -71,16 +71,6 @@ export default function Sidebar({ role, current, irA, onChangeRole, abierto, col
               <small>{usuario.cargo}</small>
             </div>
           </div>
-          <label className="role-select" title={`Cambiar rol activo (${rolConfig.nombre})`}>
-            <span className="sr-only">Vista actual (rol)</span>
-            <div className="role-select-box">
-              <Icon nombre="users" tamano={15} />
-              <select value={rolClave} onChange={(e) => onChangeRole(e.target.value)} aria-label="Vista actual (rol)">
-                {LISTA_ROLES.map((r) => <option key={r.id} value={r.id}>{r.nombre}</option>)}
-              </select>
-              <Icon nombre="chevron-down" tamano={15} />
-            </div>
-          </label>
         </section>
 
         <nav>

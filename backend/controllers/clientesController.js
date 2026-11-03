@@ -45,7 +45,7 @@ const listarClientes = async (_req, res) => {
         u.nombre_completo AS ejecutiva_nombre
       FROM clientes c
       INNER JOIN usuarios u ON c.ejecutiva_id = u.id
-      ORDER BY COALESCE(c.codigo, c.empresa) ASC
+      ORDER BY NULLIF(regexp_replace(c.codigo, '[^0-9]', '', 'g'), '')::int ASC NULLS LAST, c.created_at ASC
     `);
 
     res.json({
@@ -100,8 +100,11 @@ const crearCliente = async (req, res) => {
       ejec = await obtenerUsuarioPorDefecto(pool, 'ejecutiva');
     }
 
-    const countRes = await pool.query('SELECT COUNT(*)::int AS total FROM clientes');
-    const codigo = req.body.codigo || `C${countRes.rows[0].total + 1}`;
+    const seqRes = await pool.query(`
+      SELECT COALESCE(MAX(NULLIF(regexp_replace(codigo, '[^0-9]', '', 'g'), '')::int), COUNT(*)::int) AS max_num
+      FROM clientes
+    `);
+    const codigo = req.body.codigo || `C${(seqRes.rows[0]?.max_num || 0) + 1}`;
 
     const result = await pool.query(
       `INSERT INTO clientes (codigo, empresa, nit, contacto_principal, telefono, correo, direccion, ciudad, ejecutiva_id, estado)
@@ -123,7 +126,10 @@ const crearCliente = async (req, res) => {
 
     res.status(201).json({
       message: 'Cliente creado exitosamente.',
-      data: formatearCliente(result.rows[0]),
+      data: formatearCliente({
+        ...result.rows[0],
+        ejecutiva_nombre: ejec.nombre_completo,
+      }),
     });
   } catch (error) {
     console.error('clientesController.crearCliente error:', error.message);
