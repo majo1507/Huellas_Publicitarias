@@ -184,3 +184,9 @@ export const LISTA_ROLES = [
   ROLES.postventa,
   ROLES.gerencia,
 ]
+
+export const CLIENTE_ACTUAL = {
+  id: ROLES.cliente.clienteId || 'C1',
+  empresa: ROLES.cliente.usuario.cargo || 'Empresa ABC',
+  nombre: ROLES.cliente.usuario.nombre || 'Laura Gómez',
+}

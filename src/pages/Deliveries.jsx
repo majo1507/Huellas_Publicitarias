@@ -7,6 +7,7 @@ import Avatar from '../components/Avatar.jsx'
 import Icon from '../components/Icon.jsx'
 import Modal from '../components/Modal.jsx'
 import { diasParaEntrega, textoPlazo, parseFecha, FECHA_DEMO, estaRetrasada, formatearFecha, formatearHora } from '../utils/format.js'
+import { TIPOS_DOCUMENTO } from '../data/catalogos.js'
 
 // Módulo de Despachos y Entregas (HU-17)
 export default function Deliveries({ data, actions, irA, role }) {
@@ -16,6 +17,7 @@ export default function Deliveries({ data, actions, irA, role }) {
 
   // Campos de recepción y entrega (HU-17)
   const [quienRecibe, setQuienRecibe] = useState('')
+  const [tipoDocumentoRecibe, setTipoDocumentoRecibe] = useState('CC')
   const [documentoRecibe, setDocumentoRecibe] = useState('')
   const [cargoRecibe, setCargoRecibe] = useState('Recepción / Almacén')
   const [telefonoRecibe, setTelefonoRecibe] = useState('')
@@ -51,7 +53,8 @@ export default function Deliveries({ data, actions, irA, role }) {
   function abrirRegistrarEntrega(o) {
     setModalEntrega(o)
     setQuienRecibe(o.entrega?.contacto || o.cliente)
-    setDocumentoRecibe(o.entrega?.documento || '')
+    setTipoDocumentoRecibe(o.entrega?.tipoDocumento || 'CC')
+    setDocumentoRecibe(o.entrega?.documento ? o.entrega.documento.replace(/^(CC|CE|NIT|RUT|PAS)\s*/i, '') : '')
     setCargoRecibe(o.entrega?.cargo || 'Recepción / Almacén')
     setTelefonoRecibe(o.entrega?.telefono || '')
     setFechaEntregaReal(`${formatearFecha()} ${formatearHora()}`)
@@ -105,7 +108,8 @@ export default function Deliveries({ data, actions, irA, role }) {
 
     const datosEntrega = {
       contacto: quienRecibe.trim(),
-      documento: documentoRecibe.trim(),
+      tipoDocumento: tipoDocumentoRecibe,
+      documento: `${tipoDocumentoRecibe} ${documentoRecibe.trim()}`,
       cargo: cargoRecibe.trim(),
       telefono: telefonoRecibe.trim(),
       fechaReal: fechaEntregaReal,
@@ -395,7 +399,22 @@ export default function Deliveries({ data, actions, irA, role }) {
                 </div>
 
                 <div className="field">
-                  <label className="field-label" htmlFor="recibeDoc">Cédula / NIT de quien recibe *</label>
+                  <label className="field-label" htmlFor="recibeTipoDoc">Tipo de documento *</label>
+                  <select
+                    id="recibeTipoDoc"
+                    value={tipoDocumentoRecibe}
+                    onChange={(e) => setTipoDocumentoRecibe(e.target.value)}
+                  >
+                    {TIPOS_DOCUMENTO.map((td) => (
+                      <option key={td.codigo} value={td.codigo}>
+                        {td.codigo} — {td.label.split('—')[1]?.trim() || td.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="field">
+                  <label className="field-label" htmlFor="recibeDoc">Número de documento ({tipoDocumentoRecibe}) *</label>
                   <input
                     id="recibeDoc"
                     value={documentoRecibe}

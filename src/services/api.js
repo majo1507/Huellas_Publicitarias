@@ -54,12 +54,73 @@ export function leerEstadoDemo() {
       ...t,
     }))
 
+    const clientsRaw = Array.isArray(parsed.clients) && parsed.clients.length ? parsed.clients : base.clients
+    const clientsFinal = clientsRaw.map((c) => {
+      const ref = base.clients.find((b) => b.id === c.id) || {}
+      const ciudad = c.municipio || c.ciudad || ref.ciudad || 'Bogotá'
+      return {
+        tipoDocumento: 'NIT',
+        nit: ref.nit || '900.000.000-1',
+        tipoCliente: 'Persona Jurídica (Empresa)',
+        pais: 'Colombia',
+        departamento: ciudad === 'Medellín' ? 'Antioquia' : ciudad === 'Cali' ? 'Valle del Cauca' : 'Bogotá D.C.',
+        municipio: ciudad,
+        ciudad,
+        ...ref,
+        ...c,
+      }
+    })
+
+    const casesRaw = Array.isArray(parsed.cases) && parsed.cases.length ? parsed.cases : base.cases
+    // Si el almacenamiento previo no tenía casos categorizados (Satisfacción / Garantía / PQRSF), usar la nueva base enriquecida conservando registros nuevos
+    const tieneNuevasCategorias = casesRaw.some((c) => c.categoria === 'Satisfacción' || String(c.id).startsWith('GAR-'))
+    const casesCombinados = tieneNuevasCategorias
+      ? casesRaw
+      : [
+          ...base.cases,
+          ...casesRaw.filter((c) => !base.cases.some((b) => b.id === c.id) && !/^PV-00[1-8]$/.test(String(c.id))),
+        ]
+    const casesFinal = casesCombinados.map((c) => {
+      const cat =
+        c.categoria ||
+        (c.tipo === 'Garantía' ? 'Garantía' : c.tipo === 'Satisfacción' ? 'Satisfacción' : 'PQRSF')
+      const sub = c.subtipo || c.tipo || (cat === 'Garantía' ? 'Garantía' : cat === 'Satisfacción' ? 'Satisfacción' : 'Reclamo')
+      return {
+        categoria: cat,
+        subtipo: sub,
+        tipo: c.tipo || sub,
+        motivo: c.motivo || (cat === 'Garantía' ? 'Incumplimiento de las especificaciones acordadas' : sub),
+        prioridad: c.prioridad || 'Media',
+        dictamenGarantia: c.dictamenGarantia || (cat === 'Garantía' ? 'Pendiente de evaluación' : ''),
+        justificacionDictamen: c.justificacionDictamen || '',
+        accionCorrectiva: c.accionCorrectiva || '',
+        seguimiento: c.seguimiento || '',
+        respuestaCliente: c.respuestaCliente || c.solucion || '',
+        evidencias: Array.isArray(c.evidencias) ? c.evidencias : [],
+        aspectosEvaluados: Array.isArray(c.aspectosEvaluados) ? c.aspectosEvaluados : [],
+        historial:
+          Array.isArray(c.historial) && c.historial.length
+            ? c.historial
+            : [
+                {
+                  fecha: c.fecha || '01/10/2026',
+                  hora: '09:00',
+                  autor: c.cliente || 'Cliente ORVEX',
+                  estado: c.estado || 'Abierto',
+                  accion: `Registro inicial (${cat} — ${sub})`,
+                  detalle: c.descripcion || '',
+                },
+              ],
+        ...c,
+      }
+    })
+
     return {
-      clients: Array.isArray(parsed.clients) && parsed.clients.length ? parsed.clients : base.clients,
+      clients: clientsFinal,
       orders: Array.isArray(parsed.orders) && parsed.orders.length ? parsed.orders : base.orders,
       requests: Array.isArray(parsed.requests) && parsed.requests.length ? parsed.requests : base.requests,
       tasks: tasksFinal,
-      cases: Array.isArray(parsed.cases) ? parsed.cases : base.cases,
+      cases: casesFinal,
       users: usersFinal,
       comms: Array.isArray(parsed.comms) ? parsed.comms : base.comms,
       inventory: Array.isArray(parsed.inventory) && parsed.inventory.length ? parsed.inventory : base.inventory,

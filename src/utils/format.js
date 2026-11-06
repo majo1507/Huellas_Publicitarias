@@ -134,10 +134,17 @@ export function validarCierreOrden(orden, tareas = [], casos = []) {
     impedimentos.push('Falta registrar los datos del receptor en el acta de entrega.')
   }
 
-  // 5. Casos de postventa abiertos o en trámite
-  const casosPendientes = casos.filter((c) => c.ordenId === orden.id && c.estado !== 'Resuelto')
+  // 5. Casos de postventa abiertos o en trámite (excluye calificaciones de satisfacción y casos resueltos o cerrados)
+  const casosPendientes = casos.filter(
+    (c) =>
+      c.ordenId === orden.id &&
+      c.categoria !== 'Satisfacción' &&
+      c.tipo !== 'Satisfacción' &&
+      c.estado !== 'Resuelto' &&
+      c.estado !== 'Cerrado'
+  )
   if (casosPendientes.length > 0) {
-    const ids = casosPendientes.map((c) => `${c.id} (${c.tipo} - ${c.estado})`).join(', ')
+    const ids = casosPendientes.map((c) => `${c.id} (${c.subtipo || c.tipo} - ${c.estado})`).join(', ')
     impedimentos.push(`Existen ${casosPendientes.length} caso(s) de postventa sin resolver: ${ids}.`)
   }
 

@@ -5,3 +5,9 @@ dist/
 !.env.example
 
 programacion_web/
+
+# Documentos ofimáticos y respaldos locales
+*.docx
+*.bak
+*.bak.*
+*.log

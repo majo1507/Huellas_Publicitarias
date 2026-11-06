@@ -3,14 +3,26 @@ import PageHeader from '../components/PageHeader.jsx'
 import DataTable from '../components/DataTable.jsx'
 import Avatar from '../components/Avatar.jsx'
 import Icon from '../components/Icon.jsx'
+import {
+  PAISES,
+  TIPOS_DOCUMENTO,
+  TIPOS_CLIENTE,
+  obtenerDepartamentosPorPais,
+  obtenerMunicipiosPorDepartamento,
+} from '../data/catalogos.js'
 
 const FORM_INICIAL = {
   nombre: '',
+  tipoCliente: TIPOS_CLIENTE[0],
+  tipoDocumento: 'NIT',
   nit: '',
   contacto: '',
   correo: '',
   telefono: '',
-  ciudad: 'Bogotá',
+  pais: 'Colombia',
+  departamento: 'Antioquia',
+  municipio: 'Medellín',
+  ciudad: 'Medellín',
   direccion: '',
 }
 
@@ -23,18 +35,68 @@ export default function Clients({ data, actions, irA }) {
 
   const filas = data.clients.map((c) => ({
     ...c,
+    tipoDocumento: c.tipoDocumento || 'NIT',
+    tipoCliente: c.tipoCliente || 'Persona Jurídica (Empresa)',
+    pais: c.pais || 'Colombia',
+    departamento: c.departamento || (c.ciudad === 'Medellín' ? 'Antioquia' : c.ciudad === 'Cali' ? 'Valle del Cauca' : 'Bogotá D.C.'),
+    municipio: c.municipio || c.ciudad || 'Bogotá',
+    ciudad: c.ciudad || c.municipio || 'Bogotá',
     solicitudes: data.requests.filter((s) => s.clienteId === c.id).length,
     ordenes: data.orders.filter((o) => o.clienteId === c.id).length,
   }))
 
   const columnas = [
-    { clave: 'nombre', titulo: 'Cliente', ordenar: true, render: (c) => <span className="person"><Avatar nombre={c.nombre} tamano="sm" /><strong>{c.nombre}</strong></span> },
-    { clave: 'contacto', titulo: 'Contacto', render: (c) => <>{c.contacto}<small className="cell-sub">{c.correo}</small></> },
+    {
+      clave: 'nombre',
+      titulo: 'Cliente / Identificación',
+      ordenar: true,
+      render: (c) => (
+        <span className="person">
+          <Avatar nombre={c.nombre} tamano="sm" />
+          <div>
+            <strong>{c.nombre}</strong>
+            <small className="cell-sub">
+              {c.tipoDocumento || 'NIT'}: {c.nit || '—'} · {c.tipoCliente || 'Empresa'}
+            </small>
+          </div>
+        </span>
+      ),
+    },
+    {
+      clave: 'contacto',
+      titulo: 'Contacto',
+      render: (c) => (
+        <>
+          {c.contacto}
+          <small className="cell-sub">{c.correo}</small>
+        </>
+      ),
+    },
     { clave: 'telefono', titulo: 'Teléfono' },
-    { clave: 'ciudad', titulo: 'Ciudad', ordenar: true },
+    {
+      clave: 'ciudad',
+      titulo: 'Ubicación (Depto / Municipio)',
+      ordenar: true,
+      render: (c) => (
+        <>
+          <strong>{c.municipio || c.ciudad}</strong>
+          <small className="cell-sub">
+            {c.departamento} ({c.pais || 'Colombia'})
+          </small>
+        </>
+      ),
+    },
     { clave: 'solicitudes', titulo: 'Solicitudes', ordenar: true },
     { clave: 'ordenes', titulo: 'Órdenes', ordenar: true },
-    { clave: 'acciones', titulo: 'Acciones', render: (c) => <button className="btn btn-soft btn-sm" onClick={() => irA('nuevo', c.id)}><Icon nombre="file-plus" tamano={14} /> Nueva solicitud</button> },
+    {
+      clave: 'acciones',
+      titulo: 'Acciones',
+      render: (c) => (
+        <button className="btn btn-soft btn-sm" onClick={() => irA('nuevo', c.id)}>
+          <Icon nombre="file-plus" tamano={14} /> Nueva solicitud
+        </button>
+      ),
+    },
   ]
 
   function abrirModalNuevo() {
@@ -52,6 +114,39 @@ export default function Clients({ data, actions, irA }) {
 
   function handleChange(e) {
     const { name, value } = e.target
+    if (name === 'pais') {
+      const deptos = obtenerDepartamentosPorPais(value)
+      const primerDepto = deptos[0] || ''
+      const muns = obtenerMunicipiosPorDepartamento(value, primerDepto)
+      const primerMun = muns[0] || ''
+      setForm((prev) => ({
+        ...prev,
+        pais: value,
+        departamento: primerDepto,
+        municipio: primerMun,
+        ciudad: primerMun,
+      }))
+      return
+    }
+    if (name === 'departamento') {
+      const muns = obtenerMunicipiosPorDepartamento(form.pais, value)
+      const primerMun = muns[0] || ''
+      setForm((prev) => ({
+        ...prev,
+        departamento: value,
+        municipio: primerMun,
+        ciudad: primerMun,
+      }))
+      return
+    }
+    if (name === 'municipio') {
+      setForm((prev) => ({ ...prev, municipio: value, ciudad: value }))
+      if (errores.ciudad || errores.municipio) {
+        setErrores((prev) => ({ ...prev, ciudad: '', municipio: '' }))
+      }
+      return
+    }
+
     setForm((prev) => ({ ...prev, [name]: value }))
     if (errores[name]) {
       setErrores((prev) => ({ ...prev, [name]: '' }))
@@ -66,12 +161,14 @@ export default function Clients({ data, actions, irA }) {
       err.nombre = 'El nombre debe tener al menos 2 caracteres.'
     }
 
-    if (form.nit.trim()) {
+    if (!form.nit.trim()) {
+      err.nit = 'El número de documento / NIT es obligatorio.'
+    } else {
       const nitExiste = data.clients.some(
         (c) => c.nit && c.nit.trim().toLowerCase() === form.nit.trim().toLowerCase()
       )
       if (nitExiste) {
-        err.nit = 'Ya existe un cliente registrado con este NIT.'
+        err.nit = 'Ya existe un cliente registrado con este documento / NIT.'
       }
     }
 
@@ -90,8 +187,12 @@ export default function Clients({ data, actions, irA }) {
       err.telefono = 'El teléfono de contacto es obligatorio.'
     }
 
-    if (!form.ciudad.trim()) {
-      err.ciudad = 'La ciudad es obligatoria.'
+    if (!form.departamento.trim()) {
+      err.departamento = 'Selecciona un departamento.'
+    }
+
+    if (!form.municipio.trim()) {
+      err.municipio = 'Selecciona un municipio.'
     }
 
     if (!form.direccion.trim()) {
@@ -111,12 +212,17 @@ export default function Clients({ data, actions, irA }) {
       await actions.addClient({
         nombre: form.nombre.trim(),
         empresa: form.nombre.trim(),
-        nit: form.nit.trim() || undefined,
+        tipoCliente: form.tipoCliente,
+        tipoDocumento: form.tipoDocumento,
+        nit: form.nit.trim(),
         contacto: form.contacto.trim(),
         contacto_principal: form.contacto.trim(),
         correo: form.correo.trim().toLowerCase(),
         telefono: form.telefono.trim(),
-        ciudad: form.ciudad.trim(),
+        pais: form.pais,
+        departamento: form.departamento,
+        municipio: form.municipio,
+        ciudad: form.municipio,
         direccion: form.direccion.trim(),
       })
       setModalAbierto(false)
@@ -128,11 +234,14 @@ export default function Clients({ data, actions, irA }) {
     }
   }
 
+  const departamentosDisponibles = obtenerDepartamentosPorPais(form.pais)
+  const municipiosDisponibles = obtenerMunicipiosPorDepartamento(form.pais, form.departamento)
+
   return (
     <div>
       <PageHeader
         titulo="Clientes"
-        subtitulo={`${data.clients.length} clientes registrados.`}
+        subtitulo={`${data.clients.length} clientes registrados con ubicación geográfica y clasificación comercial.`}
         icono="users"
         acciones={
           <button className="btn btn-primary" onClick={abrirModalNuevo}>
@@ -143,9 +252,20 @@ export default function Clients({ data, actions, irA }) {
       <DataTable
         columnas={columnas}
         filas={filas}
-        buscar={(c) => `${c.nombre} ${c.contacto} ${c.correo} ${c.ciudad}`}
-        placeholder="Buscar cliente, contacto o ciudad..."
-        filtros={[{ titulo: 'Ciudad', valor: (c) => c.ciudad, opciones: [...new Set(data.clients.map((c) => c.ciudad))] }]}
+        buscar={(c) => `${c.nombre} ${c.nit || ''} ${c.contacto} ${c.correo} ${c.departamento} ${c.municipio} ${c.ciudad}`}
+        placeholder="Buscar por razón social, NIT, contacto, departamento o municipio..."
+        filtros={[
+          {
+            titulo: 'Departamento',
+            valor: (c) => c.departamento,
+            opciones: [...new Set(filas.map((c) => c.departamento))],
+          },
+          {
+            titulo: 'Municipio',
+            valor: (c) => c.municipio,
+            opciones: [...new Set(filas.map((c) => c.municipio))],
+          },
+        ]}
         vacioTitulo="No se encontraron clientes"
       />
 
@@ -164,7 +284,7 @@ export default function Clients({ data, actions, irA }) {
               </span>
               <div>
                 <h2>Registrar nuevo cliente</h2>
-                <p>Ingresa los datos comerciales y de contacto para habilitar solicitudes y órdenes.</p>
+                <p>Ingresa la identificación, ubicación geográfica y datos de contacto comercial.</p>
               </div>
               <button className="icon-btn" onClick={cerrarModal} aria-label="Cerrar">
                 <Icon nombre="x" />
@@ -174,7 +294,9 @@ export default function Clients({ data, actions, irA }) {
             <form onSubmit={handleGuardar} className="modal-body" noValidate>
               <div className="form-grid">
                 <div className={`field ${errores.nombre ? 'has-error' : ''}`}>
-                  <label className="field-label" htmlFor="clienteNombre">Empresa o cliente</label>
+                  <label className="field-label" htmlFor="clienteNombre">
+                    Empresa o razón social *
+                  </label>
                   <input
                     id="clienteNombre"
                     name="nombre"
@@ -186,20 +308,60 @@ export default function Clients({ data, actions, irA }) {
                   {errores.nombre && <span className="field-error">{errores.nombre}</span>}
                 </div>
 
+                <div className="field">
+                  <label className="field-label" htmlFor="clienteTipoCliente">
+                    Tipo de cliente *
+                  </label>
+                  <select
+                    id="clienteTipoCliente"
+                    name="tipoCliente"
+                    value={form.tipoCliente}
+                    onChange={handleChange}
+                  >
+                    {TIPOS_CLIENTE.map((tc) => (
+                      <option key={tc} value={tc}>
+                        {tc}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="field">
+                  <label className="field-label" htmlFor="clienteTipoDocumento">
+                    Tipo de documento *
+                  </label>
+                  <select
+                    id="clienteTipoDocumento"
+                    name="tipoDocumento"
+                    value={form.tipoDocumento}
+                    onChange={handleChange}
+                  >
+                    {TIPOS_DOCUMENTO.map((td) => (
+                      <option key={td.codigo} value={td.codigo}>
+                        {td.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 <div className={`field ${errores.nit ? 'has-error' : ''}`}>
-                  <label className="field-label" htmlFor="clienteNit">NIT (opcional)</label>
+                  <label className="field-label" htmlFor="clienteNit">
+                    Número de documento / {form.tipoDocumento} *
+                  </label>
                   <input
                     id="clienteNit"
                     name="nit"
                     value={form.nit}
                     onChange={handleChange}
-                    placeholder="Ej. 901.456.789-2"
+                    placeholder={form.tipoDocumento === 'NIT' ? 'Ej. 901.456.789-2' : 'Ej. 1.020.456.789'}
                   />
                   {errores.nit && <span className="field-error">{errores.nit}</span>}
                 </div>
 
                 <div className={`field ${errores.contacto ? 'has-error' : ''}`}>
-                  <label className="field-label" htmlFor="clienteContacto">Contacto principal</label>
+                  <label className="field-label" htmlFor="clienteContacto">
+                    Contacto principal *
+                  </label>
                   <input
                     id="clienteContacto"
                     name="contacto"
@@ -210,8 +372,24 @@ export default function Clients({ data, actions, irA }) {
                   {errores.contacto && <span className="field-error">{errores.contacto}</span>}
                 </div>
 
-                <div className={`field ${errores.correo ? 'has-error' : ''}`}>
-                  <label className="field-label" htmlFor="clienteCorreo">Correo electrónico</label>
+                <div className={`field ${errores.telefono ? 'has-error' : ''}`}>
+                  <label className="field-label" htmlFor="clienteTelefono">
+                    Teléfono / Celular *
+                  </label>
+                  <input
+                    id="clienteTelefono"
+                    name="telefono"
+                    value={form.telefono}
+                    onChange={handleChange}
+                    placeholder="Ej. 310 456 7890"
+                  />
+                  {errores.telefono && <span className="field-error">{errores.telefono}</span>}
+                </div>
+
+                <div className={`field full ${errores.correo ? 'has-error' : ''}`}>
+                  <label className="field-label" htmlFor="clienteCorreo">
+                    Correo electrónico corporativo *
+                  </label>
                   <input
                     id="clienteCorreo"
                     name="correo"
@@ -223,44 +401,76 @@ export default function Clients({ data, actions, irA }) {
                   {errores.correo && <span className="field-error">{errores.correo}</span>}
                 </div>
 
-                <div className={`field ${errores.telefono ? 'has-error' : ''}`}>
-                  <label className="field-label" htmlFor="clienteTelefono">Teléfono</label>
-                  <input
-                    id="clienteTelefono"
-                    name="telefono"
-                    value={form.telefono}
-                    onChange={handleChange}
-                    placeholder="Ej. 310 456 7890"
-                  />
-                  {errores.telefono && <span className="field-error">{errores.telefono}</span>}
+                <div className="field">
+                  <label className="field-label" htmlFor="clientePais">
+                    País *
+                  </label>
+                  <select id="clientePais" name="pais" value={form.pais} onChange={handleChange}>
+                    {PAISES.map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
-                <div className={`field ${errores.ciudad ? 'has-error' : ''}`}>
-                  <label className="field-label" htmlFor="clienteCiudad">Ciudad</label>
-                  <input
-                    id="clienteCiudad"
-                    name="ciudad"
-                    value={form.ciudad}
+                <div className={`field ${errores.departamento ? 'has-error' : ''}`}>
+                  <label className="field-label" htmlFor="clienteDepartamento">
+                    Departamento *
+                  </label>
+                  <select
+                    id="clienteDepartamento"
+                    name="departamento"
+                    value={form.departamento}
                     onChange={handleChange}
-                    placeholder="Ej. Bogotá"
-                  />
-                  {errores.ciudad && <span className="field-error">{errores.ciudad}</span>}
+                  >
+                    {departamentosDisponibles.map((dep) => (
+                      <option key={dep} value={dep}>
+                        {dep}
+                      </option>
+                    ))}
+                  </select>
+                  {errores.departamento && <span className="field-error">{errores.departamento}</span>}
                 </div>
 
-                <div className={`field full ${errores.direccion ? 'has-error' : ''}`}>
-                  <label className="field-label" htmlFor="clienteDireccion">Dirección de entrega / sede</label>
+                <div className={`field ${errores.municipio ? 'has-error' : ''}`}>
+                  <label className="field-label" htmlFor="clienteMunicipio">
+                    Municipio / Ciudad *
+                  </label>
+                  <select
+                    id="clienteMunicipio"
+                    name="municipio"
+                    value={form.municipio}
+                    onChange={handleChange}
+                  >
+                    {municipiosDisponibles.map((mun) => (
+                      <option key={mun} value={mun}>
+                        {mun}
+                      </option>
+                    ))}
+                  </select>
+                  {errores.municipio && <span className="field-error">{errores.municipio}</span>}
+                </div>
+
+                <div className={`field ${errores.direccion ? 'has-error' : ''}`}>
+                  <label className="field-label" htmlFor="clienteDireccion">
+                    Dirección de entrega / sede *
+                  </label>
                   <input
                     id="clienteDireccion"
                     name="direccion"
                     value={form.direccion}
                     onChange={handleChange}
-                    placeholder="Ej. Cra 15 # 93-40 Of. 302"
+                    placeholder="Ej. Cra 43A # 14-50 Of. 302"
                   />
                   {errores.direccion && <span className="field-error">{errores.direccion}</span>}
                 </div>
               </div>
 
-              <div className="modal-foot" style={{ marginTop: '20px', padding: 0, background: 'none', border: 'none' }}>
+              <div
+                className="modal-foot"
+                style={{ marginTop: '20px', padding: 0, background: 'none', border: 'none' }}
+              >
                 <button type="button" className="btn" onClick={cerrarModal} disabled={guardando}>
                   Cancelar
                 </button>

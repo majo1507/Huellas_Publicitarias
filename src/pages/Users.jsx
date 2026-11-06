@@ -7,6 +7,7 @@ import Avatar from '../components/Avatar.jsx'
 import Modal from '../components/Modal.jsx'
 import Icon from '../components/Icon.jsx'
 import { estaActiva } from '../utils/format.js'
+import { CARGOS_POR_ROL } from '../data/catalogos.js'
 
 const ROLES_INFO = [
   { rol: 'Comercial', titulo: 'Ejecutiva de cuentas', desc: 'Gestiona clientes, cotizaciones y órdenes, registra solicitudes y atiende comunicaciones.' },
@@ -39,6 +40,15 @@ const CARGO_SUGERIDO = {
   Operario: 'Operario de taller',
   Postventa: 'Atención postventa',
   Gerencia: 'Gerente general',
+}
+
+const CARGOS_DISPONIBLES = {
+  Comercial: CARGOS_POR_ROL.recepcion || ['Ejecutiva comercial'],
+  Diseñador: CARGOS_POR_ROL.disenador || ['Diseñador gráfico'],
+  Coordinador: CARGOS_POR_ROL.coordinador || ['Coordinador de producción'],
+  Operario: CARGOS_POR_ROL.operario || ['Operario de taller'],
+  Postventa: CARGOS_POR_ROL.postventa || ['Atención postventa'],
+  Gerencia: CARGOS_POR_ROL.gerente || ['Gerente general'],
 }
 
 export default function Users({ data, actions, usuarioActual }) {
@@ -393,16 +403,19 @@ export default function Users({ data, actions, usuarioActual }) {
                 </div>
 
                 <div className={`field ${errores.cargo ? 'has-error' : ''}`}>
-                  <label className="field-label" htmlFor="userCargo">Cargo laboral</label>
-                  <input
+                  <label className="field-label" htmlFor="userCargo">Cargo institucional ({rol})</label>
+                  <select
                     id="userCargo"
                     value={cargo}
                     onChange={(e) => {
                       setCargo(e.target.value)
                       if (errores.cargo) setErrores((prev) => ({ ...prev, cargo: '' }))
                     }}
-                    placeholder="Ej. Impresor gran formato"
-                  />
+                  >
+                    {(CARGOS_DISPONIBLES[rol] || [cargo || 'Cargo institucional']).map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
                   {errores.cargo && <span className="field-error">{errores.cargo}</span>}
                 </div>
 

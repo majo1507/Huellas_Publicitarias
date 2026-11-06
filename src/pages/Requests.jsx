@@ -65,13 +65,21 @@ export default function Requests({ data, actions, irA, role }) {
     { clave: 'cliente', titulo: 'Cliente', ordenar: true },
     {
       clave: 'producto',
-      titulo: 'Producto',
+      titulo: 'Producto / Especificaciones',
       render: (s) => (
         <>
           <strong>{s.producto}</strong>
-          <small className="cell-sub">{s.cantidad} uds · {s.dimensiones}</small>
+          <small className="cell-sub">
+            {s.cantidad} uds · {s.dimensiones} · {s.material || 'Lona'}
+          </small>
         </>
       ),
+    },
+    {
+      clave: 'prioridad',
+      titulo: 'Prioridad',
+      ordenar: true,
+      render: (s) => <StatusBadge estado={s.prioridad || 'Media'} texto={s.prioridad || 'Media'} />,
     },
     { clave: 'presupuesto', titulo: 'Presupuesto', ordenar: true, render: (s) => formatoCOP(s.presupuesto) },
     { clave: 'fechaEntrega', titulo: 'Entrega' },
@@ -239,8 +247,11 @@ export default function Requests({ data, actions, irA, role }) {
                 <div><dt>Cliente</dt><dd>{detalle.cliente}</dd></div>
                 <div><dt>Producto</dt><dd>{detalle.producto}</dd></div>
                 <div><dt>Cantidad</dt><dd>{detalle.cantidad} unidades</dd></div>
+                <div><dt>Prioridad</dt><dd><StatusBadge estado={detalle.prioridad || 'Media'} texto={detalle.prioridad || 'Media'} /></dd></div>
                 <div><dt>Dimensiones</dt><dd>{detalle.dimensiones}</dd></div>
                 <div><dt>Material</dt><dd>{detalle.material}</dd></div>
+                <div><dt>Acabados</dt><dd>{detalle.acabados || 'Corte y empaque estándar'}</dd></div>
+                <div><dt>Método de entrega</dt><dd>{detalle.metodoEntrega || 'Domicilio'}</dd></div>
                 <div><dt>Fecha de entrega pactada</dt><dd>{detalle.fechaEntrega}</dd></div>
                 <div><dt>Presupuesto comercial</dt><dd>{formatoCOP(detalle.presupuesto)}</dd></div>
                 <div><dt>Requerimientos técnicos</dt><dd>{detalle.requerimientos || 'Sin requerimientos especiales'}</dd></div>

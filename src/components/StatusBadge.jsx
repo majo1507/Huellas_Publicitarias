@@ -32,10 +32,22 @@ const colores = {
   // Casos de postventa
   Abierto: 'rojo',
   'En trámite': 'amarillo',
+  'En revisión': 'celeste',
   Resuelto: 'verde',
   Vigente: 'verde',
   Registrado: 'gris',
   Activo: 'verde',
+  // Tipos PQRSF
+  Petición: 'celeste',
+  Queja: 'amarillo',
+  Reclamo: 'rojo',
+  Sugerencia: 'azul',
+  Felicitación: 'verde',
+  // Dictámenes de garantía
+  Procedente: 'verde',
+  'Procedente parcial': 'amarillo',
+  'No procedente': 'rojo',
+  'Pendiente de evaluación': 'amarillo',
   // Alertas y prioridad
   Retrasada: 'rojo',
   'En riesgo': 'amarillo',

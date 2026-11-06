@@ -5,19 +5,25 @@ const { pool } = require('../db');
 const { resolverCliente, resolverUsuario, obtenerUsuarioPorDefecto } = require('../utils/resolvers');
 
 function formatearCliente(c) {
+  const municipio = c.municipio || c.ciudad || 'Medellín';
   return {
     id: c.codigo || c.id,
     uuid: c.id,
     codigo: c.codigo,
     nombre: c.empresa,
     empresa: c.empresa,
+    tipoDocumento: c.tipo_documento || 'NIT',
+    tipoCliente: c.tipo_cliente || 'Persona Jurídica (Empresa)',
     nit: c.nit,
     contacto: c.contacto_principal,
     contacto_principal: c.contacto_principal,
     telefono: c.telefono || '',
     correo: c.correo || '',
     direccion: c.direccion || 'Cra 15 # 80-20',
-    ciudad: c.ciudad || 'Bogotá',
+    pais: c.pais || 'Colombia',
+    departamento: c.departamento || 'Antioquia',
+    municipio,
+    ciudad: c.ciudad || municipio,
     estado: c.estado,
     ejecutiva_id: c.ejecutiva_id,
     ejecutiva_nombre: c.ejecutiva_nombre || null,
@@ -33,11 +39,16 @@ const listarClientes = async (_req, res) => {
         c.id,
         c.codigo,
         c.empresa,
+        c.tipo_documento,
+        c.tipo_cliente,
         c.nit,
         c.contacto_principal,
         c.telefono,
         c.correo,
         c.direccion,
+        c.pais,
+        c.departamento,
+        c.municipio,
         c.ciudad,
         c.estado,
         c.created_at,
@@ -76,11 +87,16 @@ const obtenerClientePorId = async (req, res) => {
 const crearCliente = async (req, res) => {
   const empresa = req.body.empresa || req.body.nombre;
   const contacto_principal = req.body.contacto_principal || req.body.contacto;
+  const tipo_documento = req.body.tipoDocumento || req.body.tipo_documento || 'NIT';
+  const tipo_cliente = req.body.tipoCliente || req.body.tipo_cliente || 'Persona Jurídica (Empresa)';
   const nit = req.body.nit || `900${Date.now().toString().slice(-6)}-1`;
   const telefono = req.body.telefono || null;
   const correo = req.body.correo || null;
   const direccion = req.body.direccion || 'Cra 15 # 80-20';
-  const ciudad = req.body.ciudad || 'Bogotá';
+  const pais = req.body.pais || 'Colombia';
+  const departamento = req.body.departamento || 'Antioquia';
+  const municipio = req.body.municipio || req.body.ciudad || 'Medellín';
+  const ciudad = req.body.ciudad || municipio;
   const estado = req.body.estado || 'Nuevo';
 
   if (!empresa || !contacto_principal) {
@@ -107,17 +123,26 @@ const crearCliente = async (req, res) => {
     const codigo = req.body.codigo || `C${(seqRes.rows[0]?.max_num || 0) + 1}`;
 
     const result = await pool.query(
-      `INSERT INTO clientes (codigo, empresa, nit, contacto_principal, telefono, correo, direccion, ciudad, ejecutiva_id, estado)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      `INSERT INTO clientes (
+        codigo, empresa, tipo_documento, tipo_cliente, nit,
+        contacto_principal, telefono, correo, direccion,
+        pais, departamento, municipio, ciudad, ejecutiva_id, estado
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
        RETURNING *`,
       [
         codigo,
         empresa.trim(),
+        tipo_documento,
+        tipo_cliente,
         nit.trim(),
         contacto_principal.trim(),
         telefono ? telefono.trim() : null,
         correo ? correo.trim().toLowerCase() : null,
         direccion.trim(),
+        pais.trim(),
+        departamento.trim(),
+        municipio.trim(),
         ciudad.trim(),
         ejec.id,
         estado,
@@ -150,18 +175,25 @@ const actualizarCliente = async (req, res) => {
 
     const empresa = (req.body.empresa || req.body.nombre || actual.empresa).trim();
     const contacto = (req.body.contacto_principal || req.body.contacto || actual.contacto_principal).trim();
+    const tipo_documento = req.body.tipoDocumento || req.body.tipo_documento || actual.tipo_documento || 'NIT';
+    const tipo_cliente = req.body.tipoCliente || req.body.tipo_cliente || actual.tipo_cliente || 'Persona Jurídica (Empresa)';
     const telefono = req.body.telefono !== undefined ? req.body.telefono : actual.telefono;
     const correo = req.body.correo !== undefined ? req.body.correo : actual.correo;
     const direccion = req.body.direccion !== undefined ? req.body.direccion : actual.direccion;
-    const ciudad = req.body.ciudad !== undefined ? req.body.ciudad : actual.ciudad;
+    const pais = req.body.pais || actual.pais || 'Colombia';
+    const departamento = req.body.departamento || actual.departamento || 'Antioquia';
+    const municipio = req.body.municipio || req.body.ciudad || actual.municipio || actual.ciudad || 'Medellín';
+    const ciudad = req.body.ciudad || municipio;
     const estado = req.body.estado || actual.estado;
 
     const result = await pool.query(
       `UPDATE clientes
-       SET empresa = $1, contacto_principal = $2, telefono = $3, correo = $4, direccion = $5, ciudad = $6, estado = $7
-       WHERE id = $8
+       SET empresa = $1, contacto_principal = $2, telefono = $3, correo = $4, direccion = $5,
+           ciudad = $6, estado = $7, tipo_documento = $8, tipo_cliente = $9,
+           pais = $10, departamento = $11, municipio = $12
+       WHERE id = $13
        RETURNING *`,
-      [empresa, contacto, telefono, correo, direccion, ciudad, estado, actual.id]
+      [empresa, contacto, telefono, correo, direccion, ciudad, estado, tipo_documento, tipo_cliente, pais, departamento, municipio, actual.id]
     );
 
     res.json({

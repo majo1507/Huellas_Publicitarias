@@ -46,6 +46,11 @@ END $$;
 
 ALTER TYPE rol_usuario ADD VALUE IF NOT EXISTS 'postventa';
 ALTER TYPE tipo_postventa ADD VALUE IF NOT EXISTS 'Reimpresión';
+ALTER TYPE tipo_postventa ADD VALUE IF NOT EXISTS 'Petición';
+ALTER TYPE tipo_postventa ADD VALUE IF NOT EXISTS 'Queja';
+ALTER TYPE tipo_postventa ADD VALUE IF NOT EXISTS 'Sugerencia';
+ALTER TYPE tipo_postventa ADD VALUE IF NOT EXISTS 'Felicitación';
+ALTER TYPE tipo_postventa ADD VALUE IF NOT EXISTS 'Satisfacción';
 ALTER TYPE estado_solicitud ADD VALUE IF NOT EXISTS 'en_validacion';
 ALTER TYPE estado_solicitud ADD VALUE IF NOT EXISTS 'devuelta';
 
@@ -381,3 +386,31 @@ ALTER TABLE movimientos_inventario ADD COLUMN IF NOT EXISTS hora_texto         V
 ALTER TABLE movimientos_inventario ADD COLUMN IF NOT EXISTS costo_total        NUMERIC(14,2) DEFAULT 0;
 ALTER TABLE movimientos_inventario ADD COLUMN IF NOT EXISTS responsable_nombre VARCHAR(150) DEFAULT NULL;
 ALTER TABLE movimientos_inventario ADD COLUMN IF NOT EXISTS observacion        TEXT DEFAULT '';
+
+-- 3.11 Ampliación de Postventa (Satisfacción, PQRSF y Garantías) y Formularios Comerciales
+ALTER TABLE clientes ADD COLUMN IF NOT EXISTS tipo_documento VARCHAR(20)  DEFAULT 'NIT';
+ALTER TABLE clientes ADD COLUMN IF NOT EXISTS tipo_cliente   VARCHAR(100) DEFAULT 'Persona Jurídica (Empresa)';
+ALTER TABLE clientes ADD COLUMN IF NOT EXISTS pais           VARCHAR(80)  DEFAULT 'Colombia';
+ALTER TABLE clientes ADD COLUMN IF NOT EXISTS departamento   VARCHAR(100) DEFAULT 'Antioquia';
+ALTER TABLE clientes ADD COLUMN IF NOT EXISTS municipio      VARCHAR(100) DEFAULT 'Medellín';
+
+ALTER TABLE solicitudes ADD COLUMN IF NOT EXISTS prioridad      VARCHAR(30)  DEFAULT 'Media';
+ALTER TABLE solicitudes ADD COLUMN IF NOT EXISTS metodo_entrega VARCHAR(100) DEFAULT 'Domicilio';
+ALTER TABLE solicitudes ADD COLUMN IF NOT EXISTS acabados       VARCHAR(255) DEFAULT 'Corte y empaque estándar';
+
+ALTER TABLE postventa ADD COLUMN IF NOT EXISTS categoria              VARCHAR(40)  DEFAULT 'PQRSF';
+ALTER TABLE postventa ADD COLUMN IF NOT EXISTS subtipo                VARCHAR(60)  DEFAULT 'Reclamo';
+ALTER TABLE postventa ADD COLUMN IF NOT EXISTS motivo                 VARCHAR(255) DEFAULT '';
+ALTER TABLE postventa ADD COLUMN IF NOT EXISTS dictamen_garantia      VARCHAR(100) DEFAULT 'Pendiente de evaluación';
+ALTER TABLE postventa ADD COLUMN IF NOT EXISTS justificacion_dictamen TEXT         DEFAULT '';
+ALTER TABLE postventa ADD COLUMN IF NOT EXISTS accion_correctiva      VARCHAR(150) DEFAULT '';
+ALTER TABLE postventa ADD COLUMN IF NOT EXISTS respuesta_cliente      TEXT         DEFAULT '';
+ALTER TABLE postventa ADD COLUMN IF NOT EXISTS seguimiento            TEXT         DEFAULT '';
+ALTER TABLE postventa ADD COLUMN IF NOT EXISTS evidencias             JSONB        DEFAULT '[]'::jsonb;
+ALTER TABLE postventa ADD COLUMN IF NOT EXISTS historial              JSONB        DEFAULT '[]'::jsonb;
+ALTER TABLE postventa ADD COLUMN IF NOT EXISTS aspectos_evaluados     JSONB        DEFAULT '[]'::jsonb;
+
+ALTER TABLE proveedores ADD COLUMN IF NOT EXISTS tipo_documento VARCHAR(20)  DEFAULT 'NIT';
+ALTER TABLE proveedores ADD COLUMN IF NOT EXISTS pais           VARCHAR(80)  DEFAULT 'Colombia';
+ALTER TABLE proveedores ADD COLUMN IF NOT EXISTS departamento   VARCHAR(100) DEFAULT 'Antioquia';
+ALTER TABLE proveedores ADD COLUMN IF NOT EXISTS municipio      VARCHAR(100) DEFAULT 'Medellín';

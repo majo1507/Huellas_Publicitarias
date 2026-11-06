@@ -9,6 +9,7 @@ import ProgressBar from '../components/ProgressBar.jsx'
 import Icon from '../components/Icon.jsx'
 import { OPERARIOS } from '../data/mockData.js'
 import { ROLES } from '../data/roles.js'
+import { ACTIVIDADES_TALLER_POR_ETAPA } from '../data/catalogos.js'
 import { estaActiva } from '../utils/format.js'
 
 export default function Tasks({ data, actions, irA, role }) {
@@ -402,14 +403,36 @@ export default function Tasks({ data, actions, irA, role }) {
                   </label>
                   <input
                     id="newTaskNombre"
+                    list="sug-actividades-taller"
                     value={nombreNuevaAct}
                     onChange={(e) => {
                       setNombreNuevaAct(e.target.value)
                       setErrNuevaAct('')
                     }}
-                    placeholder="Ej. Impresión gran formato, Laminado UV, Corte y ojales..."
+                    placeholder="Ej. Selecciona una sugerencia o escribe la actividad..."
                     autoFocus
                   />
+                  <datalist id="sug-actividades-taller">
+                    {(ACTIVIDADES_TALLER_POR_ETAPA[etapaNuevaAct] || []).map((sug) => (
+                      <option key={sug} value={sug} />
+                    ))}
+                  </datalist>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '6px' }}>
+                    {(ACTIVIDADES_TALLER_POR_ETAPA[etapaNuevaAct] || []).map((sug) => (
+                      <button
+                        key={sug}
+                        type="button"
+                        className="btn btn-soft btn-sm"
+                        style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '12px' }}
+                        onClick={() => {
+                          setNombreNuevaAct(sug)
+                          setErrNuevaAct('')
+                        }}
+                      >
+                        + {sug}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="field full">

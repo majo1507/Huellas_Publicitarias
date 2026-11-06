@@ -1069,83 +1069,202 @@ export default function App() {
     return true
   }
 
-  // ---------------- Postventa (HU-18) ----------------
+  // ---------------- Postventa (HU-18: Satisfacción, PQRSF y Garantías) ----------------
   function createCase(nuevoCaso) {
+    const categoria =
+      nuevoCaso.categoria ||
+      (nuevoCaso.tipo === 'Garantía'
+        ? 'Garantía'
+        : nuevoCaso.tipo === 'Satisfacción'
+        ? 'Satisfacción'
+        : 'PQRSF')
+    const subtipo =
+      nuevoCaso.subtipo ||
+      nuevoCaso.tipo ||
+      (categoria === 'Garantía' ? 'Garantía' : categoria === 'Satisfacción' ? 'Satisfacción' : 'Reclamo')
+    const prefijo = categoria === 'Garantía' ? 'GAR' : categoria === 'Satisfacción' ? 'SAT' : 'PV'
     const num = cases.length + 1
-    const tempId = `PV-${String(num).padStart(3, '0')}`
+    const tempId = nuevoCaso.id || `${prefijo}-${String(num).padStart(3, '0')}`
+    const fechaActual = formatearFecha()
+    const horaActual = formatearHora()
+    const estadoInicial = categoria === 'Satisfacción' ? 'Cerrado' : (nuevoCaso.estado || 'Abierto')
 
-    api.crearCasoPostventa(nuevoCaso)
+    const construirCasoLocal = (baseServer = {}) => {
+      const ordenAsociada = orders.find((o) => o.id === nuevoCaso.ordenId)
+      const historialInicial =
+        Array.isArray(nuevoCaso.historial) && nuevoCaso.historial.length > 0
+          ? nuevoCaso.historial
+          : [
+              {
+                fecha: fechaActual,
+                hora: horaActual,
+                autor: nuevoCaso.autor || usuario || nuevoCaso.cliente || ordenAsociada?.cliente || 'Cliente',
+                estado: estadoInicial,
+                accion:
+                  categoria === 'Satisfacción'
+                    ? `Calificación post-entrega registrada (${nuevoCaso.calificacion || 5}/5 estrellas)`
+                    : categoria === 'Garantía'
+                    ? `Solicitud de garantía radicada — ${nuevoCaso.motivo || 'Revisión técnica'}`
+                    : `PQRSF radicada (${subtipo}) — ${nuevoCaso.motivo || subtipo}`,
+                detalle: nuevoCaso.descripcion || '',
+              },
+            ]
+      return {
+        id: tempId,
+        fecha: fechaActual,
+        categoria,
+        subtipo,
+        tipo: subtipo,
+        motivo: nuevoCaso.motivo || subtipo,
+        prioridad: nuevoCaso.prioridad || 'Media',
+        estado: estadoInicial,
+        responsable: nuevoCaso.responsable || (categoria === 'Satisfacción' ? 'Sofía Herrera' : ''),
+        dictamenGarantia: nuevoCaso.dictamenGarantia || (categoria === 'Garantía' ? 'Pendiente de evaluación' : ''),
+        justificacionDictamen: nuevoCaso.justificacionDictamen || '',
+        accionCorrectiva: nuevoCaso.accionCorrectiva || '',
+        seguimiento: nuevoCaso.seguimiento || '',
+        respuestaCliente: nuevoCaso.respuestaCliente || '',
+        solucion: nuevoCaso.solucion || (categoria === 'Satisfacción' ? 'Calificación registrada en expediente de calidad.' : ''),
+        calificacion: nuevoCaso.calificacion ?? null,
+        aspectosEvaluados: Array.isArray(nuevoCaso.aspectosEvaluados) ? nuevoCaso.aspectosEvaluados : [],
+        evidencias: Array.isArray(nuevoCaso.evidencias) ? nuevoCaso.evidencias : [],
+        ...nuevoCaso,
+        ...baseServer,
+        cliente: baseServer.cliente || nuevoCaso.cliente || ordenAsociada?.cliente || 'Cliente',
+        producto: baseServer.producto || nuevoCaso.producto || ordenAsociada?.producto || '',
+        historial:
+          Array.isArray(baseServer.historial) && baseServer.historial.length > 0
+            ? baseServer.historial
+            : historialInicial,
+      }
+    }
+
+    api.crearCasoPostventa({ ...nuevoCaso, categoria, subtipo, tipo: subtipo })
       .then((res) => {
         if (res?.modoMock) {
-          const ordenAsociada = orders.find((o) => o.id === nuevoCaso.ordenId)
-          const casoCompleto = {
-            id: tempId,
-            fecha: formatearFecha(),
-            estado: 'Abierto',
-            responsable: nuevoCaso.responsable || null,
-            calificacion: null,
-            solucion: null,
-            ...nuevoCaso,
-            cliente: nuevoCaso.cliente || ordenAsociada?.cliente || 'Cliente',
-          }
-          setCases((prev) => [casoCompleto, ...prev])
+          const casoCompleto = construirCasoLocal()
+          setCases((prev) => {
+            const next = [casoCompleto, ...prev]
+            if (api.usarMock) guardarEstadoDemo({ cases: next })
+            return next
+          })
           if (nuevoCaso.ordenId) {
             updateOrder(
               nuevoCaso.ordenId,
               {},
               crearEvento(
-                `Caso de postventa ${tempId} registrado (${nuevoCaso.tipo}): ${nuevoCaso.descripcion}`,
+                `Postventa ${tempId} (${categoria} — ${subtipo}): ${nuevoCaso.motivo || nuevoCaso.descripcion}`,
                 usuario,
-                'Pendiente',
+                estadoInicial === 'Cerrado' ? 'Completado' : 'Pendiente',
                 false,
-                { motivo: `Clasificación: ${nuevoCaso.tipo}`, observaciones: nuevoCaso.descripcion }
+                { motivo: `${categoria}: ${nuevoCaso.motivo || subtipo}`, observaciones: nuevoCaso.descripcion }
               )
             )
           }
-          notify(`Caso de postventa ${tempId} registrado con éxito.`, 'exito')
+          const etiquetaExito =
+            categoria === 'Satisfacción'
+              ? `Calificación de satisfacción ${tempId} registrada con éxito.`
+              : categoria === 'Garantía'
+              ? `Solicitud de garantía ${tempId} radicada para evaluación técnica.`
+              : `PQRSF ${tempId} (${subtipo}) registrada con éxito.`
+          notify(etiquetaExito, 'exito')
           return
         }
-        const casoCreado = res?.data
-        if (casoCreado) {
-          setCases((prev) => [casoCreado, ...prev.filter((c) => c.id !== casoCreado.id)])
-        }
+        const casoCreado = construirCasoLocal(res?.data || {})
+        setCases((prev) => [casoCreado, ...prev.filter((c) => c.id !== casoCreado.id)])
         if (res?.orden) replaceOrderFromServer(res.orden)
-        notify(`Caso de postventa ${casoCreado?.id || tempId} registrado con éxito.`, 'exito')
+        notify(`Registro de postventa ${casoCreado.id} guardado con éxito.`, 'exito')
       })
       .catch((err) => {
-        notify(err.message || 'No se pudo registrar el caso de postventa.', 'error')
+        notify(err.message || 'No se pudo registrar en postventa.', 'error')
       })
 
     return tempId
   }
 
   function updateCase(id, cambios, mensaje) {
-    api.actualizarCasoPostventa(id, cambios)
+    const casoActual = cases.find((c) => c.id === id)
+    const fechaActual = formatearFecha()
+    const horaActual = formatearHora()
+
+    const construirHistorialActualizado = (casoBase) => {
+      const prevHist = Array.isArray(casoBase?.historial) ? [...casoBase.historial] : []
+      if (Array.isArray(cambios.historial)) return cambios.historial
+
+      const partes = []
+      if (cambios.estado && cambios.estado !== casoBase?.estado) {
+        partes.push(`Estado actualizado a "${cambios.estado}"`)
+      }
+      if (cambios.responsable !== undefined && cambios.responsable !== casoBase?.responsable) {
+        partes.push(`Responsable asignado: ${cambios.responsable || 'Sin asignar'}`)
+      }
+      if (cambios.dictamenGarantia && cambios.dictamenGarantia !== casoBase?.dictamenGarantia) {
+        partes.push(`Dictamen de garantía: ${cambios.dictamenGarantia}`)
+      }
+      if (cambios.accionCorrectiva && cambios.accionCorrectiva !== casoBase?.accionCorrectiva) {
+        partes.push(`Acción definida: ${cambios.accionCorrectiva}`)
+      }
+      if (cambios.seguimiento && cambios.seguimiento !== casoBase?.seguimiento) {
+        partes.push(`Seguimiento: ${cambios.seguimiento}`)
+      }
+      if (cambios.respuestaCliente && cambios.respuestaCliente !== casoBase?.respuestaCliente) {
+        partes.push(`Respuesta al cliente: ${cambios.respuestaCliente}`)
+      }
+      if (cambios.solucion && cambios.solucion !== casoBase?.solucion) {
+        partes.push(`Solución: ${cambios.solucion}`)
+      }
+      if (cambios.calificacion && cambios.calificacion !== casoBase?.calificacion) {
+        partes.push(`Calificación registrada: ${cambios.calificacion}/5`)
+      }
+      if (cambios.notaHistorial) {
+        partes.push(cambios.notaHistorial)
+      }
+
+      if (partes.length > 0) {
+        prevHist.push({
+          fecha: fechaActual,
+          hora: horaActual,
+          autor: usuario || 'Postventa ORVEX',
+          estado: cambios.estado || casoBase?.estado || 'En trámite',
+          accion: partes[0],
+          detalle: partes.join(' · '),
+        })
+      }
+      return prevHist
+    }
+
+    const historialNuevo = construirHistorialActualizado(casoActual)
+    const payload = { ...cambios, historial: historialNuevo }
+
+    api.actualizarCasoPostventa(id, payload)
       .then((res) => {
         if (res?.modoMock) {
-          setCases((prev) => prev.map((c) => (c.id === id ? { ...c, ...cambios } : c)))
-          const caso = cases.find((c) => c.id === id)
-          if (caso?.ordenId && cambios.estado) {
+          setCases((prev) => {
+            const next = prev.map((c) => (c.id === id ? { ...c, ...payload } : c))
+            if (api.usarMock) guardarEstadoDemo({ cases: next })
+            return next
+          })
+          if (casoActual?.ordenId && (cambios.estado || cambios.dictamenGarantia || cambios.solucion)) {
             updateOrder(
-              caso.ordenId,
+              casoActual.ordenId,
               {},
               crearEvento(
-                `Caso postventa ${id}: ${cambios.estado}${cambios.solucion ? ` - Solución: ${cambios.solucion}` : ''}`,
+                `Postventa ${id}: ${cambios.estado || casoActual.estado}${cambios.dictamenGarantia ? ` (${cambios.dictamenGarantia})` : ''}${cambios.solucion ? ` - ${cambios.solucion}` : ''}`,
                 usuario,
-                cambios.estado === 'Resuelto' ? 'Completado' : 'Pendiente',
+                cambios.estado === 'Resuelto' || cambios.estado === 'Cerrado' ? 'Completado' : 'Pendiente',
                 false,
-                { estadoAnterior: caso.estado, nuevoEstado: cambios.estado, motivo: cambios.solucion || null }
+                { estadoAnterior: casoActual.estado, nuevoEstado: cambios.estado || casoActual.estado, motivo: cambios.solucion || cambios.dictamenGarantia || null }
               )
             )
           }
-          if (mensaje) notify(mensaje)
+          if (mensaje) notify(mensaje, 'exito')
           return
         }
         if (res?.data) {
-          setCases((prev) => prev.map((c) => (c.id === id ? { ...c, ...res.data } : c)))
+          setCases((prev) => prev.map((c) => (c.id === id ? { ...c, ...payload, ...res.data } : c)))
         }
         if (res?.orden) replaceOrderFromServer(res.orden)
-        if (mensaje) notify(mensaje)
+        if (mensaje) notify(mensaje, 'exito')
       })
       .catch((err) => {
         notify(err.message || 'No se pudo actualizar el caso de postventa.', 'error')

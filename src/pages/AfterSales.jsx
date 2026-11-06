@@ -1,239 +1,685 @@
 import { useState } from 'react'
-import PageHeader from '../components/PageHeader.jsx'
-import DataTable from '../components/DataTable.jsx'
 import StatusBadge from '../components/StatusBadge.jsx'
-import Icon from '../components/Icon.jsx'
-import { ROLES } from '../data/roles.js'
-import { estrellas } from '../utils/format.js'
+import Alert from '../components/Alert.jsx'
+import AfterSalesDashboard from './AfterSalesDashboard.jsx'
+import { CLIENTE_ACTUAL } from '../data/roles.js'
+import {
+  SECCIONES_POSTVENTA,
+  TIPOS_PQRSF,
+  MOTIVOS_PQRSF_POR_TIPO,
+  MOTIVOS_GARANTIA,
+  ASPECTOS_SATISFACCION,
+} from '../data/catalogos.js'
 
-// Postventa vista por el CLIENTE (HU-18): reporte de novedades y seguimiento de reclamos/garantías
-export default function AfterSales({ data, actions, irA }) {
-  const [modalNuevo, setModalNuevo] = useState(false)
-  const [ordenId, setOrdenId] = useState('')
-  const [tipo, setTipo] = useState('Reclamo')
-  const [descripcion, setDescripcion] = useState('')
-  const [errorMsg, setErrorMsg] = useState('')
-  const [modalCalificar, setModalCalificar] = useState(null)
-  const [calificacion, setCalificacion] = useState(5)
-
-  const misPedidos = data.orders.filter((o) => o.clienteId === ROLES.cliente.clienteId)
-  const misPedidosIds = misPedidos.map((o) => o.id)
-  const misCasos = data.cases.filter((c) => misPedidosIds.includes(c.ordenId))
-
-  function abrirModalNuevo() {
-    setOrdenId(misPedidosIds[0] || '')
-    setTipo('Reclamo')
-    setDescripcion('')
-    setErrorMsg('')
-    setModalNuevo(true)
-  }
-
-  function handleCrearReporte(e) {
-    e.preventDefault()
-    if (!ordenId) {
-      setErrorMsg('Debes seleccionar el pedido sobre el cual realizas el reporte.')
-      return
-    }
-    if (!descripcion.trim() || descripcion.trim().length < 10) {
-      setErrorMsg('Por favor describe el motivo o inconveniente con al menos 10 caracteres.')
-      return
-    }
-
-    if (actions.createCase) {
-      actions.createCase({
-        ordenId,
-        cliente: ROLES.cliente.nombre,
-        tipo,
-        prioridad: 'Media',
-        responsable: 'Sofía Herrera',
-        descripcion: descripcion.trim(),
-      })
-    }
-    setModalNuevo(false)
-  }
-
-  function handleGuardarCalificacion(e) {
-    e.preventDefault()
-    if (!modalCalificar) return
-    if (actions.updateCase) {
-      actions.updateCase(modalCalificar.id, { calificacion }, `Gracias por calificar la atención del caso ${modalCalificar.id}.`)
-    }
-    setModalCalificar(null)
-  }
-
-  const columnas = [
-    {
-      clave: 'ordenId',
-      titulo: 'Orden',
-      render: (c) => (
-        <button className="link-inline" onClick={() => irA('detalle', c.ordenId)}>
-          {c.ordenId}
-        </button>
-      ),
-    },
-    { clave: 'tipo', titulo: 'Tipo', ordenar: true },
-    { clave: 'fecha', titulo: 'Fecha' },
-    { clave: 'descripcion', titulo: 'Descripción del inconveniente', render: (c) => <span className="cell-wrap">{c.descripcion}</span> },
-    { clave: 'estado', titulo: 'Estado', render: (c) => <StatusBadge estado={c.estado} /> },
-    { clave: 'solucion', titulo: 'Respuesta / Solución', render: (c) => <span className="cell-wrap">{c.solucion || 'En seguimiento por servicio al cliente'}</span> },
-    {
-      clave: 'calificacion',
-      titulo: 'Tu calificación',
-      render: (c) => (
-        <div>
-          {c.calificacion ? (
-            <span className="stars">{estrellas(c.calificacion)}</span>
-          ) : c.estado === 'Resuelto' ? (
-            <button className="btn btn-sm btn-soft" onClick={() => { setModalCalificar(c); setCalificacion(5) }}>
-              <Icon nombre="star" tamano={12} /> Calificar
-            </button>
-          ) : (
-            <span className="sm mut">—</span>
-          )}
-        </div>
-      ),
-    },
-  ]
-
-  const accionesCabecera = misPedidosIds.length > 0 && (
-    <button className="btn btn-primary" onClick={abrirModalNuevo}>
-      <Icon nombre="plus" tamano={15} /> Reportar novedad o reclamo
-    </button>
+function Estrellas({ valor = 0, onSelect = null }) {
+  return (
+    <span className="stars" title={valor ? `${valor} de 5` : 'Sin calificar'}>
+      {[1, 2, 3, 4, 5].map((i) => (
+        <span
+          key={i}
+          className={i <= valor ? 'star on' : 'star'}
+          style={onSelect ? { cursor: 'pointer', fontSize: 18 } : undefined}
+          onClick={onSelect ? () => onSelect(i) : undefined}
+        >
+          ★
+        </span>
+      ))}
+    </span>
   )
+}
+
+export default function AfterSales(props) {
+  const { data, actions, role, irA } = props
+
+  // Para los roles internos (Postventa, Coordinador, Gerencia, Comercial), mostrar el panel completo
+  if (role !== 'cliente') {
+    return <AfterSalesDashboard {...props} />
+  }
+
+  const { orders, cases } = data
+  const misOrdenes = orders.filter((o) => o.clienteId === CLIENTE_ACTUAL.id)
+  const entregadas = misOrdenes.filter(
+    (o) => o.estado === 'Postventa' || o.estado === 'Entrega' || o.estado === 'Cerrada'
+  )
+  const ordenesDisponibles = entregadas.length ? entregadas : misOrdenes
+  const idsMisOrdenes = new Set(misOrdenes.map((o) => o.id))
+  const misCasos = cases.filter((c) => idsMisOrdenes.has(c.ordenId) || c.cliente === CLIENTE_ACTUAL.empresa)
+
+  // Tres secciones separadas para el cliente
+  const [seccionActiva, setSeccionActiva] = useState('Satisfacción')
+  const [casoHistorial, setCasoHistorial] = useState(null)
+
+  const misSatisfacciones = misCasos.filter(
+    (c) => c.categoria === 'Satisfacción' || c.tipo === 'Satisfacción'
+  )
+  const misPqrsf = misCasos.filter(
+    (c) => c.categoria === 'PQRSF' || (!c.categoria && c.tipo !== 'Garantía' && c.tipo !== 'Satisfacción')
+  )
+  const misGarantias = misCasos.filter(
+    (c) => c.categoria === 'Garantía' || (!c.categoria && c.tipo === 'Garantía')
+  )
+
+  // Formulario de Satisfacción
+  const [formSat, setFormSat] = useState({
+    ordenId: ordenesDisponibles[0]?.id || '',
+    calificacion: 5,
+    aspectosEvaluados: [
+      'Fidelidad de color y nitidez de impresión',
+      'Cumplimiento de la fecha de entrega acordada',
+    ],
+    descripcion: '',
+  })
+
+  // Formulario de PQRSF
+  const [formPqrsf, setFormPqrsf] = useState({
+    ordenId: ordenesDisponibles[0]?.id || '',
+    subtipo: 'Petición',
+    motivo: MOTIVOS_PQRSF_POR_TIPO.Petición[0],
+    descripcion: '',
+    evidencias: [],
+  })
+
+  // Formulario de Garantía
+  const [formGar, setFormGar] = useState({
+    ordenId: ordenesDisponibles[0]?.id || '',
+    motivo: MOTIVOS_GARANTIA[0],
+    descripcion: '',
+    evidencias: [],
+  })
+
+  function adjuntarEvidencias(e, setter) {
+    const files = Array.from(e.target.files || [])
+    if (!files.length) return
+    files.forEach((file) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const item = {
+          id: `EV-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          nombre: file.name,
+          tipo: file.type || 'application/octet-stream',
+          tamano: `${Math.max(1, Math.round(file.size / 1024))} KB`,
+          fecha: new Date().toLocaleDateString('es-CO'),
+          dataUrl: typeof reader.result === 'string' ? reader.result : null,
+        }
+        setter((prev) => ({ ...prev, evidencias: [...prev.evidencias, item] }))
+      }
+      reader.readAsDataURL(file)
+    })
+    e.target.value = ''
+  }
+
+  function toggleAspecto(asp) {
+    setFormSat((prev) => {
+      const existe = prev.aspectosEvaluados.includes(asp)
+      return {
+        ...prev,
+        aspectosEvaluados: existe
+          ? prev.aspectosEvaluados.filter((a) => a !== asp)
+          : [...prev.aspectosEvaluados, asp],
+      }
+    })
+  }
+
+  function enviarSatisfaccion(e) {
+    e.preventDefault()
+    if (!formSat.ordenId || !formSat.descripcion.trim()) return
+    const ord = orders.find((o) => o.id === formSat.ordenId)
+    actions.createCase({
+      ordenId: formSat.ordenId,
+      cliente: ord?.cliente || CLIENTE_ACTUAL.empresa,
+      producto: ord?.producto || '',
+      categoria: 'Satisfacción',
+      subtipo: 'Satisfacción',
+      tipo: 'Satisfacción',
+      motivo: 'Evaluación de satisfacción post-entrega',
+      calificacion: Number(formSat.calificacion),
+      aspectosEvaluados: formSat.aspectosEvaluados,
+      descripcion: formSat.descripcion.trim(),
+    })
+    setFormSat((prev) => ({ ...prev, descripcion: '' }))
+  }
+
+  function enviarPqrsf(e) {
+    e.preventDefault()
+    if (!formPqrsf.ordenId || !formPqrsf.descripcion.trim()) return
+    const ord = orders.find((o) => o.id === formPqrsf.ordenId)
+    actions.createCase({
+      ordenId: formPqrsf.ordenId,
+      cliente: ord?.cliente || CLIENTE_ACTUAL.empresa,
+      producto: ord?.producto || '',
+      categoria: 'PQRSF',
+      subtipo: formPqrsf.subtipo,
+      tipo: formPqrsf.subtipo,
+      motivo: formPqrsf.motivo,
+      prioridad: formPqrsf.subtipo === 'Reclamo' || formPqrsf.subtipo === 'Queja' ? 'Alta' : 'Media',
+      descripcion: formPqrsf.descripcion.trim(),
+      evidencias: formPqrsf.evidencias,
+    })
+    setFormPqrsf((prev) => ({ ...prev, descripcion: '', evidencias: [] }))
+  }
+
+  function enviarGarantia(e) {
+    e.preventDefault()
+    if (!formGar.ordenId || !formGar.descripcion.trim()) return
+    const ord = orders.find((o) => o.id === formGar.ordenId)
+    actions.createCase({
+      ordenId: formGar.ordenId,
+      cliente: ord?.cliente || CLIENTE_ACTUAL.empresa,
+      producto: ord?.producto || '',
+      categoria: 'Garantía',
+      subtipo: 'Garantía',
+      tipo: 'Garantía',
+      motivo: formGar.motivo,
+      prioridad: 'Alta',
+      dictamenGarantia: 'Pendiente de evaluación',
+      accionCorrectiva: 'En espera de dictamen técnico',
+      descripcion: formGar.descripcion.trim(),
+      evidencias: formGar.evidencias,
+    })
+    setFormGar((prev) => ({ ...prev, descripcion: '', evidencias: [] }))
+  }
 
   return (
     <div>
-      <PageHeader
-        titulo="Postventa y soporte"
-        subtitulo="Reclamos, ajustes, garantías y comentarios de tus pedidos entregados."
-        icono="life-buoy"
-        acciones={accionesCabecera}
-      />
+      <div className="page-header">
+        <div>
+          <h1>Atención Postventa, PQRSF y Garantías</h1>
+          <p>
+            Califica los pedidos recibidos, radica peticiones, quejas, reclamos, sugerencias o felicitaciones, y gestiona garantías técnicas
+          </p>
+        </div>
+      </div>
 
-      <DataTable
-        columnas={columnas}
-        filas={misCasos}
-        buscar={(c) => `${c.ordenId} ${c.tipo} ${c.descripcion}`}
-        placeholder="Buscar en mis casos..."
-        filtros={[{ titulo: 'Estado', valor: (c) => c.estado, opciones: ['Abierto', 'En trámite', 'Resuelto'] }]}
-        vacioTitulo="No tienes casos de postventa"
-        vacioTexto="Cuando registres un reclamo, ajuste o garantía aparecerá aquí."
-      />
+      {/* Selector de las 3 secciones independientes */}
+      <div className="filter-bar" style={{ marginBottom: 18 }}>
+        {SECCIONES_POSTVENTA.map((sec) => {
+          const conteo =
+            sec.id === 'Satisfacción'
+              ? misSatisfacciones.length
+              : sec.id === 'PQRSF'
+              ? misPqrsf.length
+              : misGarantias.length
+          return (
+            <button
+              key={sec.id}
+              type="button"
+              className={`chip ${seccionActiva === sec.id ? 'active' : ''}`}
+              onClick={() => setSeccionActiva(sec.id)}
+            >
+              {sec.titulo} ({conteo})
+            </button>
+          )
+        })}
+      </div>
 
-      {/* Modal Registrar Novedad */}
-      {modalNuevo && (
-        <div className="modal-backdrop" onClick={() => setModalNuevo(false)}>
-          <div className="modal" style={{ maxWidth: '520px' }} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Reportar novedad">
-            <div className="modal-head">
-              <span className="modal-icon modal-icon-info"><Icon nombre="life-buoy" tamano={20} /></span>
-              <div>
-                <h2>Reportar novedad o solicitud postventa</h2>
-                <p>Nuestro equipo de soporte revisará tu solicitud de inmediato</p>
+      {/* SECCIÓN 1: CALIFICACIÓN DE SATISFACCIÓN */}
+      {seccionActiva === 'Satisfacción' && (
+        <div className="split">
+          <form className="card form" onSubmit={enviarSatisfaccion}>
+            <h2>1. Calificar satisfacción de entrega</h2>
+            <p className="muted" style={{ marginBottom: 12 }}>
+              Evalúa la calidad de impresión, acabados y cumplimiento del pedido recibido.
+            </p>
+            <label>
+              <span>Orden entregada *</span>
+              <select
+                value={formSat.ordenId}
+                onChange={(e) => setFormSat({ ...formSat, ordenId: e.target.value })}
+                required
+              >
+                {ordenesDisponibles.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.id} — {o.producto} ({o.estado})
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              <span>Nivel de satisfacción general *</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
+                <Estrellas
+                  valor={formSat.calificacion}
+                  onSelect={(v) => setFormSat({ ...formSat, calificacion: v })}
+                />
+                <select
+                  value={formSat.calificacion}
+                  onChange={(e) => setFormSat({ ...formSat, calificacion: Number(e.target.value) })}
+                >
+                  <option value={5}>5 estrellas — Excelente</option>
+                  <option value={4}>4 estrellas — Muy bueno</option>
+                  <option value={3}>3 estrellas — Aceptable</option>
+                  <option value={2}>2 estrellas — Regular</option>
+                  <option value={1}>1 estrella — Insatisfecho</option>
+                </select>
               </div>
-              <button className="icon-btn" onClick={() => setModalNuevo(false)}><Icon nombre="x" /></button>
+            </label>
+
+            <div>
+              <span style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
+                Aspectos destacados en tu pedido
+              </span>
+              <div style={{ display: 'grid', gap: 6 }}>
+                {ASPECTOS_SATISFACCION.map((asp) => (
+                  <label
+                    key={asp}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      fontSize: 12,
+                      padding: '5px 8px',
+                      borderRadius: 6,
+                      border: '1px solid var(--border)',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={formSat.aspectosEvaluados.includes(asp)}
+                      onChange={() => toggleAspecto(asp)}
+                    />
+                    <span>{asp}</span>
+                  </label>
+                ))}
+              </div>
             </div>
 
-            <form onSubmit={handleCrearReporte} className="modal-body">
-              {errorMsg && (
-                <div className="ban ban-rojo" style={{ marginBottom: '14px' }}>
-                  <Icon nombre="alert-circle" tamano={15} /> {errorMsg}
-                </div>
-              )}
+            <label>
+              <span>Comentario sobre el producto y la entrega *</span>
+              <textarea
+                rows={3}
+                value={formSat.descripcion}
+                onChange={(e) => setFormSat({ ...formSat, descripcion: e.target.value })}
+                placeholder="Cuéntanos tu experiencia con el producto entregado..."
+                required
+              />
+            </label>
 
-              <div className="field full">
-                <label className="field-label" htmlFor="pedidoSelect">Selecciona tu pedido *</label>
-                <select
-                  id="pedidoSelect"
-                  value={ordenId}
-                  onChange={(e) => setOrdenId(e.target.value)}
-                  required
-                >
-                  {misPedidos.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.id} — {o.producto} (Entregado el {o.fechaEntrega})
-                    </option>
+            <div className="form-actions">
+              <button type="submit" className="btn btn-primary">
+                Enviar calificación
+              </button>
+            </div>
+          </form>
+
+          <div className="card">
+            <div className="card-header">
+              <h2>Mis calificaciones enviadas ({misSatisfacciones.length})</h2>
+            </div>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Código</th>
+                    <th>Orden</th>
+                    <th>Fecha</th>
+                    <th>Calificación</th>
+                    <th>Aspectos y Comentario</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {misSatisfacciones.map((c) => (
+                    <tr key={c.id}>
+                      <td className="mono">{c.id}</td>
+                      <td>
+                        <a className="link" onClick={() => irA('detalle', c.ordenId)}>
+                          {c.ordenId}
+                        </a>
+                      </td>
+                      <td className="muted">{c.fecha}</td>
+                      <td>
+                        <Estrellas valor={c.calificacion || 5} />
+                      </td>
+                      <td>
+                        <div style={{ fontSize: 12 }}>{c.descripcion}</div>
+                        {c.aspectosEvaluados?.length > 0 && (
+                          <div className="muted" style={{ fontSize: 11, marginTop: 3 }}>
+                            ✓ {c.aspectosEvaluados.join(' · ')}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
                   ))}
-                </select>
-              </div>
-
-              <div className="field full">
-                <label className="field-label" htmlFor="tipoSelect">Tipo de novedad *</label>
-                <select
-                  id="tipoSelect"
-                  value={tipo}
-                  onChange={(e) => setTipo(e.target.value)}
-                >
-                  <option value="Reclamo">Reclamo (no conformidad con lo solicitado)</option>
-                  <option value="Garantía">Garantía (desperfecto o fallo del material)</option>
-                  <option value="Ajuste">Ajuste técnico adicional</option>
-                  <option value="Reimpresión">Solicitud de reimpresión</option>
-                  <option value="Comentario">Comentario o sugerencia</option>
-                </select>
-              </div>
-
-              <div className="field full">
-                <label className="field-label" htmlFor="descText">Describe el inconveniente o tu solicitud *</label>
-                <textarea
-                  id="descText"
-                  rows={3}
-                  value={descripcion}
-                  onChange={(e) => setDescripcion(e.target.value)}
-                  placeholder="Detalla qué sucedió con tu pedido..."
-                  required
-                />
-                <small className="sm mut">Mínimo 10 caracteres obligatorios.</small>
-              </div>
-
-              <div className="modal-foot" style={{ marginTop: '20px', padding: 0, background: 'none', border: 'none' }}>
-                <button type="button" className="btn" onClick={() => setModalNuevo(false)}>Cancelar</button>
-                <button type="submit" className="btn btn-primary">
-                  <Icon nombre="check" tamano={15} /> Enviar reporte
-                </button>
-              </div>
-            </form>
+                  {misSatisfacciones.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="empty">
+                        Aún no has registrado calificaciones de satisfacción.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Modal Calificar Atención */}
-      {modalCalificar && (
-        <div className="modal-backdrop" onClick={() => setModalCalificar(null)}>
-          <div className="modal" style={{ maxWidth: '420px' }} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Calificar atención">
-            <div className="modal-head">
-              <span className="modal-icon modal-icon-success"><Icon nombre="star" tamano={20} /></span>
-              <div>
-                <h2>Califica la solución del caso {modalCalificar.id}</h2>
-                <p>Orden {modalCalificar.ordenId}</p>
-              </div>
-              <button className="icon-btn" onClick={() => setModalCalificar(null)}><Icon nombre="x" /></button>
+      {/* SECCIÓN 2: GESTIÓN DE PQRSF */}
+      {seccionActiva === 'PQRSF' && (
+        <div className="split">
+          <form className="card form" onSubmit={enviarPqrsf}>
+            <h2>2. Radicar PQRSF</h2>
+            <p className="muted" style={{ marginBottom: 12 }}>
+              Peticiones, quejas, reclamos, sugerencias o felicitaciones sobre la atención o el servicio.
+            </p>
+            <label>
+              <span>Orden relacionada *</span>
+              <select
+                value={formPqrsf.ordenId}
+                onChange={(e) => setFormPqrsf({ ...formPqrsf, ordenId: e.target.value })}
+                required
+              >
+                {ordenesDisponibles.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.id} — {o.producto}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              <span>Tipo de PQRSF *</span>
+              <select
+                value={formPqrsf.subtipo}
+                onChange={(e) => {
+                  const sub = e.target.value
+                  const lista = MOTIVOS_PQRSF_POR_TIPO[sub] || []
+                  setFormPqrsf({ ...formPqrsf, subtipo: sub, motivo: lista[0] || sub })
+                }}
+              >
+                {TIPOS_PQRSF.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              <span>Motivo *</span>
+              <select
+                value={formPqrsf.motivo}
+                onChange={(e) => setFormPqrsf({ ...formPqrsf, motivo: e.target.value })}
+              >
+                {(MOTIVOS_PQRSF_POR_TIPO[formPqrsf.subtipo] || []).map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              <span>Descripción detallada *</span>
+              <textarea
+                rows={3}
+                value={formPqrsf.descripcion}
+                onChange={(e) => setFormPqrsf({ ...formPqrsf, descripcion: e.target.value })}
+                placeholder="Describe tu petición, queja, reclamo, sugerencia o felicitación..."
+                required
+              />
+            </label>
+
+            <label>
+              <span>Evidencias fotográficas o documentos adjuntos</span>
+              <input
+                type="file"
+                multiple
+                accept=".jpg,.jpeg,.png,.webp,.pdf"
+                onChange={(e) => adjuntarEvidencias(e, setFormPqrsf)}
+              />
+              {formPqrsf.evidencias.length > 0 && (
+                <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+                  📎 {formPqrsf.evidencias.map((ev) => ev.nombre).join(', ')}
+                </div>
+              )}
+            </label>
+
+            <div className="form-actions">
+              <button type="submit" className="btn btn-primary">
+                Radicar {formPqrsf.subtipo}
+              </button>
             </div>
+          </form>
 
-            <form onSubmit={handleGuardarCalificacion} className="modal-body">
-              <div style={{ marginBottom: '14px', fontSize: '13px' }}>
-                <strong>Solución recibida:</strong>
-                <p style={{ margin: '4px 0 0' }}>{modalCalificar.solucion}</p>
-              </div>
+          <div className="card">
+            <div className="card-header">
+              <h2>Mis solicitudes PQRSF ({misPqrsf.length})</h2>
+            </div>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Caso</th>
+                    <th>Tipo</th>
+                    <th>Orden</th>
+                    <th>Motivo y Descripción</th>
+                    <th>Estado</th>
+                    <th>Respuesta / Solución</th>
+                    <th>Historial</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {misPqrsf.map((c) => (
+                    <tr key={c.id}>
+                      <td className="mono">{c.id}</td>
+                      <td>
+                        <StatusBadge estado={c.subtipo || c.tipo} />
+                      </td>
+                      <td>
+                        <a className="link" onClick={() => irA('detalle', c.ordenId)}>
+                          {c.ordenId}
+                        </a>
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: 600, fontSize: 12 }}>{c.motivo}</div>
+                        <div className="muted" style={{ fontSize: 12 }}>{c.descripcion}</div>
+                      </td>
+                      <td>
+                        <StatusBadge estado={c.estado} />
+                      </td>
+                      <td style={{ fontSize: 12 }}>
+                        {c.respuestaCliente || c.solucion || <span className="muted">En gestión por {c.responsable || 'Postventa'}</span>}
+                      </td>
+                      <td>
+                        <button className="btn btn-ghost btn-sm" onClick={() => setCasoHistorial(c)}>
+                          Ver ({c.historial?.length || 1})
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {misPqrsf.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="empty">
+                        No tienes solicitudes PQRSF registradas.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
-              <div className="field full">
-                <label className="field-label" htmlFor="selectEstrellas">Nivel de satisfacción</label>
-                <select
-                  id="selectEstrellas"
-                  value={calificacion}
-                  onChange={(e) => setCalificacion(Number(e.target.value))}
-                >
-                  <option value={5}>★★★★★ Excelente servicio (5 estrellas)</option>
-                  <option value={4}>★★★★☆ Bueno / Conforme (4 estrellas)</option>
-                  <option value={3}>★★★☆☆ Aceptable (3 estrellas)</option>
-                  <option value={2}>★★☆☆☆ Regular (2 estrellas)</option>
-                  <option value={1}>★☆☆☆☆ Insatisfecho (1 estrella)</option>
-                </select>
-              </div>
+      {/* SECCIÓN 3: GESTIÓN DE GARANTÍAS */}
+      {seccionActiva === 'Garantía' && (
+        <div className="split">
+          <form className="card form" onSubmit={enviarGarantia}>
+            <h2>3. Solicitar revisión de garantía</h2>
+            <Alert tipo="info" titulo="Evaluación técnica de garantía">
+              Toda solicitud de garantía es evaluada por el equipo de calidad verificando las especificaciones acordadas y las evidencias adjuntas.
+            </Alert>
+            <label style={{ marginTop: 10 }}>
+              <span>Orden entregada *</span>
+              <select
+                value={formGar.ordenId}
+                onChange={(e) => setFormGar({ ...formGar, ordenId: e.target.value })}
+                required
+              >
+                {ordenesDisponibles.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.id} — {o.producto}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-              <div className="modal-foot" style={{ marginTop: '20px', padding: 0, background: 'none', border: 'none' }}>
-                <button type="button" className="btn" onClick={() => setModalCalificar(null)}>Cancelar</button>
-                <button type="submit" className="btn btn-success">Guardar calificación</button>
+            <label>
+              <span>Causal de garantía *</span>
+              <select
+                value={formGar.motivo}
+                onChange={(e) => setFormGar({ ...formGar, motivo: e.target.value })}
+              >
+                {MOTIVOS_GARANTIA.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              <span>Descripción del daño, defecto o incumplimiento *</span>
+              <textarea
+                rows={3}
+                value={formGar.descripcion}
+                onChange={(e) => setFormGar({ ...formGar, descripcion: e.target.value })}
+                placeholder="Indica cantidad de unidades afectadas y detalle técnico del problema..."
+                required
+              />
+            </label>
+
+            <label>
+              <span>Evidencias fotográficas y soporte documental *</span>
+              <input
+                type="file"
+                multiple
+                accept=".jpg,.jpeg,.png,.webp,.pdf"
+                onChange={(e) => adjuntarEvidencias(e, setFormGar)}
+              />
+              {formGar.evidencias.length > 0 && (
+                <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+                  📷 {formGar.evidencias.map((ev) => ev.nombre).join(', ')}
+                </div>
+              )}
+            </label>
+
+            <div className="form-actions">
+              <button type="submit" className="btn btn-primary">
+                Radicar solicitud de garantía
+              </button>
+            </div>
+          </form>
+
+          <div className="card">
+            <div className="card-header">
+              <h2>Mis solicitudes de garantía ({misGarantias.length})</h2>
+            </div>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Código</th>
+                    <th>Orden</th>
+                    <th>Causal</th>
+                    <th>Dictamen Técnico</th>
+                    <th>Estado</th>
+                    <th>Decisión y Respuesta</th>
+                    <th>Historial</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {misGarantias.map((c) => (
+                    <tr key={c.id}>
+                      <td className="mono">{c.id}</td>
+                      <td>
+                        <a className="link" onClick={() => irA('detalle', c.ordenId)}>
+                          {c.ordenId}
+                        </a>
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: 600, fontSize: 12 }}>{c.motivo}</div>
+                        <div className="muted" style={{ fontSize: 11 }}>{c.descripcion}</div>
+                      </td>
+                      <td>
+                        <strong>{c.dictamenGarantia || 'Pendiente de evaluación'}</strong>
+                        {c.justificacionDictamen && (
+                          <div className="muted" style={{ fontSize: 11 }}>{c.justificacionDictamen}</div>
+                        )}
+                      </td>
+                      <td>
+                        <StatusBadge estado={c.estado} />
+                      </td>
+                      <td style={{ fontSize: 12 }}>
+                        <div>{c.accionCorrectiva || 'En revisión'}</div>
+                        {c.respuestaCliente && (
+                          <div className="muted" style={{ fontSize: 11 }}>{c.respuestaCliente}</div>
+                        )}
+                      </td>
+                      <td>
+                        <button className="btn btn-ghost btn-sm" onClick={() => setCasoHistorial(c)}>
+                          Ver ({c.historial?.length || 1})
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {misGarantias.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="empty">
+                        No tienes reclamaciones de garantía registradas.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de historial para el cliente */}
+      {casoHistorial && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(9, 13, 22, 0.65)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: 16,
+          }}
+        >
+          <div className="card" style={{ maxWidth: 640, width: '100%', maxHeight: '88vh', overflowY: 'auto' }}>
+            <div className="card-header">
+              <div>
+                <h2>Historial del caso {casoHistorial.id}</h2>
+                <span className="muted">
+                  Orden {casoHistorial.ordenId} · Estado actual: {casoHistorial.estado}
+                </span>
               </div>
-            </form>
+              <button className="btn btn-ghost btn-sm" onClick={() => setCasoHistorial(null)}>
+                ✕
+              </button>
+            </div>
+            <ul className="timeline">
+              {(casoHistorial.historial || []).map((h, i) => (
+                <li key={i} className="tl-done">
+                  <div className="tl-dot" />
+                  <div className="tl-body">
+                    <div className="tl-title">
+                      {h.accion} <StatusBadge estado={h.estado || casoHistorial.estado} />
+                    </div>
+                    {h.detalle && <div style={{ fontSize: 12 }}>{h.detalle}</div>}
+                    <div className="tl-meta">
+                      {h.fecha} · {h.hora || '09:00'} — {h.autor}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       )}

@@ -13,6 +13,7 @@ import EmptyState from '../components/EmptyState.jsx'
 import ProgressBar from '../components/ProgressBar.jsx'
 import Icon from '../components/Icon.jsx'
 import { ETAPAS, OPERARIOS } from '../data/mockData.js'
+import { ACTIVIDADES_TALLER_POR_ETAPA } from '../data/catalogos.js'
 import {
   diasParaEntrega,
   estaActiva,
@@ -877,6 +878,7 @@ export default function CoordinatorDashboard({ data, actions, irA }) {
                   <div className="field">
                     <label className="field-label">Nombre de la actividad *</label>
                     <input
+                      list="sug-actividades-coord-sub"
                       placeholder="Ej. Impresión lona, Laminado UV, Corte..."
                       value={nuevaActividadNombre}
                       onChange={(e) => {
@@ -884,6 +886,11 @@ export default function CoordinatorDashboard({ data, actions, irA }) {
                         setErrorActividad('')
                       }}
                     />
+                    <datalist id="sug-actividades-coord-sub">
+                      {(ACTIVIDADES_TALLER_POR_ETAPA[nuevaActividadEtapa] || []).map((sug) => (
+                        <option key={sug} value={sug} />
+                      ))}
+                    </datalist>
                   </div>
                   <div className="field">
                     <label className="field-label">Responsable asignado *</label>
@@ -1032,14 +1039,36 @@ export default function CoordinatorDashboard({ data, actions, irA }) {
                   <label className="field-label" htmlFor="dirNombre">Nombre de la actividad *</label>
                   <input
                     id="dirNombre"
+                    list="sug-actividades-coord-dir"
                     value={nuevaActividadNombre}
                     onChange={(e) => {
                       setNuevaActividadNombre(e.target.value)
                       setErrorActividad('')
                     }}
-                    placeholder="Ej. Impresión de pendones, Troquelado de cajas, Empaque..."
+                    placeholder="Ej. Selecciona una sugerencia o escribe la actividad..."
                     autoFocus
                   />
+                  <datalist id="sug-actividades-coord-dir">
+                    {(ACTIVIDADES_TALLER_POR_ETAPA[nuevaActividadEtapa] || []).map((sug) => (
+                      <option key={sug} value={sug} />
+                    ))}
+                  </datalist>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '6px' }}>
+                    {(ACTIVIDADES_TALLER_POR_ETAPA[nuevaActividadEtapa] || []).map((sug) => (
+                      <button
+                        key={sug}
+                        type="button"
+                        className="btn btn-soft btn-sm"
+                        style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '12px' }}
+                        onClick={() => {
+                          setNuevaActividadNombre(sug)
+                          setErrorActividad('')
+                        }}
+                      >
+                        + {sug}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div className="field full">
                   <label className="field-label" htmlFor="dirDesc">Descripción</label>

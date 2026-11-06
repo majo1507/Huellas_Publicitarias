@@ -35,6 +35,9 @@ function formatearSolicitud(s) {
     cantidad: Number(s.cantidad || 1),
     dimensiones: s.dimensiones || 'Estándar',
     material: s.material || 'Lona',
+    prioridad: s.prioridad || 'Media',
+    metodoEntrega: s.metodo_entrega || 'Domicilio',
+    acabados: s.acabados || 'Corte y empaque estándar',
     fechaSolicitud: s.fecha_solicitud || formatearFechaHoy(new Date(s.created_at)),
     fechaEntrega: s.fecha_entrega || formatearFechaHoy(new Date(s.created_at)),
     presupuesto: Number(s.presupuesto || 0),
@@ -152,14 +155,20 @@ const crearSolicitud = async (req, res) => {
     const presNum = Number(presupuesto || 0);
     const fechaSol = formatearFechaHoy();
     const archRef = Array.isArray(req.body.archivosReferencia) ? req.body.archivosReferencia : [];
+    const prioridad = req.body.prioridad || 'Media';
+    const metodoEntrega = req.body.metodoEntrega || req.body.metodo_entrega || 'Domicilio';
+    const acabados = Array.isArray(req.body.acabados)
+      ? req.body.acabados.join(', ')
+      : (req.body.acabados || 'Corte y empaque estándar');
 
     const ins = await pool.query(
       `INSERT INTO solicitudes (
         codigo, cliente_id, ejecutiva_id, descripcion, estado,
         producto, cantidad, dimensiones, material,
+        prioridad, metodo_entrega, acabados,
         fecha_solicitud, fecha_entrega, presupuesto,
         requerimientos, observaciones, motivo_rechazo, archivos_referencia
-      ) VALUES ($1,$2,$3,$4,'pendiente',$5,$6,$7,$8,$9,$10,$11,$12,$13,'',$14::jsonb)
+      ) VALUES ($1,$2,$3,$4,'pendiente',$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'',$17::jsonb)
       RETURNING id`,
       [
         codigo,
@@ -170,6 +179,9 @@ const crearSolicitud = async (req, res) => {
         cantNum,
         dimensiones || '',
         material || '',
+        prioridad,
+        metodoEntrega,
+        acabados,
         fechaSol,
         fechaEntrega || fechaSol,
         presNum,
@@ -303,9 +315,13 @@ const validarSolicitud = async (req, res) => {
       : (await obtenerUsuarioPorDefecto(client, 'coord'));
     const coordNombre = req.usuario?.nombre_completo || coordUser.nombre_completo;
 
+    const metodoEntregaOrd = sol.metodo_entrega || 'Domicilio';
+    const acabadosOrd = sol.acabados || 'Corte y empaque estándar';
+    const prioridadOrd = ['Alta', 'Media', 'Baja'].includes(sol.prioridad) ? sol.prioridad : 'Media';
+
     const entregaJson = {
       direccion: cliente.direccion ? `${cliente.direccion}, ${cliente.ciudad || 'Bogotá'}` : 'Sede comercial, Bogotá',
-      metodo: 'Domicilio',
+      metodo: metodoEntregaOrd,
       contacto: cliente.contacto_principal || cliente.empresa,
     };
 
@@ -321,11 +337,11 @@ const validarSolicitud = async (req, res) => {
         metodo_entrega, requerimientos, observaciones, entrega_json, archivos_referencia
       ) VALUES (
         $1,$2,$3,$4,NULL,
-        1,'Media',12.50,false,
-        $5,$6,$7,$8,'Por definir en pre-prensa','Corte y empaque estándar',
+        1,$17::prioridad_orden,12.50,false,
+        $5,$6,$7,$8,'Por definir en pre-prensa',$18,
         $9,$10,'Diseño','Pendiente',
         'María López','María López',$11,$12,
-        'Domicilio',$13,$14,$15,$16::jsonb
+        $19,$13,$14,$15,$16::jsonb
       ) RETURNING *`,
       [
         sol.cliente_id,
@@ -344,6 +360,9 @@ const validarSolicitud = async (req, res) => {
         sol.observaciones || '',
         JSON.stringify(entregaJson),
         JSON.stringify(archRef),
+        prioridadOrd,
+        acabadosOrd,
+        metodoEntregaOrd,
       ]
     );
 

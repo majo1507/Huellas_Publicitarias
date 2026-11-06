@@ -8,6 +8,13 @@ import Alert from '../components/Alert.jsx'
 import Icon from '../components/Icon.jsx'
 import { formatoCOP } from '../utils/format.js'
 import { generarReporteInventarioPDF } from '../utils/pdfReport.js'
+import {
+  PAISES,
+  TIPOS_DOCUMENTO,
+  CATALOGO_MATERIALES,
+  obtenerDepartamentosPorPais,
+  obtenerMunicipiosPorDepartamento,
+} from '../data/catalogos.js'
 
 const CATEGORIAS_MATERIAL = [
   'Sustratos gran formato',
@@ -34,10 +41,15 @@ const FORM_MATERIAL_VACIO = {
 
 const FORM_PROVEEDOR_VACIO = {
   nombre: '',
+  tipoDocumento: 'NIT',
+  nit: '',
   contacto: '',
   telefono: '',
   correo: '',
-  ciudad: 'Bogotá',
+  pais: 'Colombia',
+  departamento: 'Antioquia',
+  municipio: 'Medellín',
+  ciudad: 'Medellín',
   productos: '',
 }
 
@@ -73,6 +85,37 @@ export default function Inventory({ data, actions, irA, role }) {
     (acc, m) => acc + Number(m.cantidadUtilizada || 0) * Number(m.costoUnitario || 0),
     0
   )
+
+  const departamentosProveedor = obtenerDepartamentosPorPais(formProveedor.pais)
+  const municipiosProveedor = obtenerMunicipiosPorDepartamento(
+    formProveedor.pais,
+    formProveedor.departamento
+  )
+
+  function handleCambioPaisProveedor(nuevoPais) {
+    const deptos = obtenerDepartamentosPorPais(nuevoPais)
+    const primerDepto = deptos[0] || ''
+    const munis = obtenerMunicipiosPorDepartamento(nuevoPais, primerDepto)
+    const primerMuni = munis[0] || ''
+    setFormProveedor((prev) => ({
+      ...prev,
+      pais: nuevoPais,
+      departamento: primerDepto,
+      municipio: primerMuni,
+      ciudad: primerMuni,
+    }))
+  }
+
+  function handleCambioDeptoProveedor(nuevoDepto) {
+    const munis = obtenerMunicipiosPorDepartamento(formProveedor.pais, nuevoDepto)
+    const primerMuni = munis[0] || ''
+    setFormProveedor((prev) => ({
+      ...prev,
+      departamento: nuevoDepto,
+      municipio: primerMuni,
+      ciudad: primerMuni,
+    }))
+  }
 
   function abrirMovimientoRapido(material, tipo = 'Entrada') {
     setFormMovimiento({
@@ -127,10 +170,15 @@ export default function Inventory({ data, actions, irA, role }) {
 
     actions.addSupplier({
       nombre: formProveedor.nombre.trim(),
+      tipoDocumento: formProveedor.tipoDocumento || 'NIT',
+      nit: formProveedor.nit?.trim() || '',
       contacto: formProveedor.contacto.trim(),
       telefono: formProveedor.telefono.trim(),
       correo: formProveedor.correo.trim(),
-      ciudad: formProveedor.ciudad.trim() || 'Bogotá',
+      pais: formProveedor.pais || 'Colombia',
+      departamento: formProveedor.departamento || 'Antioquia',
+      municipio: formProveedor.municipio || formProveedor.ciudad || 'Medellín',
+      ciudad: formProveedor.municipio || formProveedor.ciudad || 'Medellín',
       productos: formProveedor.productos.trim(),
     })
     setModalProveedor(false)
@@ -263,12 +311,14 @@ export default function Inventory({ data, actions, irA, role }) {
   const columnasProveedores = [
     {
       clave: 'nombre',
-      titulo: 'Proveedor',
+      titulo: 'Proveedor / Documento',
       ordenar: true,
       render: (p) => (
         <div>
           <strong>{p.nombre}</strong>
-          <small className="cell-sub">{p.id} · {p.ciudad || 'Bogotá'}</small>
+          <small className="cell-sub">
+            {p.id} · {p.tipoDocumento || 'NIT'}: {p.nit || '—'} · {p.municipio || p.ciudad || 'Bogotá'}{p.departamento ? `, ${p.departamento}` : ''}
+          </small>
         </div>
       ),
     },
@@ -641,8 +691,29 @@ export default function Inventory({ data, actions, irA, role }) {
             </div>
             <form onSubmit={handleGuardarProveedor} className="modal-body" noValidate>
               <div className="form-grid">
+                <div className="field">
+                  <label className="field-label" htmlFor="provTipoDoc">Tipo de identificación</label>
+                  <select
+                    id="provTipoDoc"
+                    value={formProveedor.tipoDocumento}
+                    onChange={(e) => setFormProveedor({ ...formProveedor, tipoDocumento: e.target.value })}
+                  >
+                    {TIPOS_DOCUMENTO.map((td) => (
+                      <option key={td} value={td}>{td}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label className="field-label" htmlFor="provNit">Número de documento / NIT</label>
+                  <input
+                    id="provNit"
+                    value={formProveedor.nit}
+                    onChange={(e) => setFormProveedor({ ...formProveedor, nit: e.target.value })}
+                    placeholder="Ej. 900.567.890-1"
+                  />
+                </div>
                 <div className={`field ${errores.nombre ? 'has-error' : ''}`}>
-                  <label className="field-label" htmlFor="provNombre">Empresa proveedora</label>
+                  <label className="field-label" htmlFor="provNombre">Empresa proveedora *</label>
                   <input
                     id="provNombre"
                     value={formProveedor.nombre}
@@ -652,7 +723,7 @@ export default function Inventory({ data, actions, irA, role }) {
                   {errores.nombre && <span className="field-error">{errores.nombre}</span>}
                 </div>
                 <div className={`field ${errores.contacto ? 'has-error' : ''}`}>
-                  <label className="field-label" htmlFor="provContacto">Contacto comercial</label>
+                  <label className="field-label" htmlFor="provContacto">Contacto comercial *</label>
                   <input
                     id="provContacto"
                     value={formProveedor.contacto}
@@ -662,7 +733,7 @@ export default function Inventory({ data, actions, irA, role }) {
                   {errores.contacto && <span className="field-error">{errores.contacto}</span>}
                 </div>
                 <div className={`field ${errores.telefono ? 'has-error' : ''}`}>
-                  <label className="field-label" htmlFor="provTel">Teléfono</label>
+                  <label className="field-label" htmlFor="provTel">Teléfono *</label>
                   <input
                     id="provTel"
                     value={formProveedor.telefono}
@@ -672,7 +743,7 @@ export default function Inventory({ data, actions, irA, role }) {
                   {errores.telefono && <span className="field-error">{errores.telefono}</span>}
                 </div>
                 <div className={`field ${errores.correo ? 'has-error' : ''}`}>
-                  <label className="field-label" htmlFor="provCorreo">Correo electrónico</label>
+                  <label className="field-label" htmlFor="provCorreo">Correo electrónico *</label>
                   <input
                     id="provCorreo"
                     type="email"
@@ -682,8 +753,50 @@ export default function Inventory({ data, actions, irA, role }) {
                   />
                   {errores.correo && <span className="field-error">{errores.correo}</span>}
                 </div>
+                <div className="field">
+                  <label className="field-label" htmlFor="provPais">País</label>
+                  <select
+                    id="provPais"
+                    value={formProveedor.pais}
+                    onChange={(e) => handleCambioPaisProveedor(e.target.value)}
+                  >
+                    {PAISES.map((p) => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label className="field-label" htmlFor="provDepto">Departamento</label>
+                  <select
+                    id="provDepto"
+                    value={formProveedor.departamento}
+                    onChange={(e) => handleCambioDeptoProveedor(e.target.value)}
+                  >
+                    {departamentosProveedor.map((d) => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label className="field-label" htmlFor="provMuni">Municipio / Ciudad</label>
+                  <select
+                    id="provMuni"
+                    value={formProveedor.municipio}
+                    onChange={(e) =>
+                      setFormProveedor({
+                        ...formProveedor,
+                        municipio: e.target.value,
+                        ciudad: e.target.value,
+                      })
+                    }
+                  >
+                    {municipiosProveedor.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                </div>
                 <div className={`field full ${errores.productos ? 'has-error' : ''}`}>
-                  <label className="field-label" htmlFor="provProd">Productos que suministra</label>
+                  <label className="field-label" htmlFor="provProd">Productos que suministra *</label>
                   <input
                     id="provProd"
                     value={formProveedor.productos}
