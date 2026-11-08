@@ -144,8 +144,9 @@ export default function DesignWorkspace({ order, data, actions, irA, role }) {
   const versionActual = versionSeleccionada || ultima
   const stamp = STAMPS[order.disenoEstado] || STAMPS.Pendiente
 
-  const puedeCrear = order.disenoEstado !== 'Enviado'
-  const puedeEnviar = order.versiones.length > 0 && order.disenoEstado === 'En proceso'
+  const puedeOperarDiseno = role === 'disenador' || role === 'coordinador'
+  const puedeCrear = order.disenoEstado !== 'Enviado' && puedeOperarDiseno
+  const puedeEnviar = order.versiones.length > 0 && order.disenoEstado === 'En proceso' && puedeOperarDiseno
   const esperando = order.disenoEstado === 'Enviado'
 
   const solicitudVinculada = (data.requests || []).find(
@@ -259,15 +260,23 @@ export default function DesignWorkspace({ order, data, actions, irA, role }) {
               <Icon nombre="send" tamano={16} /> Enviar diseño al cliente
             </button>
 
-            {esperando && (
-              <>
-                <button className="btn btn-soft" onClick={() => actions.designApprove(order.id, 'Aprobación simulada por coordinador')}>
-                  <Icon nombre="check" tamano={15} /> Simular aprobación
-                </button>
-                <button className="btn btn-danger" onClick={() => setRechazando(true)}>
-                  <Icon nombre="edit" tamano={15} /> Simular cambios
-                </button>
-              </>
+            {esperando && (role === 'coordinador') && (
+              <button
+                className="btn btn-soft"
+                onClick={() => irA('aprobacion', order.id)}
+                title="Abrir mesa de aprobación formal de la orden"
+              >
+                <Icon nombre="check-circle" tamano={15} /> Ir a mesa de aprobación
+              </button>
+            )}
+            {esperando && role === 'disenador' && (
+              <span
+                className="chip"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'default' }}
+                title="El diseñador prepara y envía el arte, pero la aprobación formal corresponde exclusivamente al cliente o coordinación."
+              >
+                <Icon nombre="clock" tamano={14} /> En espera de visto bueno del cliente
+              </span>
             )}
           </div>
         </Panel>

@@ -252,7 +252,6 @@ export default function App() {
   }
 
   // Navegación con protección de rutas según rol (HU-02 y HU-07)
-  // El Coordinador no tiene acceso a 'comunicaciones'
   const irA = (name, orderId = null) => {
     const paginasComunes = ['inicio', 'detalle', 'aprobacion', 'historial', 'disenos']
     const itemMenu = ROLES[role]?.menu.find((m) => m.page === name)
@@ -441,7 +440,7 @@ export default function App() {
         setRequests((prev) => [...prev, nueva])
         irA('solicitudes')
         notify(
-          `Solicitud ${nueva.id} registrada con éxito${nueva.archivosReferencia?.length ? ` (${nueva.archivosReferencia.length} archivo(s) de referencia adjunto(s))` : ''}.`,
+          'Solicitud registrada correctamente. Recuerda enviarla a Coordinación para iniciar su proceso de validación.',
           'exito'
         )
       })
@@ -458,10 +457,31 @@ export default function App() {
       .then((res) => {
         const actualizada = res?.data || { id, estado: 'En validación' }
         updateRequest(id, actualizada)
-        notify(`Solicitud ${id} enviada a validación del coordinador.`)
+        notify(
+          'Solicitud enviada correctamente a Coordinación. Ahora está pendiente de validación.',
+          'exito'
+        )
       })
       .catch((err) => {
         notify(err.message || 'No se pudo enviar la solicitud a validación.', 'error')
+      })
+  }
+
+  // Corregir y reenviar solicitud devuelta (Comercial / Recepción)
+  function correctRequest(id, datos) {
+    return api.corregirSolicitud(id, datos)
+      .then((res) => {
+        const actualizada = res?.data || { id, ...datos, estado: 'En validación' }
+        updateRequest(id, actualizada)
+        notify(
+          `Solicitud ${id} corregida y reenviada a Coordinación exitosamente.`,
+          'exito'
+        )
+        return actualizada
+      })
+      .catch((err) => {
+        notify(err.message || 'No se pudo corregir y reenviar la solicitud.', 'error')
+        throw err
       })
   }
 
@@ -1348,22 +1368,89 @@ export default function App() {
           const nuevoId = `OP-2026-${String(nuevoNumero).padStart(4, '0')}`
           const entregaCalculada = new Date()
           entregaCalculada.setDate(entregaCalculada.getDate() + 4)
+
+          // RF-07: Validación estricta de aprobación documentada en la orden original
+          const ultimaVer = ordenOriginal.versiones?.[ordenOriginal.versiones.length - 1]
+          const tieneAprobacionOriginal =
+            ordenOriginal.disenoEstado === 'Aprobado' &&
+            Boolean(ultimaVer && (ultimaVer.estado === 'Aprobada' || ultimaVer.estado_aprobacion === 'aprobado'))
+
+          const eventoAprobado = (ordenOriginal.historial || []).find((h) =>
+            (h.actividad || h.accion_texto || '').toLowerCase().includes('diseño aprobado') ||
+            (h.actividad || h.accion_texto || '').toLowerCase().includes('diseno aprobado')
+          )
+
+          const aprobadorReal =
+            ultimaVer?.aprobadoPor ||
+            eventoAprobado?.responsable ||
+            (tieneAprobacionOriginal ? (ordenOriginal.entrega?.contacto || ordenOriginal.cliente) : null)
+          const fechaAprobacionReal =
+            ultimaVer?.fechaAprobacion ||
+            ultimaVer?.fecha ||
+            eventoAprobado?.fecha ||
+            null
+          const versionAprobadaNum = ultimaVer?.numero || 1
+
+          const estadoInicial = tieneAprobacionOriginal
+            ? 'Impresión'
+            : (ordenOriginal.versiones?.length ? 'Aprobación' : 'Diseño')
+          const disenoEstadoInicial = tieneAprobacionOriginal
+            ? 'Aprobado'
+            : (ordenOriginal.disenoEstado === 'Enviado' ? 'Enviado' : 'Pendiente')
+
+          const versionesClonadas = tieneAprobacionOriginal
+            ? [
+                {
+                  ...ultimaVer,
+                  numero: 1,
+                  estado: 'Aprobada',
+                  aprobadoPor: aprobadorReal,
+                  fechaAprobacion: fechaAprobacionReal,
+                  comentario: `Arte aprobado reutilizado de orden original ${id} (v${versionAprobadaNum}). Aprobado por: ${aprobadorReal} el ${fechaAprobacionReal}.`,
+                },
+              ]
+            : (ordenOriginal.versiones || []).map((v) => ({
+                ...v,
+                estado: v.estado === 'Aprobada' ? 'Enviada' : v.estado,
+              }))
+
+          const eventosHistorial = [
+            crearEvento(
+              `Orden clonada a partir de ${id} para reimpresión. Motivo: ${motivo}`,
+              usuario,
+              'Completado'
+            ),
+          ]
+
+          if (tieneAprobacionOriginal) {
+            eventosHistorial.push(
+              crearEvento(
+                `Aprobación de arte reutilizada de ${id} (v${versionAprobadaNum}). Aprobado formalmente por: ${aprobadorReal} el ${fechaAprobacionReal}. Cumple RF-07 para impresión.`,
+                usuario,
+                'Completado'
+              )
+            )
+          } else {
+            eventosHistorial.push(
+              crearEvento(
+                `RF-07: Paso a impresión bloqueado. La orden original ${id} no contaba con aprobación formal documentada; requiere visto bueno del cliente antes de producir.`,
+                usuario,
+                'Pendiente'
+              )
+            )
+          }
+
           const nuevaOrden = {
             ...ordenOriginal,
             id: nuevoId,
             fechaSolicitud: formatearFecha(),
             fechaEntrega: formatearFecha(entregaCalculada),
-            estado: 'Impresión',
-            disenoEstado: 'Aprobado',
+            estado: estadoInicial,
+            disenoEstado: disenoEstadoInicial,
             esReimpresion: true,
             ordenOriginalId: id,
-            historial: [
-              crearEvento(
-                `Orden clonada a partir de ${id} para reimpresión. Motivo: ${motivo}`,
-                usuario,
-                'Completado'
-              ),
-            ],
+            versiones: versionesClonadas,
+            historial: eventosHistorial,
             entrega: {
               ...ordenOriginal.entrega,
               contacto: ordenOriginal.entrega?.contacto || ordenOriginal.cliente,
@@ -1373,7 +1460,11 @@ export default function App() {
             },
           }
           setOrders((prev) => [nuevaOrden, ...prev])
-          notify(`Orden clonada con éxito: ${nuevoId} (Reimpresión de ${id}).`, 'exito')
+          if (tieneAprobacionOriginal) {
+            notify(`Orden clonada con éxito: ${nuevoId} (Reimpresión autorizada de ${id}).`, 'exito')
+          } else {
+            notify(`Orden de reposición creada: ${nuevoId}. Bloqueada para impresión hasta obtener aprobación de diseño (RF-07).`, 'aviso')
+          }
           irA('detalle', nuevoId)
           return
         }
@@ -1427,6 +1518,7 @@ export default function App() {
   const actions = {
     addRequest,
     sendToValidation,
+    correctRequest,
     returnRequest,
     rejectRequest,
     validateRequest,

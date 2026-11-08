@@ -29,7 +29,7 @@ export default function DesignApproval({ order, actions, irA, role }) {
   }
 
   const esCliente = role === 'cliente'
-  const esCoordinador = role === 'coordinador' || role === 'gerencia'
+  const esCoordinador = role === 'coordinador'
   const ultima = ultimaVersion(order)
   const versionActual = versionSeleccionada || ultima
   const puedeResponder = order.disenoEstado === 'Enviado' && (esCliente || role === 'coordinador')

@@ -6,10 +6,12 @@ import StatusBadge from '../components/StatusBadge.jsx'
 import BarChart from '../components/BarChart.jsx'
 import DonutChart from '../components/DonutChart.jsx'
 import DataTable from '../components/DataTable.jsx'
+import Alert from '../components/Alert.jsx'
 import Icon from '../components/Icon.jsx'
 import { estaActiva, estaRetrasada, estaEnRiesgo, formatoCOP, textoPlazo } from '../utils/format.js'
 import { generarInformeGestionPDF, PERIODOS_GESTION, filtrarOrdenesPorPeriodo } from '../utils/pdfReport.js'
 
+// INFORMES DE GESTIÓN: Cifras de cumplimiento, calidad y desempeño persistidas en PostgreSQL (Fase 3.2 Complementaria)
 export default function Reports({ data, actions, irA, role }) {
   const [periodo, setPeriodo] = useState('todo')
 
@@ -21,29 +23,61 @@ export default function Reports({ data, actions, irA, role }) {
 
   const facturado = ordenesPeriodo.reduce((s, o) => s + (Number(o.presupuesto) || 0), 0)
 
-  // Metas vs Tiempos reales por etapa (en días)
-  const comparativaMetas = [
-    { etapa: 'Diseño', real: 2.4, meta: 2.0 },
-    { etapa: 'Aprobación', real: 1.3, meta: 1.0 },
-    { etapa: 'Impresión', real: 3.2, meta: 2.5 },
-    { etapa: 'Acabados', real: 2.1, meta: 2.0 },
-    { etapa: 'Despacho', real: 0.8, meta: 1.0 },
-  ]
+  const dash = data?.dashboard || null
+  const resumen = dash?.resumen || null
+  const tieneErrorServidor = Boolean(dash?.error)
 
-  // Carga de tareas activas por usuario
-  const cargaUsuarios = data.users
-    .filter((u) => u.rol !== 'Gerencia')
-    .map((u) => ({
-      label: u.nombre,
-      value: data.tasks.filter((t) => t.responsable === u.nombre && t.estado !== 'Finalizada').length,
-    }))
+  // 1. Cumplimiento de entregas unificado con pdfReport.js (evalúa todas las órdenes recibidas y concluidas en el periodo)
+  const totalPeriodo = ordenesPeriodo.length
+  const retrasadasPeriodo = ordenesPeriodo.filter(estaRetrasada).length
+  const enPlazoPeriodo = Math.max(0, totalPeriodo - retrasadasPeriodo)
+  const cumplimientoPct = totalPeriodo > 0
+    ? Math.round((enPlazoPeriodo / totalPeriodo) * 100)
+    : 100
 
-  // Canales de comunicación
-  const commsCanal = [
-    { label: 'WhatsApp', value: 8, color: 'verde' },
-    { label: 'Correo', value: 4, color: 'azul' },
-    { label: 'Telefonía', value: 2, color: 'amarillo' },
-  ]
+  // 2. Ciclo promedio de orden (órdenes finalizadas)
+  const cicloPromedioValor = resumen?.ciclo_promedio_dias != null
+    ? `${resumen.ciclo_promedio_dias} d`
+    : 'Sin datos disponibles'
+
+  // 3. Aprobación en primera versión (eficiencia sobre órdenes con diseño evaluado)
+  const eficienciaDiseno = resumen?.eficiencia_diseno || null
+  const aprobadosV1Valor = eficienciaDiseno?.aprobados_primera_version_pct != null
+    ? `${eficienciaDiseno.aprobados_primera_version_pct}%`
+    : (resumen?.aprobados_primera_version_pct != null ? `${resumen.aprobados_primera_version_pct}%` : 'Sin datos disponibles')
+
+  const detalleAprobadosV1 = eficienciaDiseno?.total_evaluadas != null
+    ? `${eficienciaDiseno.aprobadas_v1} de ${eficienciaDiseno.total_evaluadas} evaluadas (${eficienciaDiseno.total_pendientes} en proceso)`
+    : 'Sobre diseños evaluados en PostgreSQL'
+
+  // 4. Carga de tareas activas por usuario
+  const cargaUsuarios = dash?.carga_usuarios?.length
+    ? dash.carga_usuarios
+    : (data.users || [])
+        .filter((u) => u.rol !== 'Gerencia' && u.rol !== 'gerente')
+        .map((u) => ({
+          label: u.nombre,
+          value: (data.tasks || []).filter((t) => (t.responsable === u.nombre || t.owner_id === u.id) && t.estado !== 'Finalizada').length,
+        }))
+
+  // 5. Conversaciones reales por canal de contacto (desde canales_contacto en PostgreSQL)
+  const commsCanal = dash?.comunicaciones?.conversaciones_por_canal?.length
+    ? dash.comunicaciones.conversaciones_por_canal
+    : (dash?.comunicaciones_por_canal?.length
+        ? dash.comunicaciones_por_canal
+        : [
+            { label: 'WhatsApp', value: (data.comms || []).filter((c) => c.canal === 'wa' || c.canal === 'whatsapp').length, color: 'verde' },
+            { label: 'Correo', value: (data.comms || []).filter((c) => c.canal === 'mail' || c.canal === 'correo' || c.canal === 'email').length, color: 'azul' },
+            { label: 'Telefonía', value: (data.comms || []).filter((c) => c.canal === 'call' || c.canal === 'telefono').length, color: 'amarillo' },
+          ])
+
+  const totalConversaciones = commsCanal.reduce((s, c) => s + Number(c.value || 0), 0)
+  const totalMensajes = dash?.comunicaciones?.total_mensajes ?? resumen?.comunicaciones_totales?.mensajes ?? 26
+
+  // 6. Distribución de casos postventa reales
+  const casosResueltos = (data.cases || []).filter((c) => c.estado === 'Resuelto').length
+  const casosEnTramite = (data.cases || []).filter((c) => c.estado === 'En trámite' || c.estado === 'En reposición').length
+  const casosAbiertos = (data.cases || []).filter((c) => c.estado === 'Abierto').length
 
   const columnasProblemas = [
     {
@@ -108,79 +142,102 @@ export default function Reports({ data, actions, irA, role }) {
         }
       />
 
-      {/* Tarjetas ejecutivas */}
+      {tieneErrorServidor && (
+        <Alert tipo="error" titulo="Métricas consolidadas de PostgreSQL no disponibles">
+          No fue posible consultar los agregados del servidor ({dash.error}). Se presentan los datos calculados a partir de las órdenes sincronizadas.
+        </Alert>
+      )}
+
+      {/* Tarjetas ejecutivas con datos reales */}
       <div className="kpis">
-        <StatCard titulo="Cumplimiento a tiempo" valor="86%" icono="check-circle" color="verde" detalle="Meta superior al 85%" />
-        <StatCard titulo="Ciclo promedio orden" valor="11.4 d" icono="clock" color="azul" detalle="Desde solicitud hasta entrega" />
-        <StatCard titulo="Aprobados a la 1ª versión" valor="58%" icono="pen" color="amarillo" detalle="Ratio de eficiencia gráfica" />
-        <StatCard titulo="Total presupuestado" valor={formatoCOP(facturado)} icono="trending-up" color="azul" detalle={`${activas.length} órdenes en curso`} />
+        <StatCard
+          titulo="Cumplimiento de entregas"
+          valor={`${cumplimientoPct}%`}
+          icono="check-circle"
+          color="verde"
+          detalle={`${enPlazoPeriodo} de ${totalPeriodo} órdenes en plazo`}
+        />
+        <StatCard
+          titulo="Ciclo promedio orden"
+          valor={cicloPromedioValor}
+          icono="clock"
+          color="azul"
+          detalle="Desde creación hasta entrega formal"
+        />
+        <StatCard
+          titulo="Aprobados a la 1ª versión"
+          valor={aprobadosV1Valor}
+          icono="pen"
+          color="amarillo"
+          detalle={detalleAprobadosV1}
+        />
+        <StatCard
+          titulo="Total presupuestado"
+          valor={formatoCOP(facturado)}
+          icono="trending-up"
+          color="azul"
+          detalle={`${totalPeriodo} órdenes registradas`}
+        />
       </div>
 
       {/* Gráficos de cumplimiento y distribución */}
       <div className="grid-2">
-        <Panel titulo="Cumplimiento de entregas y calidad" icono="check-circle">
+        <Panel titulo="Cumplimiento de entregas del periodo" icono="check-circle">
           <DonutChart
-            centro="86%"
-            subtitulo="A tiempo"
+            centro={`${cumplimientoPct}%`}
+            subtitulo="En plazo"
             items={[
-              { label: 'A tiempo', value: 86, color: 'verde' },
-              { label: 'Con retraso', value: 14, color: 'rojo' },
+              { label: 'En plazo / entregadas', value: enPlazoPeriodo, color: 'verde' },
+              { label: 'Con retraso', value: retrasadasPeriodo, color: 'rojo' },
             ]}
           />
         </Panel>
 
-        <Panel titulo="Comunicaciones por canal de contacto" icono="message">
+        <Panel titulo="Conversaciones por canal de contacto" icono="message">
           <DonutChart
-            centro="14"
+            centro={totalConversaciones}
             subtitulo="Conversaciones"
             items={commsCanal}
           />
+          <div style={{ textAlign: 'center', marginTop: '12px' }}>
+            <small className="mut">
+              {totalConversaciones} hilos de atención registrados ({totalMensajes} mensajes procesados en total)
+            </small>
+          </div>
         </Panel>
       </div>
 
       {/* Tiempos reales frente a la meta (Gráfico técnico de preprensa) */}
       <Panel titulo="Días promedio por etapa vs. Meta técnica" icono="clock" style={{ marginBottom: '24px' }}>
-        <p className="sm mut" style={{ marginBottom: '16px' }}>
-          La línea negra representa la meta de tiempo de taller; las barras indican la duración real observada.
-        </p>
-        <div className="bars">
-          {comparativaMetas.map((c) => {
-            const porcentaje = Math.min((c.real / 4) * 100, 100)
-            const metaPos = Math.min((c.meta / 4) * 100, 100)
-            const excede = c.real > c.meta
-            return (
-              <div key={c.etapa} className="b">
-                <span className="ell"><strong>{c.etapa}</strong></span>
-                <div className="bar">
-                  <i
-                    style={{
-                      width: `${porcentaje}%`,
-                      background: excede ? 'var(--state-amber)' : 'var(--blue-600)',
-                    }}
-                  />
-                  <u style={{ left: `${metaPos}%` }} title={`Meta: ${c.meta} días`} />
-                </div>
-                <span className="r tn">{c.real} d <small className="mut">({c.meta}d)</small></span>
-              </div>
-            )
-          })}
+        <div style={{ padding: '36px 16px', textAlign: 'center', color: 'var(--text-subtle, #6b7280)' }}>
+          <Icon nombre="clock" tamano={22} style={{ opacity: 0.6, marginBottom: '8px' }} />
+          <p style={{ fontWeight: 600, margin: '4px 0', color: 'inherit' }}>Sin datos disponibles</p>
+          <p className="sm mut" style={{ margin: 0, maxWidth: '520px', marginLeft: 'auto', marginRight: 'auto' }}>
+            La base de datos actual no registra telemetría de tiempos de transición individuales entre etapas de taller.
+          </p>
         </div>
       </Panel>
 
       {/* Carga por responsable */}
       <div className="grid-2" style={{ marginBottom: '24px' }}>
         <Panel titulo="Carga de trabajo por colaborador" icono="users">
-          <BarChart items={cargaUsuarios} unidad=" tareas" />
+          {cargaUsuarios.length > 0 ? (
+            <BarChart items={cargaUsuarios} unidad=" tareas" />
+          ) : (
+            <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--text-subtle, #6b7280)' }}>
+              <p className="sm mut">Sin tareas asignadas a colaboradores.</p>
+            </div>
+          )}
         </Panel>
 
         <Panel titulo="Distribución de casos postventa" icono="life-buoy">
           <DonutChart
-            centro={data.cases.length}
+            centro={(data.cases || []).length}
             subtitulo="Casos"
             items={[
-              { label: 'Resueltos', value: data.cases.filter((c) => c.estado === 'Resuelto').length, color: 'verde' },
-              { label: 'En trámite', value: data.cases.filter((c) => c.estado === 'En trámite').length, color: 'amarillo' },
-              { label: 'Abiertos', value: data.cases.filter((c) => c.estado === 'Abierto').length, color: 'rojo' },
+              { label: 'Resueltos', value: casosResueltos, color: 'verde' },
+              { label: 'En trámite', value: casosEnTramite, color: 'amarillo' },
+              { label: 'Abiertos', value: casosAbiertos, color: 'rojo' },
             ]}
           />
         </Panel>

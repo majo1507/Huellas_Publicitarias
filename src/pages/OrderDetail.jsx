@@ -96,13 +96,12 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
     : ['María López', ...OPERARIOS, 'Carlos Gómez']
 
   // Pestañas filtradas por permisos de rol (HU-07)
-  // IMPORTANTE: El Coordinador de producción NO tiene acceso al módulo ni pestaña de Comunicaciones
   const pestanasVisibles = PESTANAS.filter(([k]) => {
     if (esCliente) return ['resumen', 'diseno', 'seguimiento', 'archivos', 'historial'].includes(k)
     if (role === 'operario') return ['resumen', 'tareas', 'seguimiento', 'archivos', 'historial'].includes(k)
     if (role === 'disenador') return ['resumen', 'diseno', 'seguimiento', 'archivos', 'historial'].includes(k)
     if (role === 'comercial') return ['resumen', 'diseno', 'seguimiento', 'comunicaciones', 'archivos', 'historial'].includes(k)
-    if (role === 'coordinador') return ['resumen', 'diseno', 'seguimiento', 'tareas', 'archivos', 'historial'].includes(k)
+    if (role === 'coordinador') return ['resumen', 'diseno', 'seguimiento', 'tareas', 'comunicaciones', 'archivos', 'historial'].includes(k)
     return true
   })
 
@@ -274,7 +273,7 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
 
   const tareasPendientes = tareasDeOrden.filter((t) => t.estado !== 'Finalizada')
   const puedeVerMesaDiseno = ['disenador', 'coordinador', 'gerencia'].includes(role)
-  const puedeGestionarEtapas = ['coordinador', 'gerencia'].includes(role)
+  const puedeGestionarEtapas = role === 'coordinador'
 
   function handleConfirmarCierre(e) {
     e.preventDefault()

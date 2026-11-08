@@ -4,7 +4,7 @@ import EmptyState from './EmptyState.jsx'
 
 // Tabla reutilizable con buscador, filtros, orden por columnas y paginación.
 export default function DataTable({
-  columnas, filas, buscar, filtros = [], porPagina = 8, tarjeta, acciones,
+  columnas, filas, buscar, filtros = [], porPagina = 8, tarjeta, acciones, filaClase,
   vacioTitulo = 'No hay registros', vacioTexto = 'Prueba cambiando los filtros o la búsqueda.', placeholder = 'Buscar...',
 }) {
   const [texto, setTexto] = useState('')
@@ -110,7 +110,7 @@ export default function DataTable({
             </thead>
             <tbody>
               {visibles.map((fila) => (
-                <tr key={fila.id}>
+                <tr key={fila.id} className={filaClase ? filaClase(fila) : undefined}>
                   {columnas.map((c) => <td key={c.clave}>{c.render ? c.render(fila) : fila[c.clave]}</td>)}
                 </tr>
               ))}

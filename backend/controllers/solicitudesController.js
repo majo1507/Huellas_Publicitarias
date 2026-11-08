@@ -253,6 +253,154 @@ const devolverSolicitud = async (req, res) => {
   }
 };
 
+const corregirSolicitud = async (req, res) => {
+  const { id } = req.params;
+  const {
+    producto,
+    cantidad,
+    dimensiones,
+    material,
+    acabados,
+    metodoEntrega,
+    metodo_entrega,
+    fechaEntrega,
+    fecha_entrega,
+    presupuesto,
+    requerimientos,
+    observaciones,
+  } = req.body;
+
+  try {
+    const sol = await resolverSolicitud(pool, id, true);
+    if (!sol) {
+      return res.status(404).json({ error: `Solicitud ${id} no encontrada.` });
+    }
+
+    if (sol.estado !== 'devuelta') {
+      return res.status(400).json({
+        error: `Solo pueden corregirse solicitudes en estado "Devuelta para corrección". Estado actual: "${ESTADO_DB_TO_UI[sol.estado] || sol.estado}".`,
+      });
+    }
+
+    // Validaciones de negocio en backend
+    if (!producto || !String(producto).trim()) {
+      return res.status(400).json({ error: 'El producto es obligatorio.' });
+    }
+    const cantNum = Number(cantidad);
+    if (!cantNum || cantNum <= 0 || !Number.isInteger(cantNum)) {
+      return res.status(400).json({ error: 'La cantidad debe ser un número entero mayor a 0.' });
+    }
+    const dimVal = String(dimensiones || '').trim();
+    if (!dimVal) {
+      return res.status(400).json({ error: 'Las dimensiones son obligatorias.' });
+    }
+    const matVal = String(material || '').trim();
+    if (!matVal) {
+      return res.status(400).json({ error: 'El material es obligatorio.' });
+    }
+    const fEntrega = String(fechaEntrega || fecha_entrega || '').trim();
+    if (!fEntrega) {
+      return res.status(400).json({ error: 'La fecha de entrega es obligatoria.' });
+    }
+    const presNum = Number(presupuesto);
+    if (isNaN(presNum) || presNum < 0) {
+      return res.status(400).json({ error: 'El presupuesto debe ser un número mayor o igual a 0.' });
+    }
+
+    const metodoFinal = String(metodoEntrega || metodo_entrega || sol.metodo_entrega || 'Domicilio').trim();
+    const acabadosFinal = Array.isArray(acabados)
+      ? acabados.join(', ')
+      : String(acabados !== undefined ? acabados : (sol.acabados || 'Corte y empaque estándar')).trim();
+    const reqFinal = requerimientos !== undefined ? String(requerimientos).trim() : (sol.requerimientos || '');
+    const obsUsuario = observaciones !== undefined ? String(observaciones).trim() : String(sol.observaciones || '').trim();
+
+    // Detectar campos modificados para el registro de trazabilidad
+    const cambios = [];
+    if (String(sol.producto || '').trim() !== String(producto).trim()) {
+      cambios.push(`Producto: "${sol.producto || ''}" -> "${producto.trim()}"`);
+    }
+    if (Number(sol.cantidad) !== cantNum) {
+      cambios.push(`Cantidad: ${sol.cantidad} -> ${cantNum}`);
+    }
+    if (String(sol.dimensiones || '').trim() !== dimVal) {
+      cambios.push(`Dimensiones: "${sol.dimensiones || ''}" -> "${dimVal}"`);
+    }
+    if (String(sol.material || '').trim() !== matVal) {
+      cambios.push(`Material: "${sol.material || ''}" -> "${matVal}"`);
+    }
+    if (String(sol.acabados || '').trim() !== acabadosFinal) {
+      cambios.push(`Acabados: "${sol.acabados || ''}" -> "${acabadosFinal}"`);
+    }
+    if (String(sol.metodo_entrega || '').trim() !== metodoFinal) {
+      cambios.push(`Método de entrega: "${sol.metodo_entrega || ''}" -> "${metodoFinal}"`);
+    }
+    if (String(sol.fecha_entrega || '').trim() !== fEntrega) {
+      cambios.push(`Fecha de entrega: "${sol.fecha_entrega || ''}" -> "${fEntrega}"`);
+    }
+    if (Number(sol.presupuesto) !== presNum) {
+      cambios.push(`Presupuesto: ${sol.presupuesto} -> ${presNum}`);
+    }
+    if (String(sol.requerimientos || '').trim() !== reqFinal) {
+      cambios.push('Requerimientos técnicos ajustados');
+    }
+
+    const fechaHoy = formatearFechaHoy();
+    const horaAhora = formatearHoraAhora();
+    const usuarioNombre = req.usuario?.nombre_completo || req.usuario?.nombre || req.usuario?.email || 'Ejecutiva comercial';
+    const detalleCambios = cambios.length > 0 ? cambios.join('; ') : 'Especificaciones técnicas verificadas';
+    const entradaTrazabilidad = `[${fechaHoy} ${horaAhora} - ${usuarioNombre}]: Solicitud corregida y reenviada a validación. Cambios: ${detalleCambios}.`;
+
+    const observacionesFinales = obsUsuario
+      ? `${obsUsuario}\n\n${entradaTrazabilidad}`
+      : entradaTrazabilidad;
+
+    const descripcion = `${producto.trim()} (${cantNum} uds)`;
+
+    await pool.query(
+      `UPDATE solicitudes
+       SET
+         producto = $1,
+         cantidad = $2,
+         dimensiones = $3,
+         material = $4,
+         acabados = $5,
+         metodo_entrega = $6,
+         fecha_entrega = $7,
+         presupuesto = $8,
+         requerimientos = $9,
+         observaciones = $10,
+         descripcion = $11,
+         estado = 'en_validacion',
+         motivo_rechazo = '',
+         updated_at = CURRENT_TIMESTAMP
+       WHERE id = $12`,
+      [
+        producto.trim(),
+        cantNum,
+        dimVal,
+        matVal,
+        acabadosFinal,
+        metodoFinal,
+        fEntrega,
+        presNum,
+        reqFinal,
+        observacionesFinales,
+        descripcion,
+        sol.id,
+      ]
+    );
+
+    const data = await consultarSolicitudCompleta(pool, sol.id);
+    res.json({
+      message: `Solicitud ${data.id} corregida y reenviada a validación exitosamente.`,
+      data,
+    });
+  } catch (error) {
+    console.error('solicitudesController.corregirSolicitud error:', error.message);
+    res.status(500).json({ error: 'Error al corregir y reenviar la solicitud.' });
+  }
+};
+
 const rechazarSolicitud = async (req, res) => {
   const { motivo } = req.body;
   if (!motivo || String(motivo).trim().length < 3) {
@@ -425,6 +573,7 @@ module.exports = {
   crearSolicitud,
   enviarAValidacion,
   devolverSolicitud,
+  corregirSolicitud,
   rechazarSolicitud,
   validarSolicitud,
 };

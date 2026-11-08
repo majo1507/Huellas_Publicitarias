@@ -11,3 +11,8 @@ programacion_web/
 *.bak
 *.bak.*
 *.log
+ORVEX_RESPALDO_VERSION_ACTUAL/
+
+# Metadatos locales de agentes
+.agents/
+skills-lock.json

@@ -17,4 +17,7 @@ router.post('/proveedores', verificarRol('coord', 'gerente'), inventarioControll
 router.get('/movimientos', inventarioController.listarMovimientos);
 router.post('/movimientos', verificarRol('coord', 'produccion', 'gerente'), inventarioController.registrarMovimiento);
 
+router.post('/reservar', verificarRol('coord', 'gerente'), inventarioController.reservarMateriales);
+router.post('/liberar/:orden_id', verificarRol('coord', 'gerente'), inventarioController.liberarReservas);
+
 module.exports = router;

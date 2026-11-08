@@ -12,6 +12,7 @@ const {
   resolverUsuario,
   obtenerUsuarioPorDefecto,
 } = require('../utils/resolvers');
+const { validarArchivoEvidencia } = require('../utils/validacionesArchivo');
 
 const FLUJO_ETAPAS_UI = [
   'Solicitud',
@@ -62,7 +63,7 @@ function formatearEventoHistorial(r) {
   };
 }
 
-function construirOrdenCompleta(o, versionesRows = [], historialRows = []) {
+function construirOrdenCompleta(o, versionesRows = [], historialRows = [], rolUsuario = null) {
   const codigo = o.codigo || `OP-2026-${String(o.id).padStart(4, '0')}`;
   const estadoUi = o.estado_nombre || ETAPA_NUM_TO_NOMBRE_UI[o.etapa] || 'Diseño';
   const versiones = versionesRows.map(formatearVersionArte);
@@ -94,6 +95,9 @@ function construirOrdenCompleta(o, versionesRows = [], historialRows = []) {
 
   const presupuestoNum = Number(o.presupuesto || 0);
   const costoInternoNum = Number(o.costo_interno || Math.round(presupuestoNum * 0.6));
+  // T-08: Exclusión estricta de costos internos sensibles para operarios de taller, clientes y diseñadores
+  const rolNorm = rolUsuario ? String(rolUsuario).toLowerCase() : '';
+  const sinAccesoFinanciero = ['produccion', 'operario', 'cliente', 'disenador', 'diseñador'].includes(rolNorm);
 
   return {
     // Campos esperados por el frontend ORVEX
@@ -124,7 +128,7 @@ function construirOrdenCompleta(o, versionesRows = [], historialRows = []) {
     disenador_nombre: o.disenador_nombre,
     produccion_nombre: o.produccion_nombre,
     presupuesto: presupuestoNum,
-    costoInterno: costoInternoNum,
+    costoInterno: sinAccesoFinanciero ? undefined : costoInternoNum,
     metodoEntrega: o.metodo_entrega || 'Domicilio',
     requerimientos: o.requerimientos || '',
     observaciones: o.observaciones || '',
@@ -147,7 +151,7 @@ function construirOrdenCompleta(o, versionesRows = [], historialRows = []) {
   };
 }
 
-async function cargarOrdenesEnriquecidas(dbOrClient, filtroWhere = '', params = []) {
+async function cargarOrdenesEnriquecidas(dbOrClient, filtroWhere = '', params = [], rolUsuario = null) {
   const queryText = `
     SELECT
       o.*,
@@ -205,7 +209,7 @@ async function cargarOrdenesEnriquecidas(dbOrClient, filtroWhere = '', params = 
   }
 
   return result.rows.map((o) =>
-    construirOrdenCompleta(o, artesByOrden[o.id] || [], histByOrden[o.id] || [])
+    construirOrdenCompleta(o, artesByOrden[o.id] || [], histByOrden[o.id] || [], rolUsuario)
   );
 }
 
@@ -233,7 +237,7 @@ const listarOrdenes = async (req, res) => {
       where += ` AND o.prioridad = $${params.length}`;
     }
 
-    const ordenes = await cargarOrdenesEnriquecidas(pool, where, params);
+    const ordenes = await cargarOrdenesEnriquecidas(pool, where, params, req.usuario?.rol);
     res.json({
       total: ordenes.length,
       data: ordenes,
@@ -252,7 +256,7 @@ const obtenerOrdenPorId = async (req, res) => {
       return res.status(404).json({ error: `Orden ${req.params.id} no encontrada.` });
     }
 
-    const [ordenCompleta] = await cargarOrdenesEnriquecidas(pool, 'AND o.id = $1', [base.id]);
+    const [ordenCompleta] = await cargarOrdenesEnriquecidas(pool, 'AND o.id = $1', [base.id], req.usuario?.rol);
     res.json({
       data: ordenCompleta,
       historial_sesion: ordenCompleta.historial,
@@ -315,7 +319,15 @@ const crearOrden = async (req, res) => {
     requerimientos,
     observaciones,
     solicitudId,
+    solicitud_id,
   } = req.body;
+
+  const targetSolId = solicitudId || solicitud_id;
+  if (!targetSolId) {
+    return res.status(400).json({
+      error: 'FLUJO NO PERMITIDO: Toda orden de producción debe originarse a partir de una solicitud comercial previamente validada (RF-01, RF-03). Indique el identificador o código de la solicitud.',
+    });
+  }
 
   const targetCliente = cliente_id || clienteId;
   if (!targetCliente || !producto) {
@@ -327,6 +339,59 @@ const crearOrden = async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
+    const solRes = await client.query(
+      `SELECT * FROM solicitudes 
+       WHERE id::text = $1 OR codigo = $1 
+       FOR UPDATE`,
+      [String(targetSolId).trim()]
+    );
+    if (solRes.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: `Solicitud comercial ${targetSolId} no encontrada.` });
+    }
+    const sol = solRes.rows[0];
+    if (sol.orden_id || sol.estado === 'convertida') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error: `La solicitud ${sol.codigo || sol.id} ya generó una orden de producción previamente (${sol.orden_id ? 'OP vinculada: ' + sol.orden_id : 'estado: convertida'}). No se permiten órdenes duplicadas.`,
+      });
+    }
+
+    if (sol.estado === 'en_validacion' || sol.estado === 'cotizada') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        error: `FLUJO NO PERMITIDO: La solicitud ${sol.codigo || sol.id} se encuentra "En validación" (pendiente de revisión técnica por Coordinación). No puede generar una orden hasta que sea formalmente validada y aprobada.`,
+      });
+    }
+
+    if (sol.estado === 'pendiente') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        error: `FLUJO NO PERMITIDO: La solicitud ${sol.codigo || sol.id} está en estado "Pendiente" (borrador comercial). Debe enviarse a validación técnica y ser aprobada por Coordinación antes de generar la orden.`,
+      });
+    }
+
+    if (sol.estado === 'devuelta') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        error: `FLUJO NO PERMITIDO: La solicitud ${sol.codigo || sol.id} fue devuelta para corrección técnica. No puede generar una orden de producción hasta ser subsanada y aprobada.`,
+      });
+    }
+
+    if (sol.estado === 'rechazada') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        error: `FLUJO NO PERMITIDO: La solicitud ${sol.codigo || sol.id} fue rechazada por inviabilidad. No puede generar una orden de producción.`,
+      });
+    }
+
+    if (sol.estado !== 'aprobada') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        error: `FLUJO NO PERMITIDO: La solicitud ${sol.codigo || sol.id} (estado: "${sol.estado}") no ha superado la validación formal de Coordinación. Solo solicitudes en estado "aprobada" pueden convertirse a Orden de Producción.`,
+      });
+    }
 
     const cliente = await resolverCliente(client, targetCliente);
     if (!cliente) {
@@ -388,7 +453,7 @@ const crearOrden = async (req, res) => {
         etapaInicial,
         prioridad || 'Media',
         pctInicial,
-        solicitudId || null,
+        sol.codigo || (sol.id ? `SOL-${String(sol.id).replace(/-/g, '').substring(0, 20)}` : null),
         Number(cantidad || 1),
         material || 'Lona',
         dimensiones || 'Estándar',
@@ -411,6 +476,13 @@ const crearOrden = async (req, res) => {
     const nuevaRow = insertRes.rows[0];
     const codigo = req.body.codigo || `OP-2026-${String(nuevaRow.id).padStart(4, '0')}`;
     await client.query('UPDATE ordenes SET codigo = $1 WHERE id = $2', [codigo, nuevaRow.id]);
+
+    await client.query(
+      `UPDATE solicitudes 
+       SET estado = 'convertida', orden_id = $1 
+       WHERE id = $2`,
+      [nuevaRow.id, sol.id]
+    );
 
     const autorNombre = req.usuario?.nombre_completo || ejecutiva.nombre_completo;
     const autorId = (req.usuario?.id && req.usuario.rol !== 'cliente') ? req.usuario.id : ejecutiva.id;
@@ -522,12 +594,12 @@ const actualizarEtapa = async (req, res) => {
     const responsableNombre = req.usuario?.nombre_completo || responsableUser.nombre_completo;
 
     // ========================================================
-    // CANDADO DE APROBACIÓN DE DISEÑO (HU-13):
+    // CANDADO DE APROBACIÓN DE DISEÑO (HU-13, RF-07, T-06):
     // Las etapas >= 4 corresponden a Impresión, Acabados, Despacho, Entrega
     // ========================================================
     if (nuevaEtapa >= 4 && orden.etapa < 4) {
       const ultimaArteRes = await client.query(
-        `SELECT id, numero_version, estado_aprobacion, estado_ui
+        `SELECT id, numero_version, estado_aprobacion, estado_ui, tipo_aprobacion, soporte_validado, soporte_evidencia
          FROM archivos_arte
          WHERE orden_id = $1
          ORDER BY numero_version DESC
@@ -535,14 +607,36 @@ const actualizarEtapa = async (req, res) => {
         [orden.id]
       );
 
-      const arteAprobado =
-        ultimaArteRes.rowCount > 0 &&
-        (ultimaArteRes.rows[0].estado_aprobacion === 'aprobado' ||
-          ultimaArteRes.rows[0].estado_ui === 'Aprobada');
+      const arteExiste = ultimaArteRes.rowCount > 0;
+      const arteRow = arteExiste ? ultimaArteRes.rows[0] : null;
 
-      if (!arteAprobado) {
-        const motivoBloqueo = 'El pedido no puede pasar a impresión porque el diseño vigente aún no ha sido aprobado.';
-        // Registrar intento bloqueado en la bitácora inmutable y confirmar ese evento
+      const esAprobadoGeneral = arteExiste && (
+        arteRow.estado_aprobacion === 'aprobado' ||
+        arteRow.estado_ui === 'Aprobada' ||
+        arteRow.estado_ui === 'Aprobada (Externa)'
+      );
+
+      const pendienteSoporte = arteExiste && (
+        arteRow.tipo_aprobacion === 'externa' &&
+        (!arteRow.soporte_validado || !arteRow.soporte_evidencia || arteRow.estado_ui === 'Pendiente de soporte')
+      );
+
+      if (!arteExiste || !esAprobadoGeneral || pendienteSoporte) {
+        let motivoBloqueo;
+        let mensajeError;
+
+        if (!arteExiste) {
+          motivoBloqueo = 'El pedido no cuenta con ninguna propuesta gráfica registrada.';
+          mensajeError = 'CANDADO DE CALIDAD: No se puede avanzar a la etapa de impresión sin un diseño registrado.';
+        } else if (pendienteSoporte) {
+          motivoBloqueo = `La versión vigente (v${arteRow.numero_version}) cuenta con visto bueno preliminar pero tiene soporte documental pendiente de verificación.`;
+          mensajeError = 'CANDADO DE CALIDAD: La aprobación externa de diseño permanece como registro preliminar pendiente. Debe adjuntar y verificar la evidencia documental de la versión exacta antes de pasar a impresión.';
+        } else {
+          motivoBloqueo = `El pedido no puede pasar a impresión porque el diseño vigente (v${arteRow.numero_version}) aún no ha sido aprobado formalmente.`;
+          mensajeError = 'CANDADO DE CALIDAD: No se puede avanzar a la etapa de impresión/producción sin un diseño en estado "aprobado".';
+        }
+
+        // Registrar intento bloqueado en la bitácora inmutable
         await client.query(
           `INSERT INTO registro_sesion (
             orden_id, usuario_responsable_id, accion_texto,
@@ -552,7 +646,7 @@ const actualizarEtapa = async (req, res) => {
           [
             orden.id,
             responsableId,
-            `Avance bloqueado: se intentó pasar a ${nuevoEstadoUi} sin diseño aprobado`,
+            `Avance bloqueado: se intentó pasar a ${nuevoEstadoUi} (${motivoBloqueo})`,
             formatearFechaHoy(),
             formatearHoraAhora(),
             responsableNombre,
@@ -563,7 +657,7 @@ const actualizarEtapa = async (req, res) => {
         );
         await client.query('COMMIT');
         return res.status(400).json({
-          error: 'CANDADO DE CALIDAD: No se puede avanzar a la etapa de impresión/producción sin un diseño en estado "aprobado".',
+          error: mensajeError,
           motivo: motivoBloqueo,
           bloqueada: true,
         });
@@ -571,51 +665,116 @@ const actualizarEtapa = async (req, res) => {
     }
 
     // ========================================================
-    // DESCUENTO DE STOCK EN INVENTARIO (Si se especificó material)
+    // CONSUMO DE INVENTARIO E IDEMPOTENCIA (RF-05, RF-08)
     // ========================================================
     let descuentoRealizado = null;
-    if (material_id && cantidad_insumo) {
-      const cantDescontar = parseFloat(cantidad_insumo);
-      if (isNaN(cantDescontar) || cantDescontar <= 0) {
-        await client.query('ROLLBACK');
-        return res.status(400).json({ error: 'La cantidad de insumo a descontar debe ser un número positivo.' });
+    if (nuevaEtapa >= 4) {
+      if (orden.consumo_inventario_descontado) {
+        // Idempotencia: Ya fue descontado en una transición previa
+        descuentoRealizado = {
+          ya_descontado: true,
+          mensaje: 'Consumo de insumos previamente descontado (idempotencia garantizada).',
+        };
+      } else {
+        // Descuento real en primera entrada a taller/impresión
+        if (material_id && cantidad_insumo) {
+          const cantDescontar = parseFloat(cantidad_insumo);
+          if (isNaN(cantDescontar) || cantDescontar <= 0) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'La cantidad de insumo a descontar debe ser un número positivo.' });
+          }
+
+          const materialRes = await client.query(
+            'SELECT id, nombre_material, stock_actual, stock_reservado, stock_minimo FROM inventario WHERE id = $1 FOR UPDATE',
+            [material_id]
+          );
+
+          if (materialRes.rowCount === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: `Material de inventario #${material_id} no encontrado.` });
+          }
+
+          const material = materialRes.rows[0];
+          const stockActual = parseFloat(material.stock_actual);
+
+          if (stockActual < cantDescontar) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({
+              error: `Stock insuficiente para "${material.nombre_material}".`,
+              disponible: stockActual,
+              requerido: cantDescontar,
+            });
+          }
+
+          // Verificar si existía una reserva activa para esta orden y material
+          const resReserva = await client.query(
+            "SELECT * FROM orden_material_reserva WHERE orden_id = $1 AND material_id = $2 AND estado = 'activa' FOR UPDATE",
+            [orden.id, material_id]
+          );
+
+          let cantLiberarReserva = 0;
+          if (resReserva.rowCount > 0) {
+            const reserva = resReserva.rows[0];
+            cantLiberarReserva = Math.min(parseFloat(reserva.cantidad_reservada), cantDescontar);
+            await client.query(
+              "UPDATE orden_material_reserva SET estado = 'consumida', updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+              [reserva.id]
+            );
+          }
+
+          await client.query(
+            'UPDATE inventario SET stock_actual = stock_actual - $1, stock_reservado = GREATEST(0, stock_reservado - $2) WHERE id = $3',
+            [cantDescontar, cantLiberarReserva, material_id]
+          );
+
+          await client.query(
+            `INSERT INTO movimientos_inventario (material_id, orden_id, usuario_responsable_id, cantidad, tipo)
+             VALUES ($1, $2, $3, $4, 'salida')`,
+            [material_id, orden.id, responsableId, cantDescontar]
+          );
+
+          await client.query(
+            'UPDATE ordenes SET consumo_inventario_descontado = true WHERE id = $1',
+            [orden.id]
+          );
+
+          descuentoRealizado = {
+            material: material.nombre_material,
+            cantidad_descontada: cantDescontar,
+            stock_restante: stockActual - cantDescontar,
+            reserva_consumida: cantLiberarReserva,
+          };
+        } else {
+          // Si no se pasaron parámetros pero hay reservas activas para la orden, consumirlas
+          const resActivas = await client.query(
+            "SELECT * FROM orden_material_reserva WHERE orden_id = $1 AND estado = 'activa' FOR UPDATE",
+            [orden.id]
+          );
+          if (resActivas.rowCount > 0) {
+            for (const r of resActivas.rows) {
+              const cantCons = parseFloat(r.cantidad_reservada);
+              await client.query(
+                'UPDATE inventario SET stock_actual = GREATEST(0, stock_actual - $1), stock_reservado = GREATEST(0, stock_reservado - $1) WHERE id = $2',
+                [cantCons, r.material_id]
+              );
+              await client.query(
+                "UPDATE orden_material_reserva SET estado = 'consumida', updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+                [r.id]
+              );
+              await client.query(
+                `INSERT INTO movimientos_inventario (material_id, orden_id, usuario_responsable_id, cantidad, tipo)
+                 VALUES ($1, $2, $3, $4, 'salida')`,
+                [r.material_id, orden.id, responsableId, cantCons]
+              );
+            }
+            await client.query('UPDATE ordenes SET consumo_inventario_descontado = true WHERE id = $1', [orden.id]);
+            descuentoRealizado = {
+              reservas_consumidas: resActivas.rowCount,
+              mensaje: 'Reservas previas convertidas a consumo real de taller.',
+            };
+          }
+        }
       }
-
-      const materialRes = await client.query(
-        'SELECT id, nombre_material, stock_actual, stock_minimo FROM inventario WHERE id = $1 FOR UPDATE',
-        [material_id]
-      );
-
-      if (materialRes.rowCount === 0) {
-        await client.query('ROLLBACK');
-        return res.status(404).json({ error: `Material de inventario #${material_id} no encontrado.` });
-      }
-
-      const material = materialRes.rows[0];
-      const stockActual = parseFloat(material.stock_actual);
-
-      if (stockActual < cantDescontar) {
-        await client.query('ROLLBACK');
-        return res.status(400).json({
-          error: `Stock insuficiente para "${material.nombre_material}".`,
-          disponible: stockActual,
-          requerido: cantDescontar,
-        });
-      }
-
-      await client.query('UPDATE inventario SET stock_actual = stock_actual - $1 WHERE id = $2', [cantDescontar, material_id]);
-
-      await client.query(
-        `INSERT INTO movimientos_inventario (material_id, orden_id, usuario_responsable_id, cantidad, tipo)
-         VALUES ($1, $2, $3, $4, 'salida')`,
-        [material_id, orden.id, responsableId, cantDescontar]
-      );
-
-      descuentoRealizado = {
-        material: material.nombre_material,
-        cantidad_descontada: cantDescontar,
-        stock_restante: stockActual - cantDescontar,
-      };
     }
 
     const porcentaje = parseFloat(((nuevaEtapa / 8) * 100).toFixed(2));
@@ -682,6 +841,11 @@ const registrarEntrega = async (req, res) => {
     return res.status(400).json({ error: 'El nombre de quien recibe es obligatorio.' });
   }
 
+  // T-04: Validación de datos obligatorios del receptor (documento de identidad)
+  if (!datosEntrega.documento || !String(datosEntrega.documento).trim()) {
+    return res.status(400).json({ error: 'El documento o número de identificación de quien recibe es obligatorio.' });
+  }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -692,31 +856,54 @@ const registrarEntrega = async (req, res) => {
       return res.status(404).json({ error: `Orden ${req.params.id} no encontrada.` });
     }
 
+    // T-04: Validación física, formato, firma, serialización atómica y contexto de entrega formal
+    const validacionEvid = await validarArchivoEvidencia(req, 'evidencia', 'archivo', orden, client, 'entrega_formal');
+    if (!validacionEvid.valido) {
+      await client.query('ROLLBACK');
+      return res.status(validacionEvid.codigoHttp || 400).json({ error: validacionEvid.error });
+    }
+    const archivoEvidencia = validacionEvid.filename;
+
     const entregaActual = (orden.entrega_json && typeof orden.entrega_json === 'object') ? orden.entrega_json : {};
     const nuevaEntrega = {
       ...entregaActual,
       contacto: String(datosEntrega.contacto).trim(),
-      documento: datosEntrega.documento ? String(datosEntrega.documento).trim() : '',
+      documento: String(datosEntrega.documento).trim(),
       cargo: datosEntrega.cargo || 'Recepción cliente',
       telefono: datosEntrega.telefono || '',
       fechaReal: datosEntrega.fechaReal || formatearFechaHoy(),
       conformidad: datosEntrega.conformidad || 'Conforme',
       observaciones: datosEntrega.observaciones || '',
-      evidencia: datosEntrega.evidencia || entregaActual.evidencia || null,
+      evidencia: String(archivoEvidencia).trim(),
+      evidencia_hash: validacionEvid.hashSha256 || null,
     };
 
     const estadoAnterior = orden.estado_nombre || ETAPA_NUM_TO_NOMBRE_UI[orden.etapa] || 'Despacho';
     await client.query(
       `UPDATE ordenes
-       SET etapa = 8, porcentaje_avance = 100.00, estado_nombre = 'Entrega', entrega_json = $1
-       WHERE id = $2`,
-      [JSON.stringify(nuevaEntrega), orden.id]
+       SET etapa = 8, porcentaje_avance = 100.00, estado_nombre = 'Entrega',
+           entrega_json = $1, entrega_hash = $2
+       WHERE id = $3`,
+      [JSON.stringify(nuevaEntrega), validacionEvid.hashSha256 || null, orden.id]
     );
 
     const respUser = (req.usuario?.id && req.usuario.rol !== 'cliente')
       ? (await resolverUsuario(client, req.usuario.id))
       : (await resolverUsuario(client, orden.ejecutiva_id));
     const respNombre = req.usuario?.nombre_completo || respUser.nombre_completo;
+
+    // Si esta orden corresponde a una reposición por garantía, resolver el caso en postventa únicamente tras entrega formal
+    if (orden.postventa_caso_origen_id || orden.es_reimpresion) {
+      await client.query(
+        `UPDATE postventa
+         SET estado = 'Resuelto',
+             fecha_solucion = CURRENT_TIMESTAMP,
+             resuelto_por = $1,
+             solucion = COALESCE(solucion, '') || ' Reposición física entregada formalmente a conformidad (Evidencia: ' || $2 || ').'
+         WHERE (id = $3 OR reimpresion_orden_id = $4) AND estado = 'En reposición'`,
+        [respUser.id, archivoEvidencia, orden.postventa_caso_origen_id || null, orden.id]
+      );
+    }
 
     await client.query(
       `INSERT INTO registro_sesion (
@@ -790,13 +977,28 @@ const cerrarOrden = async (req, res) => {
     }
 
     const casosAbiertos = await client.query(
-      "SELECT COUNT(*)::int AS total FROM postventa WHERE orden_id = $1 AND estado != 'Resuelto'",
+      "SELECT COUNT(*)::int AS total FROM postventa WHERE orden_id = $1 AND estado != 'Resuelto' AND estado != 'Cerrado'",
       [orden.id]
     );
     if (casosAbiertos.rows[0].total > 0) {
       await client.query('ROLLBACK');
       return res.status(409).json({
-        error: `No se puede cerrar la orden: tiene ${casosAbiertos.rows[0].total} caso(s) de postventa sin resolver.`,
+        error: `No se puede cerrar la orden: tiene ${casosAbiertos.rows[0].total} caso(s) de postventa sin resolver o en reposición.`,
+      });
+    }
+
+    // Verificar si existen órdenes de reposición por garantía asociadas que no hayan completado su entrega formal
+    const reposicionesPend = await client.query(
+      `SELECT COUNT(*)::int AS total
+       FROM ordenes o
+       INNER JOIN postventa pv ON o.postventa_caso_origen_id = pv.id
+       WHERE pv.orden_id = $1 AND (o.etapa < 8 OR o.estado_nombre != 'Entrega')`,
+      [orden.id]
+    );
+    if (reposicionesPend.rows[0].total > 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error: `No se puede cerrar la orden original: tiene ${reposicionesPend.rows[0].total} orden(es) de reposición por garantía en taller pendientes de entrega formal.`,
       });
     }
 
@@ -918,6 +1120,7 @@ const reabrirOrden = async (req, res) => {
  */
 const clonarOrden = async (req, res) => {
   const motivo = req.body.motivo || 'Reimpresión o reposición de producto';
+  const casoOrigenId = req.body.postventa_caso_origen_id || req.body.caso_id || null;
 
   const client = await pool.connect();
   try {
@@ -929,6 +1132,19 @@ const clonarOrden = async (req, res) => {
       return res.status(404).json({ error: `Orden original ${req.params.id} no encontrada.` });
     }
 
+    if (casoOrigenId) {
+      const yaExisteRes = await client.query(
+        'SELECT id, codigo FROM ordenes WHERE postventa_caso_origen_id = $1',
+        [casoOrigenId]
+      );
+      if (yaExisteRes.rowCount > 0) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          error: `Ya existe una orden de reimpresión autorizada y generada para este caso (${yaExisteRes.rows[0].codigo || yaExisteRes.rows[0].id}). No se permiten órdenes duplicadas.`,
+        });
+      }
+    }
+
     const entregaCalc = new Date();
     entregaCalc.setDate(entregaCalc.getDate() + 4);
     const fechaSol = formatearFechaHoy();
@@ -938,6 +1154,44 @@ const clonarOrden = async (req, res) => {
       ? { ...original.entrega_json, fechaReal: null, conformidad: null, evidencia: null }
       : {};
 
+    // 1. RF-07: Verificar si la orden original cuenta con aprobación formal documentada
+    const arteAprobadoRes = await client.query(
+      `SELECT a.*, COALESCE(u.nombre_completo, a.disenador_nombre) AS aprobador_nombre
+       FROM archivos_arte a
+       LEFT JOIN usuarios u ON a.decision_por = u.id
+       WHERE a.orden_id = $1 AND (a.estado_aprobacion = 'aprobado' OR a.estado_ui = 'Aprobada' OR a.estado_ui = 'Aprobada (Externa)')
+       ORDER BY a.numero_version DESC
+       LIMIT 1`,
+      [original.id]
+    );
+
+    const eventoAprobadoRes = await client.query(
+      `SELECT * FROM registro_sesion
+       WHERE orden_id = $1 AND (accion_texto ILIKE '%diseño aprobado%' OR accion_texto ILIKE '%diseno aprobado%')
+       ORDER BY id DESC
+       LIMIT 1`,
+      [original.id]
+    );
+
+    const tieneAprobacionValida =
+      original.diseno_estado === 'Aprobado' &&
+      (arteAprobadoRes.rowCount > 0 || eventoAprobadoRes.rowCount > 0);
+
+    const arteAprobado = arteAprobadoRes.rows[0] || null;
+    const eventoAprob = eventoAprobadoRes.rows[0] || null;
+
+    const aprobadorReal = arteAprobado?.aprobador_nombre || eventoAprob?.responsable_nombre || null;
+    const fechaAprobacionReal = arteAprobado?.fecha_texto || eventoAprob?.fecha_texto || null;
+    const versionAprobadaNum = arteAprobado?.numero_version || null;
+
+    // Etapa inicial condicionada por RF-07
+    const etapaInicial = tieneAprobacionValida ? 4 : (original.etapa === 2 || original.diseno_estado === 'Enviado') ? 2 : 1;
+    const estadoNombreInicial = tieneAprobacionValida ? 'Impresión' : (etapaInicial === 2 ? 'Aprobación' : 'Diseño');
+    const disenoEstadoInicial = tieneAprobacionValida ? 'Aprobado' : (original.diseno_estado === 'Enviado' ? 'Enviado' : 'Pendiente');
+    const avanceInicial = tieneAprobacionValida ? 50.00 : (etapaInicial === 2 ? 30.00 : 15.00);
+
+    const presupuestoFinal = casoOrigenId ? 0.00 : original.presupuesto;
+
     const ins = await client.query(
       `INSERT INTO ordenes (
         cliente_id, producto, ejecutiva_id, disenador_id, produccion_id,
@@ -946,15 +1200,15 @@ const clonarOrden = async (req, res) => {
         fecha_solicitud, fecha_entrega, estado_nombre, diseno_estado,
         responsable_nombre, disenador_nombre_asignado, presupuesto, costo_interno,
         metodo_entrega, requerimientos, observaciones, entrega_json,
-        es_reimpresion, orden_original_codigo
+        es_reimpresion, orden_original_codigo, postventa_caso_origen_id
       ) VALUES (
         $1,$2,$3,$4,$5,
-        4,$6,50.00,false,
-        $7,$8,$9,$10,$11,$12,
-        $13,$14,'Impresión','Aprobado',
+        $6,$7,$8,false,
+        $9,$10,$11,$12,$13,$14,
         $15,$16,$17,$18,
         $19,$20,$21,$22,
-        true,$23
+        $23,$24,$25,$26,
+        true,$27,$28
       ) RETURNING *`,
       [
         original.cliente_id,
@@ -962,7 +1216,9 @@ const clonarOrden = async (req, res) => {
         original.ejecutiva_id,
         original.disenador_id,
         original.produccion_id,
+        etapaInicial,
         original.prioridad,
+        avanceInicial,
         original.solicitud_codigo,
         original.cantidad,
         original.material,
@@ -971,44 +1227,100 @@ const clonarOrden = async (req, res) => {
         original.acabados,
         fechaSol,
         fechaEnt,
-        original.responsable_nombre || 'Juan Pérez',
+        estadoNombreInicial,
+        disenoEstadoInicial,
+        original.responsable_nombre || 'María López',
         original.disenador_nombre_asignado || 'María López',
-        original.presupuesto,
+        presupuestoFinal,
         original.costo_interno,
         original.metodo_entrega,
         original.requerimientos,
         original.observaciones,
         JSON.stringify(entregaBase),
         original.codigo || `OP-2026-${String(original.id).padStart(4, '0')}`,
+        casoOrigenId,
       ]
     );
 
     const nuevaRow = ins.rows[0];
-    const nuevoCodigo = `ORD-2024-${String(nuevaRow.id).padStart(3, '0')}`;
+    const nuevoCodigo = `OP-2026-${String(nuevaRow.id).padStart(4, '0')}`;
     await client.query('UPDATE ordenes SET codigo = $1 WHERE id = $2', [nuevoCodigo, nuevaRow.id]);
+    const origCodigo = original.codigo || `OP-2026-${String(original.id).padStart(4, '0')}`;
 
-    // Copiar versión aprobada de arte para cumplir candado de impresión
-    await client.query(
-      `INSERT INTO archivos_arte (
-        orden_id, numero_version, ruta_archivo, creador_id, estado_aprobacion,
-        decision_por, comentario, fecha_texto, disenador_nombre, estado_ui, archivo_nombre
-      ) VALUES ($1, 1, $2, $3, 'aprobado', $4, 'Arte aprobado heredado de orden original', $5, 'María López', 'Aprobada', $6)`,
-      [
-        nuevaRow.id,
-        `uploads/Arte_Final_${nuevoCodigo}_v1.pdf`,
-        original.disenador_id || original.ejecutiva_id,
-        original.ejecutiva_id,
-        fechaSol,
-        `Arte_Final_${nuevoCodigo}_v1.pdf`,
-      ]
-    );
+    if (casoOrigenId) {
+      await client.query(
+        `UPDATE postventa
+         SET solicitud_reimpresion = true,
+             reimpresion_autorizada = true,
+             reimpresion_orden_id = $1,
+             reimpresion_autorizada_por = $2,
+             reimpresion_fecha = CURRENT_TIMESTAMP,
+             estado = 'Resuelto',
+             dictamen_garantia = 'Garantía aceptada — Reimpresión generada',
+             solucion = $3
+         WHERE id = $4`,
+        [nuevaRow.id, req.usuario.id, `Reimpresión generada formalmente: ${nuevoCodigo}`, casoOrigenId]
+      );
+    }
+
+    if (tieneAprobacionValida) {
+      // Reutilizar arte aprobado conservando trazabilidad formal de aprobación original (RF-07)
+      const rutaFinal = arteAprobado?.ruta_archivo || `uploads/Arte_Final_${nuevoCodigo}_v1.pdf`;
+      const archivoNombreFinal = arteAprobado?.archivo_nombre || `Arte_Final_${nuevoCodigo}_v1.pdf`;
+      const comentarioAprob = `Reutilización autorizada de arte v${versionAprobadaNum || 1} aprobado en ${origCodigo}. Aprobador: ${aprobadorReal || 'Cliente'} (${fechaAprobacionReal || fechaSol}).`;
+
+      await client.query(
+        `INSERT INTO archivos_arte (
+          orden_id, numero_version, ruta_archivo, creador_id, estado_aprobacion,
+          decision_por, comentario, fecha_texto, disenador_nombre, estado_ui, archivo_nombre
+        ) VALUES ($1, 1, $2, $3, 'aprobado', $4, $5, $6, $7, 'Aprobada', $8)`,
+        [
+          nuevaRow.id,
+          rutaFinal,
+          arteAprobado?.creador_id || original.disenador_id || original.ejecutiva_id,
+          arteAprobado?.decision_por || original.ejecutiva_id,
+          comentarioAprob,
+          fechaAprobacionReal || fechaSol,
+          arteAprobado?.disenador_nombre || original.disenador_nombre_asignado || 'María López',
+          archivoNombreFinal,
+        ]
+      );
+    } else {
+      // Si la orden original NO tenía aprobación verificable, no inventar aprobación (RF-07)
+      const cualquierArteRes = await client.query(
+        `SELECT * FROM archivos_arte WHERE orden_id = $1 ORDER BY numero_version DESC LIMIT 1`,
+        [original.id]
+      );
+      if (cualquierArteRes.rowCount > 0) {
+        const artBase = cualquierArteRes.rows[0];
+        const estDb = artBase.estado_aprobacion === 'pendiente' ? 'pendiente' : 'borrador';
+        const estUi = estDb === 'pendiente' ? 'Enviada' : 'En proceso';
+        await client.query(
+          `INSERT INTO archivos_arte (
+            orden_id, numero_version, ruta_archivo, creador_id, estado_aprobacion,
+            decision_por, comentario, fecha_texto, disenador_nombre, estado_ui, archivo_nombre
+          ) VALUES ($1, 1, $2, $3, $4, NULL, $5, $6, $7, $8, $9)`,
+          [
+            nuevaRow.id,
+            artBase.ruta_archivo || `uploads/Arte_Final_${nuevoCodigo}_v1.pdf`,
+            artBase.creador_id || original.disenador_id || original.ejecutiva_id,
+            estDb,
+            `Arte base de ${origCodigo} copiado como borrador/revisión. Requiere aprobación formal del cliente (RF-07).`,
+            fechaSol,
+            artBase.disenador_nombre || original.disenador_nombre_asignado || 'María López',
+            estUi,
+            artBase.archivo_nombre || `Arte_Final_${nuevoCodigo}_v1.pdf`,
+          ]
+        );
+      }
+    }
 
     const respUser = (req.usuario?.id && req.usuario.rol !== 'cliente')
       ? (await resolverUsuario(client, req.usuario.id))
       : (await resolverUsuario(client, original.ejecutiva_id));
     const respNombre = req.usuario?.nombre_completo || respUser.nombre_completo;
-    const origCodigo = original.codigo || `OP-2026-${String(original.id).padStart(4, '0')}`;
 
+    // Registrar evento de clonación
     await client.query(
       `INSERT INTO registro_sesion (
         orden_id, usuario_responsable_id, accion_texto,
@@ -1023,6 +1335,39 @@ const clonarOrden = async (req, res) => {
         respNombre,
       ]
     );
+
+    // Registrar trazabilidad estricta de aprobación según RF-07
+    if (tieneAprobacionValida) {
+      await client.query(
+        `INSERT INTO registro_sesion (
+          orden_id, usuario_responsable_id, accion_texto,
+          fecha_texto, hora_texto, responsable_nombre, estado_evento, interno
+        ) VALUES ($1,$2,$3,$4,$5,$6,'Completado',false)`,
+        [
+          nuevaRow.id,
+          respUser.id,
+          `Aprobación reutilizada de orden original ${origCodigo} (v${versionAprobadaNum || 1}). Aprobado formalmente por: ${aprobadorReal || 'Cliente'} (${fechaAprobacionReal || fechaSol}). Cumple RF-07 para impresión.`,
+          fechaSol,
+          formatearHoraAhora(),
+          respNombre,
+        ]
+      );
+    } else {
+      await client.query(
+        `INSERT INTO registro_sesion (
+          orden_id, usuario_responsable_id, accion_texto,
+          fecha_texto, hora_texto, responsable_nombre, estado_evento, interno
+        ) VALUES ($1,$2,$3,$4,$5,$6,'Pendiente',false)`,
+        [
+          nuevaRow.id,
+          respUser.id,
+          `RF-07: Paso a impresión bloqueado en orden clonada. La orden de origen ${origCodigo} no contaba con aprobación formal documentada; requiere visto bueno del cliente.`,
+          fechaSol,
+          formatearHoraAhora(),
+          respNombre,
+        ]
+      );
+    }
 
     await client.query('COMMIT');
 

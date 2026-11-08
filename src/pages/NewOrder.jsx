@@ -229,6 +229,12 @@ export default function NewOrder({ clients, onSubmit, irA, clienteInicialId }) {
         icono="file-plus"
         volver={{ texto: 'Volver a solicitudes', onClick: () => irA('solicitudes') }}
       />
+      <div className="ban ban-azul" style={{ marginBottom: '18px' }}>
+        <Icon nombre="info" tamano={18} />
+        <div>
+          <strong>Flujo de aprobación comercial:</strong> Toda solicitud registrada se crea con identificador único (ej. <code>SOL-2026-XXXX</code>) en estado <em>Pendiente</em>. Debe enviarse a validación técnica para que el Coordinador de Producción verifique su viabilidad y genere formalmente la Orden de Producción (<code>OP-2026-XXXX</code>).
+        </div>
+      </div>
       {hayErrores && <Alert tipo="error" titulo="Revisa el formulario">Hay campos con errores. Corrígelos para continuar.</Alert>}
 
       <form className="card form-card" onSubmit={handleSubmit} noValidate>

@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { ROLES, normalizarRol, obtenerConfigRol } from '../../src/data/roles.js';
 
 const require = createRequire(import.meta.url);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 process.env.PORT = '3099';
 
 const { server } = require('../index.js');
@@ -355,6 +360,10 @@ async function runTests() {
       assert.equal(adv.status, 200, `Debe avanzar a ${sigEtapa}`);
       assert.equal(adv.data.data.estado, sigEtapa);
     }
+
+    const uploadDir = path.join(__dirname, '..', 'uploads');
+    if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+    fs.writeFileSync(path.join(uploadDir, `Acta_${ordenId}.pdf`), `%PDF-1.4\nEVIDENCIA FISICA DE ENTREGA FORMAL - ${Date.now()}`);
 
     const entrega = await req(`/ordenes/${ordenId}/entrega`, {
       method: 'POST',

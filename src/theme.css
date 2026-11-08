@@ -559,11 +559,11 @@ h3 {
 }
 
 .kanban-card.kc-rojo {
-  border-left: 3px solid var(--state-red);
+  border-color: color-mix(in srgb, var(--state-red) 45%, var(--border-light));
 }
 
 .kanban-card.kc-amarillo {
-  border-left: 3px solid var(--state-amber);
+  border-color: color-mix(in srgb, var(--state-amber) 45%, var(--border-light));
 }
 
 .kanban-title {
@@ -701,8 +701,7 @@ h3 {
 
 .alert-row {
   background: var(--bg-subtle);
-  border: none;
-  border-left: 3px solid var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border-light));
   border-radius: var(--radius-md);
   box-shadow: none;
   padding: 12px 16px;
@@ -715,12 +714,12 @@ h3 {
 }
 
 .alert-row-rojo {
-  border-left-color: var(--state-red);
+  border-color: color-mix(in srgb, var(--state-red) 38%, var(--border-light));
   background: color-mix(in srgb, var(--state-red) 6%, var(--bg-subtle));
 }
 
 .alert-row-amarillo {
-  border-left-color: var(--state-amber);
+  border-color: color-mix(in srgb, var(--state-amber) 38%, var(--border-light));
   background: color-mix(in srgb, var(--state-amber) 6%, var(--bg-subtle));
 }
 
@@ -749,14 +748,13 @@ h3 {
 
 .note {
   background: var(--bg-subtle);
-  border: none;
-  border-left: 3px solid var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--border-light));
   color: var(--text-muted);
 }
 
 .note-error {
   background: var(--state-red-bg);
-  border-left-color: var(--state-red);
+  border-color: color-mix(in srgb, var(--state-red) 35%, var(--border-light));
   color: var(--state-red-text);
 }
 
@@ -1599,8 +1597,8 @@ textarea:focus {
   left: 0;
   top: 12px;
   bottom: 12px;
-  width: 3px;
-  border-radius: 0 3px 3px 0;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
   background: var(--accent);
 }
 
@@ -1917,8 +1915,7 @@ textarea:focus {
   padding: 14px 18px;
   border-radius: var(--radius-lg);
   background: var(--bg-surface);
-  border: 1px solid var(--border-light);
-  border-left: 3px solid var(--state-amber);
+  border: 1px solid color-mix(in srgb, var(--state-amber) 38%, var(--border-light));
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -2203,7 +2200,7 @@ textarea:focus {
    -------------------------------------------------------------------------- */
 .crop {
   margin: 0;
-  border-left: 3px solid var(--accent);
+  border: 1px solid var(--border-light);
 }
 
 .crop::before,
@@ -2289,8 +2286,7 @@ textarea:focus {
   gap: 12px;
   padding: 14px 18px;
   border-radius: var(--radius-lg);
-  border: none;
-  border-left: 3px solid var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border-light));
   background: var(--bg-surface);
   font-size: 0.86rem;
 }
@@ -2303,19 +2299,19 @@ textarea:focus {
 .ban.am,
 .ban.warn {
   background: var(--state-amber-bg);
-  border-left-color: var(--state-amber);
+  border-color: color-mix(in srgb, var(--state-amber) 38%, transparent);
   color: var(--state-amber-text);
 }
 
 .ban.gr {
   background: var(--state-green-bg);
-  border-left-color: var(--state-green);
+  border-color: color-mix(in srgb, var(--state-green) 38%, transparent);
   color: var(--state-green-text);
 }
 
 .ban.rd {
   background: var(--state-red-bg);
-  border-left-color: var(--state-red);
+  border-color: color-mix(in srgb, var(--state-red) 38%, transparent);
   color: var(--state-red-text);
 }
 
@@ -2429,8 +2425,7 @@ textarea:focus {
   padding: 14px 16px;
   border-radius: var(--radius-md);
   background: var(--bg-subtle);
-  border: none;
-  border-left: 3px solid var(--state-amber);
+  border: 1px solid color-mix(in srgb, var(--state-amber) 34%, var(--border-light));
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -2548,12 +2543,12 @@ textarea:focus {
 
 .alert-info {
   background: color-mix(in srgb, var(--accent) 8%, var(--bg-surface));
-  border-left: 3px solid var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border-light));
 }
 
 .alert-bloqueo {
   background: color-mix(in srgb, var(--state-red) 8%, var(--bg-surface));
-  border-left: 3px solid var(--state-red);
+  border: 1px solid color-mix(in srgb, var(--state-red) 35%, var(--border-light));
 }
 
 .empty {
@@ -3987,8 +3982,9 @@ body {
   top: 0 !important;
   left: 0 !important;
   right: 0 !important;
-  height: 3px !important;
+  height: 1px !important;
   background: linear-gradient(90deg, #247BFF 0%, #19C6E5 55%, #65E4F2 85%, transparent 100%) !important;
+  opacity: 0.85 !important;
   z-index: 2;
 }
 
@@ -4324,9 +4320,9 @@ body {
   top: 0 !important;
   left: 0 !important;
   right: 0 !important;
-  height: 3px !important;
+  height: 1px !important;
   background: linear-gradient(90deg, #247BFF, #19C6E5) !important;
-  opacity: 0.95 !important;
+  opacity: 0.78 !important;
   z-index: 2;
 }
 
@@ -4492,9 +4488,9 @@ body {
 }
 
 .kpi.kpi-hero::before {
-  height: 4px !important;
+  height: 1px !important;
   background: linear-gradient(90deg, #247BFF 0%, #19C6E5 55%, #65E4F2 100%) !important;
-  opacity: 1 !important;
+  opacity: 0.95 !important;
 }
 
 .kpi.kpi-hero .kpi-title {
@@ -4545,7 +4541,7 @@ body {
 }
 
 .kpi.kpi-featured::before {
-  height: 4px !important;
+  height: 1px !important;
   background: linear-gradient(90deg, #19C6E5 0%, #65E4F2 100%) !important;
 }
 
@@ -5026,10 +5022,9 @@ body {
    -------------------------------------------------------------------------- */
 .prod-gate-alerts .alert {
   background: linear-gradient(90deg, rgba(239, 68, 68, 0.16) 0%, var(--surface) 70%) !important;
-  border: 1px solid rgba(239, 68, 68, 0.42) !important;
-  border-left: 4px solid #EF4444 !important;
+  border: 1px solid rgba(239, 68, 68, 0.48) !important;
   border-radius: 12px !important;
-  box-shadow: var(--shadow-xs) !important;
+  box-shadow: var(--shadow-xs), inset 0 1px 0 rgba(248, 113, 113, 0.25) !important;
 }
 
 .alert-list {
@@ -5045,8 +5040,7 @@ body {
   flex-wrap: wrap !important;
   gap: 12px !important;
   background: var(--surface-subtle) !important;
-  border: 1px solid var(--line) !important;
-  border-left: 4px solid var(--cyan) !important;
+  border: 1px solid rgba(25, 198, 229, 0.32) !important;
   border-radius: 11px !important;
   padding: 12px 14px !important;
   transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease !important;
@@ -5082,12 +5076,12 @@ body {
 }
 
 .alert-row-amarillo {
-  border-left-color: #F59E0B !important;
+  border-color: rgba(245, 158, 11, 0.42) !important;
   background: linear-gradient(90deg, rgba(245, 158, 11, 0.11) 0%, var(--surface-subtle) 100%) !important;
 }
 
 .alert-row-rojo {
-  border-left-color: #EF4444 !important;
+  border-color: rgba(239, 68, 68, 0.44) !important;
   background: linear-gradient(90deg, rgba(239, 68, 68, 0.13) 0%, var(--surface-subtle) 100%) !important;
 }
 
@@ -5840,8 +5834,8 @@ textarea:focus {
   left: 0 !important;
   top: 10px !important;
   bottom: 10px !important;
-  width: 3px !important;
-  border-radius: 0 3px 3px 0 !important;
+  width: 2px !important;
+  border-radius: 0 2px 2px 0 !important;
   background: var(--cyan) !important;
 }
 
@@ -6254,8 +6248,7 @@ textarea:focus {
   padding: 13px 16px !important;
   border-radius: 12px !important;
   background: rgba(21, 41, 67, 0.65) !important;
-  border: 1px solid var(--line) !important;
-  border-left: 4px solid #F59E0B !important;
+  border: 1px solid rgba(245, 158, 11, 0.42) !important;
   display: flex !important;
   flex-direction: column !important;
   gap: 6px !important;
@@ -6705,5 +6698,477 @@ textarea:focus {
   .btn {
     animation: none !important;
     transition: none !important;
+  }
+}
+
+
+/* ==========================================================================
+   13. EVOLUCIÓN VISUAL INTEGRAL ORVEX — VECTOR ICONOGRAPHY & MICRO-MOTION
+   Skills aplicadas: impeccable, taste-skill, emil-animation, ui-animation,
+   css-animations, threejs-design, modern-web-guidance
+   ========================================================================== */
+
+/* 13.1 Modern Web Guidance: Browser UI Theming, Legibility & OKLab */
+:root {
+  --in-oklab: ;
+  @supports (background: linear-gradient(in oklab, #000, #fff)) {
+    --in-oklab: in oklab ;
+  }
+  accent-color: #247BFF;
+  scrollbar-color: #2A4362 #0B1424;
+}
+
+[data-theme="light"] {
+  accent-color: #247BFF;
+  scrollbar-color: #93B4D8 #EFF3F8;
+}
+
+::selection {
+  background-color: rgba(25, 198, 229, 0.28);
+  color: var(--ink);
+}
+
+h1, h2, h3, h4, th, .page-head h1, .card-head h2 {
+  text-wrap: balance;
+}
+
+p, li, dd, .subtitle, .card-subtitle, .kpi-detail {
+  text-wrap: pretty;
+}
+
+input:not(input[type="range"]):user-invalid,
+select:user-invalid,
+textarea:user-invalid {
+  outline: 2px solid var(--red);
+  outline-offset: 2px;
+}
+
+/* 13.2 Individual Transform Properties (Baseline Identity Values) */
+.icon,
+.icon .icon-part-primary,
+.icon .icon-part-secondary,
+.icon .icon-part-detail,
+.module-vector-badge,
+.btn,
+.kpi,
+.quick,
+.card,
+.nav-item {
+  translate: 0px 0px;
+  rotate: 0deg;
+  scale: 1;
+}
+
+/* 13.3 PageHeader Compact Telemetry & Structural Hierarchy (h1 First) */
+.page-heading-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+}
+
+.page-telemetry-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 10px 3px 6px;
+  border-radius: 999px;
+  background: rgba(15, 29, 49, 0.78);
+  border: 1px solid rgba(101, 228, 242, 0.24);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="light"] .page-telemetry-pill {
+  background: var(--surface-subtle);
+  border-color: var(--line);
+}
+
+/* 13.4 Panel Header Title Row & Tag Pill (Replaces Eyebrow Above h2) */
+.card-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+}
+
+.card-head-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(25, 198, 229, 0.14);
+  border: 1px solid rgba(101, 228, 242, 0.28);
+  color: var(--cyan);
+  flex-shrink: 0;
+  transition: scale 180ms var(--ease-out-expo), background-color 180ms ease, border-color 180ms ease;
+}
+
+[data-theme="light"] .card-head-icon {
+  background: rgba(36, 123, 255, 0.1);
+  border-color: rgba(36, 123, 255, 0.24);
+  color: var(--electric);
+}
+
+.card:hover .card-head-icon {
+  scale: 1.06;
+  border-color: var(--cyan);
+}
+
+.card-tag-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--cyan);
+  background: rgba(25, 198, 229, 0.12);
+  border: 1px solid rgba(101, 228, 242, 0.24);
+}
+
+[data-theme="light"] .card-tag-pill {
+  color: var(--cyan-deep);
+  background: rgba(13, 139, 163, 0.1);
+  border-color: rgba(13, 139, 163, 0.24);
+}
+
+/* 13.5 Timeline Note Box (Replaces 3px Side-Tab Inline Style) */
+.timeline-note-box {
+  margin-top: 6px;
+  padding: 7px 11px;
+  background: rgba(36, 123, 255, 0.08);
+  border: 1px solid rgba(36, 123, 255, 0.24);
+  border-radius: 8px;
+  font-size: 0.8rem;
+  color: var(--text-soft);
+  line-height: 1.45;
+}
+
+[data-theme="light"] .timeline-note-box {
+  background: rgba(36, 123, 255, 0.06);
+  border-color: rgba(36, 123, 255, 0.2);
+  color: var(--text);
+}
+
+/* 13.6 Module Vector Badge (Replaces Legacy 3D PNG Icons) */
+.module-vector-badge {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: linear-gradient(var(--in-oklab) 135deg, rgba(36, 123, 255, 0.22), rgba(25, 198, 229, 0.12));
+  border: 1px solid rgba(101, 228, 242, 0.34);
+  color: #65E4F2;
+  box-shadow: 0 4px 12px -2px rgba(3, 8, 18, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  flex-shrink: 0;
+  transition: scale 200ms var(--ease-out-expo), border-color 200ms ease, box-shadow 200ms ease;
+}
+
+[data-theme="light"] .module-vector-badge {
+  background: linear-gradient(var(--in-oklab) 135deg, rgba(36, 123, 255, 0.12), rgba(25, 198, 229, 0.08));
+  border-color: rgba(36, 123, 255, 0.28);
+  color: #247BFF;
+  box-shadow: 0 2px 6px rgba(20, 35, 56, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.module-vector-glow {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(circle at 30% 25%, rgba(101, 228, 242, 0.22), transparent 70%);
+  pointer-events: none;
+}
+
+/* 13.7 Notdog Solid Vector Architecture & 19 Semantic Micro-Animations */
+:root {
+  --nd-hi: rgba(240, 249, 255, 0.72);
+}
+
+[data-theme="light"] {
+  --nd-hi: rgba(255, 255, 255, 0.85);
+}
+
+.icon {
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+  overflow: visible;
+  transform-origin: center center;
+  transition:
+    translate 240ms cubic-bezier(0.16, 1, 0.3, 1),
+    rotate 240ms cubic-bezier(0.16, 1, 0.3, 1),
+    scale 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Sombra plana 2D (0px blur) fiel a la serigrafía plana de Notdog Solid, sin efecto 3D */
+.icon.icon-notdog {
+  filter: drop-shadow(1.15px 1.35px 0px rgba(4, 10, 22, 0.42)) !important;
+}
+
+[data-theme="light"] .icon.icon-notdog {
+  filter: drop-shadow(0.95px 1.15px 0px rgba(15, 32, 58, 0.16)) !important;
+}
+
+.icon.icon-notdog .nd-highlight {
+  opacity: 0.78;
+  transition: opacity 200ms ease;
+}
+
+:is(.btn, .kpi, .nav-item, .quick, .card-head, .page-head, .icon-btn, .chip, .tab):hover .icon.icon-notdog .nd-highlight {
+  opacity: 1;
+}
+
+.icon .icon-part-primary,
+.icon .icon-part-secondary,
+.icon .icon-part-detail {
+  transform-box: fill-box;
+  transform-origin: center center;
+  transition:
+    translate 240ms cubic-bezier(0.16, 1, 0.3, 1),
+    rotate 240ms cubic-bezier(0.16, 1, 0.3, 1),
+    scale 240ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 200ms ease;
+}
+
+.icon .icon-part-secondary {
+  opacity: 0.78;
+}
+
+/* Interactive Trigger Contexts */
+:is(.btn, .kpi, .nav-item, .quick, .card-head, .page-head, .icon-btn, .chip, .tab, .step, .alert-row, .comm-mini-order):hover .icon .icon-part-secondary,
+:is(.btn, .kpi, .nav-item, .quick, .icon-btn, .chip, .tab):focus-visible .icon .icon-part-secondary {
+  opacity: 1;
+}
+
+/* 1. ring (campana / telefono) */
+@keyframes orvexIconRing {
+  0%, 100% { rotate: 0deg; }
+  20% { rotate: -14deg; }
+  45% { rotate: 12deg; }
+  70% { rotate: -7deg; }
+  88% { rotate: 4deg; }
+}
+:is(.btn, .kpi, .nav-item, .quick, .card-head, .page-head, .icon-btn, .chip, .tab):hover .icon-motion-ring {
+  animation: orvexIconRing 520ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* 2. drive (camion / entregas) */
+:is(.btn, .kpi, .nav-item, .quick, .card-head, .page-head, .icon-btn, .chip, .tab):hover .icon-motion-drive {
+  translate: 2.5px 0px;
+}
+:is(.btn, .kpi, .nav-item, .quick, .card-head, .page-head, .icon-btn, .chip, .tab):hover .icon-motion-drive .icon-part-detail {
+  rotate: 45deg;
+}
+
+/* 3. launch (enviar / cohete) */
+:is(.btn, .kpi, .nav-item, .quick, .card-head, .page-head, .icon-btn, .chip, .tab):hover .icon-motion-launch {
+  translate: 2px -2px;
+  scale: 1.06;
+}
+
+/* 4. write (editar / diseno) */
+:is(.btn, .kpi, .nav-item, .quick, .card-head, .page-head, .icon-btn, .chip, .tab):hover .icon-motion-write {
+  rotate: -8deg;
+  translate: 1px -1px;
+}
+
+/* 5. print (impresora) */
+:is(.btn, .kpi, .nav-item, .quick, .card-head, .page-head, .icon-btn, .chip, .tab):hover .icon-motion-print .icon-part-detail {
+  translate: 0px 1.8px;
+}
+:is(.btn, .kpi, .nav-item, .quick, .card-head, .page-head, .icon-btn, .chip, .tab):hover .icon-motion-print {
+  scale: 1.05;
+}
+
+/* 6. snip (corte / tijeras) */
+:is(.btn, .kpi, .nav-item, .quick, .card-head, .page-head, .icon-btn, .chip, .tab):hover .icon-motion-snip {
+  rotate: -10deg;
+  scale: 1.06;
+}
+:is(.btn, .kpi, .nav-item, .quick, .card-head, .page-head, .icon-btn, .chip, .tab):hover .icon-motion-snip .icon-part-detail {
+  rotate: 12deg;
+}
+
+/* 7. spin (sincronizar / refrescar) */
+:is(.btn, .kpi, .nav-item, .quick, .card-head, .page-head, .icon-btn, .chip, .tab):hover .icon-motion-spin {
+  rotate: 90deg;
+}
+
+/* 8. tick (reloj / tiempos) */
+:is(.btn, .kpi, .nav-item, .quick, .card-head, .page-head, .icon-btn, .chip, .tab):hover .icon-motion-tick .icon-part-detail {
+  rotate: 35deg;
+}
+:is(.btn, .kpi, .nav-item, .quick, .card-head, .page-head, .icon-btn, .chip, .tab):hover .icon-motion-tick {
+  scale: 1.05;
+}
+
+/* 9. check-pop (check / escudo / aprobacion) */
+:is(.btn, .kpi, .nav-item, .quick, .card-head, .page-head, .icon-btn, .chip, .tab):hover .icon-motion-check-pop {
+  scale: 1.1;
+}
+:is(.btn, .kpi, .nav-item, .quick, .card-head, .page-head, .icon-btn, .chip, .tab):hover .icon-motion-check-pop .icon-part-detail {
+  scale: 1.12;
+}
+
+/* 10. alert-shake (alerta / bloqueo) */
+@keyframes orvexAlertNudge {
+  0%, 100% { translate: 0px 0px; }
+  25% { translate: -1.5px 0px; }
+  65% { translate: 1.5px 0px; }
+}
+:is(.btn, .kpi, .nav-item, .quick, .card-head, .page-head, .icon-btn, .chip, .tab, .alert-row):hover .icon-motion-alert-shake {
+  animation: orvexAlertNudge 360ms ease-in-out;
+}
+
+/* 11. quarter-turn (mas / cerrar) */
+:is(.btn, .kpi, .nav-item, .quick, .card-head, .page-head, .icon-btn, .chip, .tab):hover .icon-motion-quarter-turn {
+  rotate: 90deg;
+}
+
+/* 12-15. directional nudges (flechas / descarga / subida) */
+:is(.btn, .kpi, .nav-item, .quick, .card-head, .page-head, .icon-btn, .chip, .tab, .comm-mini-order):hover .icon-motion-nudge-right {
+  translate: 2.5px 0px;
+}
+:is(.btn, .kpi, .nav-item, .quick, .card-head, .page-head, .icon-btn, .chip, .tab):hover .icon-motion-nudge-left {
+  translate: -2.5px 0px;
+}
+:is(.btn, .kpi, .nav-item, .quick, .card-head, .page-head, .icon-btn, .chip, .tab):hover .icon-motion-nudge-down .icon-part-detail,
+:is(.btn, .kpi, .nav-item, .quick, .card-head, .page-head, .icon-btn, .chip, .tab):hover .icon-motion-nudge-down {
+  translate: 0px 2px;
+}
+:is(.btn, .kpi, .nav-item, .quick, .card-head, .page-head, .icon-btn, .chip, .tab):hover .icon-motion-nudge-up .icon-part-detail,
+:is(.btn, .kpi, .nav-item, .quick, .card-head, .page-head, .icon-btn, .chip, .tab):hover .icon-motion-nudge-up {
+  translate: 0px -2px;
+}
+
+/* 16. pulse-bars (reportes / barras / tendencia) */
+:is(.btn, .kpi, .nav-item, .quick, .card-head, .page-head, .icon-btn, .chip, .tab):hover .icon-motion-pulse-bars {
+  scale: 1.07;
+  translate: 0px -1px;
+}
+:is(.btn, .kpi, .nav-item, .quick, .card-head, .page-head, .icon-btn, .chip, .tab):hover .icon-motion-pulse-bars .icon-part-detail {
+  translate: 0px -1.5px;
+}
+
+/* 17. inspect (buscar / ver / filtrar) */
+:is(.btn, .kpi, .nav-item, .quick, .card-head, .page-head, .icon-btn, .chip, .tab, .search-box:focus-within):hover .icon-motion-inspect,
+.search-box:focus-within .icon-motion-inspect {
+  scale: 1.08;
+  rotate: -5deg;
+}
+
+/* 18. rock-wave (mensajes / correo / postventa) */
+:is(.btn, .kpi, .nav-item, .quick, .card-head, .page-head, .icon-btn, .chip, .tab):hover .icon-motion-rock-wave {
+  rotate: -5deg;
+  translate: 0px -1.5px;
+}
+
+/* 19. float-bounce (tablero / ordenes / clientes / inventario / solicitudes) */
+:is(.btn, .kpi, .nav-item, .quick, .card-head, .page-head, .icon-btn, .chip, .tab):hover .icon-motion-float-bounce {
+  translate: 0px -2px;
+  scale: 1.05;
+}
+:is(.btn, .kpi, .nav-item, .quick, .card-head, .page-head, .icon-btn, .chip, .tab):hover .icon-motion-float-bounce .icon-part-detail {
+  translate: 0px -1px;
+}
+
+/* 13.8 Tactile Press Feedback (Emil Kowalski Spring Principles) */
+.btn:active:not(:disabled),
+.chip:active:not(:disabled),
+.quick:active:not(:disabled),
+.icon-btn:active:not(:disabled) {
+  scale: 0.97;
+}
+
+.kpi.kpi-click:active {
+  scale: 0.99;
+}
+
+/* 13.9 Live Status Pulse & Shimmer Skeleton States */
+.badge-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.live-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  display: inline-block;
+  box-shadow: 0 0 6px currentColor;
+  animation: orvexLivePulse 2.2s ease-in-out infinite;
+}
+
+@keyframes orvexLivePulse {
+  0%, 100% { opacity: 1; scale: 1; }
+  50% { opacity: 0.45; scale: 0.85; }
+}
+
+.skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(
+    90deg,
+    var(--surface-subtle) 25%,
+    var(--surface-elevated) 50%,
+    var(--surface-subtle) 75%
+  );
+  background-size: 200% 100%;
+  animation: orvexShimmer 1.6s ease-in-out infinite;
+}
+
+@keyframes orvexShimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.design-preview-stage {
+  position: relative;
+  overflow: hidden;
+}
+
+.preview-crop-tl,
+.preview-crop-br {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-color: rgba(101, 228, 242, 0.45);
+  pointer-events: none;
+}
+
+.preview-crop-tl {
+  top: 8px;
+  left: 8px;
+  border-top: 1.5px solid rgba(101, 228, 242, 0.45);
+  border-left: 1.5px solid rgba(101, 228, 242, 0.45);
+}
+
+.preview-crop-br {
+  bottom: 8px;
+  right: 8px;
+  border-bottom: 1.5px solid rgba(101, 228, 242, 0.45);
+  border-right: 1.5px solid rgba(101, 228, 242, 0.45);
+}
+
+/* Reduced Motion Compliance: Preserve Opacity/Color, Disable Spatial Translation */
+@media (prefers-reduced-motion: reduce) {
+  .icon,
+  .icon .icon-part-primary,
+  .icon .icon-part-secondary,
+  .icon .icon-part-detail,
+  .module-vector-badge,
+  .live-indicator,
+  .skeleton-shimmer {
+    animation: none !important;
+    translate: 0px 0px !important;
+    rotate: 0deg !important;
+    scale: 1 !important;
   }
 }

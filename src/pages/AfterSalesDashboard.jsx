@@ -1396,6 +1396,46 @@ export default function AfterSalesDashboard({ data, actions, irA }) {
                           placeholder="Fundamenta por qué la garantía es Procedente, Parcial o No procedente según inspección de muestras y acta de entrega..."
                         />
                       </label>
+
+                      {(String(formGestion.dictamenGarantia || '').startsWith('Procedente') ||
+                        String(casoSeleccionado.dictamenGarantia || '').startsWith('Procedente')) &&
+                        casoSeleccionado.ordenId && (
+                          <div
+                            className="span-2"
+                            style={{
+                              background: 'var(--surface-sunken)',
+                              border: '1px solid var(--accent, #3b82f6)',
+                              borderRadius: 8,
+                              padding: '12px 16px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: 12,
+                              margin: '8px 0',
+                            }}
+                          >
+                            <div>
+                              <strong style={{ display: 'block', fontSize: 13, color: 'var(--text-primary)' }}>
+                                <Icon nombre="check" tamano={14} /> Garantía Técnica Favorable · Reimpresión autorizada
+                              </strong>
+                              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                                Orden original vinculada: <strong>{casoSeleccionado.ordenId}</strong>. Genera automáticamente una nueva OP con especificaciones y arte aprobados.
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              className="btn btn-primary btn-sm"
+                              style={{ whiteSpace: 'nowrap' }}
+                              onClick={() => {
+                                const motivoClon = `Garantía técnica ${casoSeleccionado.id}: ${formGestion.dictamenGarantia || casoSeleccionado.dictamenGarantia}. Justificación: ${formGestion.justificacionDictamen || 'Reimpresión autorizada por garantía técnica'}`;
+                                actions.cloneOrder(casoSeleccionado.ordenId, motivoClon);
+                                setCasoDetalleId(null);
+                              }}
+                            >
+                              <Icon nombre="copy" tamano={14} /> Clonar orden para reimpresión
+                            </button>
+                          </div>
+                        )}
                     </>
                   )}
 

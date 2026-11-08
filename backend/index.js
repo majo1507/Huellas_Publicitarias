@@ -101,6 +101,11 @@ app.use('/api/postventa', postventaRouter);
 app.use('/api/casos', postventaRouter);
 app.use('/api/comunicaciones', comunicacionesRouter);
 app.use('/api/inventario', inventarioRouter);
+// Alias de compatibilidad para acceso directo a proveedores (/api/proveedores)
+app.use('/api/proveedores', (req, res, next) => {
+  req.url = '/proveedores' + (req.url === '/' ? '' : req.url);
+  inventarioRouter(req, res, next);
+});
 app.use('/api/dashboard', dashboardRouter);
 
 // Manejo de rutas inexistentes (404)

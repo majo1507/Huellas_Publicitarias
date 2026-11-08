@@ -34,7 +34,9 @@ export default function HistoryTimeline({ eventos, mostrarResponsable = true }) 
 
         return (
           <li key={i} className="timeline-item">
-            <span className={`timeline-dot dot-${tono}`}><Icon nombre={icono} tamano={16} /></span>
+            <span className={`timeline-dot dot-${tono}`}>
+              <Icon nombre={icono} tamano={16} />
+            </span>
             <div className="timeline-body">
               <strong>{e.actividad}</strong>
 
@@ -42,23 +44,14 @@ export default function HistoryTimeline({ eventos, mostrarResponsable = true }) 
                 <div className="row" style={{ gap: '6px', marginTop: '4px', fontSize: '12px' }}>
                   <span className="sm mut">Estado:</span>
                   <span className="badge badge-gris" style={{ fontSize: '11px', padding: '2px 7px' }}>{e.estadoAnterior}</span>
-                  <span className="sm mut">➔</span>
+                  <span className="sm mut">→</span>
                   <span className="badge badge-azul" style={{ fontSize: '11px', padding: '2px 7px' }}>{e.nuevoEstado}</span>
                 </div>
               )}
 
               {tieneMotivo && (
-                <div
-                  style={{
-                    marginTop: '6px',
-                    fontSize: '12px',
-                    padding: '6px 10px',
-                    background: 'rgba(148, 163, 184, 0.08)',
-                    borderLeft: '3px solid #3b82f6',
-                    borderRadius: '4px',
-                  }}
-                >
-                  <span className="sm mut" style={{ fontWeight: 600 }}>Observación / Motivo: </span>
+                <div className="timeline-note-box">
+                  <span className="timeline-note-label">Observación / Motivo: </span>
                   <span>{e.motivo || e.observaciones}</span>
                 </div>
               )}

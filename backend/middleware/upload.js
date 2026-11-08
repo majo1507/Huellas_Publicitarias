@@ -4,6 +4,7 @@
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { EXTENSIONES_PERMITIDAS, MIME_PERMITIDOS_POR_EXT } = require('../utils/validacionesArchivo');
 
 // Asegurar que la carpeta uploads exista
 const uploadDir = path.join(__dirname, '..', 'uploads');
@@ -28,13 +29,29 @@ const storage = multer.diskStorage({
 
 // Filtro de formatos permitidos en producción publicitaria
 const fileFilter = (_req, file, cb) => {
-  const extensionesPermitidas = /pdf|png|jpg|jpeg|svg|ai|psd|cdr|tiff|zip|rar/i;
-  const extname = extensionesPermitidas.test(path.extname(file.originalname).toLowerCase());
+  const ext = path.extname(file.originalname).toLowerCase().replace('.', '');
 
-  if (extname) {
-    return cb(null, true);
+  // 1. Lista blanca exacta de extensiones sin coincidencias parciales
+  if (!ext || !EXTENSIONES_PERMITIDAS.includes(ext)) {
+    return cb(
+      new Error(
+        `Formato de archivo .${ext || 'desconocido'} no admitido. Formatos válidos: ${EXTENSIONES_PERMITIDAS.map((e) => e.toUpperCase()).join(', ')}.`
+      )
+    );
   }
-  cb(new Error('Formato de archivo no admitido. Formatos válidos: PDF, PNG, JPG, SVG, AI, PSD, CDR, TIFF, ZIP, RAR.'));
+
+  // 2. Validación de tipo MIME declarado
+  const mimesPermitidos = MIME_PERMITIDOS_POR_EXT[ext] || [];
+  const clientMime = String(file.mimetype || '').toLowerCase();
+  if (clientMime && mimesPermitidos.length > 0 && !mimesPermitidos.includes(clientMime)) {
+    return cb(
+      new Error(
+        `Tipo MIME "${clientMime}" incompatible con la extensión .${ext}. Archivo rechazado por seguridad.`
+      )
+    );
+  }
+
+  cb(null, true);
 };
 
 const upload = multer({

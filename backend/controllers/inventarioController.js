@@ -20,6 +20,8 @@ function formatearMaterialRow(r) {
     categoria: r.categoria || 'Insumos de impresión',
     unidad: r.unidad || 'Unidades',
     stockActual: Number(r.stock_actual || 0),
+    stockReservado: Number(r.stock_reservado || 0),
+    disponibleReal: Math.max(0, Number(r.stock_actual || 0) - Number(r.stock_reservado || 0)),
     cantidadUtilizada: Number(r.cantidad_utilizada || 0),
     stockMinimo: Number(r.stock_minimo || 0),
     costoUnitario: Number(r.costo_unitario || 0),
@@ -309,6 +311,190 @@ const registrarMovimiento = async (req, res) => {
   }
 };
 
+// Reservar materiales para una orden formal con control de disponibilidad y déficit
+const reservarMateriales = async (req, res) => {
+  const { orden_id, material_id, cantidad_requerida } = req.body;
+  const cantReq = parseFloat(cantidad_requerida);
+
+  if (!orden_id || !material_id || isNaN(cantReq) || cantReq <= 0) {
+    return res.status(400).json({
+      error: 'Campos obligatorios: orden_id, material_id y cantidad_requerida (número positivo).',
+    });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const orden = await resolverOrden(client, orden_id, true);
+    if (!orden) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: `Orden ${orden_id} no encontrada.` });
+    }
+
+    const matRes = await client.query(
+      'SELECT id, nombre_material, stock_actual, stock_reservado, stock_minimo FROM inventario WHERE id = $1 FOR UPDATE',
+      [material_id]
+    );
+    if (matRes.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: `Material de inventario #${material_id} no encontrado.` });
+    }
+
+    const mat = matRes.rows[0];
+    const stockActual = parseFloat(mat.stock_actual);
+    const stockReservado = parseFloat(mat.stock_reservado || 0);
+    const disponibleReal = Math.max(0, stockActual - stockReservado);
+
+    let reservable = 0;
+    let deficit = 0;
+
+    if (disponibleReal >= cantReq) {
+      reservable = cantReq;
+      deficit = 0;
+    } else {
+      reservable = disponibleReal;
+      deficit = parseFloat((cantReq - disponibleReal).toFixed(2));
+    }
+
+    let reservaRow = null;
+    if (reservable > 0) {
+      await client.query(
+        'UPDATE inventario SET stock_reservado = stock_reservado + $1 WHERE id = $2',
+        [reservable, mat.id]
+      );
+
+      const insRes = await client.query(
+        `INSERT INTO orden_material_reserva (orden_id, material_id, cantidad_reservada, estado)
+         VALUES ($1, $2, $3, 'activa')
+         RETURNING *`,
+        [orden.id, mat.id, reservable]
+      );
+      reservaRow = insRes.rows[0];
+    }
+
+    let deficitRow = null;
+    if (deficit > 0) {
+      const insDef = await client.query(
+        `INSERT INTO orden_material_deficit (orden_id, material_id, cantidad_requerida, cantidad_disponible, deficit_pendiente, resuelto)
+         VALUES ($1, $2, $3, $4, $5, false)
+         RETURNING *`,
+        [orden.id, mat.id, cantReq, reservable, deficit]
+      );
+      deficitRow = insDef.rows[0];
+    }
+
+    const respUser = (req.usuario?.id && req.usuario.rol !== 'cliente')
+      ? (await resolverUsuario(client, req.usuario.id))
+      : (await obtenerUsuarioPorDefecto(client, 'coord'));
+    const respNombre = req.usuario?.nombre_completo || respUser.nombre_completo;
+
+    let auditText = `Reserva de material para orden ${orden.codigo || orden.id}: ${reservable} uds de "${mat.nombre_material}".`;
+    if (deficit > 0) {
+      auditText += ` Se registró déficit pendiente de abastecimiento de ${deficit} uds.`;
+    }
+
+    await client.query(
+      `INSERT INTO registro_sesion (
+        orden_id, usuario_responsable_id, accion_texto,
+        fecha_texto, hora_texto, responsable_nombre, estado_evento, interno
+      ) VALUES ($1,$2,$3,$4,$5,$6,'Completado',true)`,
+      [orden.id, respUser.id, auditText, formatearFechaHoy(), formatearHoraAhora(), respNombre]
+    );
+
+    await client.query('COMMIT');
+
+    res.status(201).json({
+      message: deficit > 0
+        ? `Reserva parcial: ${reservable} uds reservadas. Déficit pendiente: ${deficit} uds de "${mat.nombre_material}".`
+        : `Reserva exitosa de ${reservable} uds de "${mat.nombre_material}".`,
+      reserva: reservaRow,
+      deficit: deficitRow,
+      disponible_restante: Math.max(0, disponibleReal - reservable),
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('inventarioController.reservarMateriales error:', error.message);
+    res.status(500).json({ error: 'Error al reservar materiales.' });
+  } finally {
+    client.release();
+  }
+};
+
+// Liberar reservas de una orden (por cancelación o reevaluación)
+const liberarReservas = async (req, res) => {
+  const ordenId = req.params.orden_id;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const orden = await resolverOrden(client, ordenId, true);
+    if (!orden) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: `Orden ${ordenId} no encontrada.` });
+    }
+
+    const resActivas = await client.query(
+      `SELECT r.*, m.nombre_material
+       FROM orden_material_reserva r
+       INNER JOIN inventario m ON r.material_id = m.id
+       WHERE r.orden_id = $1 AND r.estado = 'activa'
+       FOR UPDATE`,
+      [orden.id]
+    );
+
+    if (resActivas.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.json({ message: 'No hay reservas activas que liberar para esta orden.', liberadas: 0 });
+    }
+
+    for (const r of resActivas.rows) {
+      await client.query(
+        'UPDATE inventario SET stock_reservado = GREATEST(0, stock_reservado - $1) WHERE id = $2',
+        [r.cantidad_reservada, r.material_id]
+      );
+      await client.query(
+        "UPDATE orden_material_reserva SET estado = 'liberada', updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+        [r.id]
+      );
+    }
+
+    const respUser = (req.usuario?.id && req.usuario.rol !== 'cliente')
+      ? (await resolverUsuario(client, req.usuario.id))
+      : (await obtenerUsuarioPorDefecto(client, 'coord'));
+    const respNombre = req.usuario?.nombre_completo || respUser.nombre_completo;
+
+    await client.query(
+      `INSERT INTO registro_sesion (
+        orden_id, usuario_responsable_id, accion_texto,
+        fecha_texto, hora_texto, responsable_nombre, estado_evento, interno
+      ) VALUES ($1,$2,$3,$4,$5,$6,'Completado',true)`,
+      [
+        orden.id,
+        respUser.id,
+        `Liberación de ${resActivas.rowCount} reserva(s) de insumos de la orden.`,
+        formatearFechaHoy(),
+        formatearHoraAhora(),
+        respNombre,
+      ]
+    );
+
+    await client.query('COMMIT');
+
+    res.json({
+      message: `Se liberaron exitosamente ${resActivas.rowCount} reserva(s) de insumos de la orden ${orden.codigo || orden.id}.`,
+      liberadas: resActivas.rowCount,
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('inventarioController.liberarReservas error:', error.message);
+    res.status(500).json({ error: 'Error al liberar reservas de inventario.' });
+  } finally {
+    client.release();
+  }
+};
+
 module.exports = {
   listarInventario,
   crearMaterial,
@@ -316,4 +502,6 @@ module.exports = {
   crearProveedor,
   listarMovimientos,
   registrarMovimiento,
+  reservarMateriales,
+  liberarReservas,
 };

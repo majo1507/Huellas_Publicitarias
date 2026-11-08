@@ -2,9 +2,12 @@ import { ETAPAS } from '../data/mockData.js'
 
 // Funciones auxiliares de fechas, dinero y estados de las órdenes
 
-// Fecha "de hoy" para el prototipo. Es fija para que los datos de ejemplo (retrasos, riesgos)
-// se vean siempre igual en la presentación.
+// Criterio temporal unificado: preferir la fecha actual del sistema con normalización a medianoche
 export const FECHA_DEMO = new Date(2026, 9, 3)
+
+export function obtenerFechaReferencia() {
+  return new Date()
+}
 
 const dos = (n) => String(n).padStart(2, '0')
 const DIA_MS = 86400000
@@ -12,8 +15,12 @@ const DIA_MS = 86400000
 // "10/10/2026" -> objeto Date
 export function parseFecha(texto) {
   if (!texto) return new Date()
-  const [dia, mes, anio] = texto.split('/').map(Number)
-  return new Date(anio, mes - 1, dia)
+  if (texto instanceof Date) return texto
+  if (typeof texto === 'string' && texto.includes('/')) {
+    const [dia, mes, anio] = texto.split('/').map(Number)
+    return new Date(anio, mes - 1, dia)
+  }
+  return new Date(texto)
 }
 
 // Date -> "dd/MM/yyyy"
@@ -39,7 +46,11 @@ export const iniciales = (nombre = '') =>
 export const estaActiva = (orden) => orden.estado !== 'Entrega' && orden.estado !== 'Postventa' && orden.estado !== 'Cerrada'
 
 export function diasParaEntrega(orden) {
-  return Math.round((parseFecha(orden.fechaEntrega) - FECHA_DEMO) / DIA_MS)
+  const fRef = obtenerFechaReferencia()
+  fRef.setHours(0, 0, 0, 0)
+  const fEnt = parseFecha(orden.fechaEntrega)
+  fEnt.setHours(0, 0, 0, 0)
+  return Math.round((fEnt - fRef) / DIA_MS)
 }
 
 export const estaRetrasada = (orden) => estaActiva(orden) && diasParaEntrega(orden) < 0

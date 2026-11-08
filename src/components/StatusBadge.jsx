@@ -1,4 +1,4 @@
-// Etiqueta de estado con punto de color.
+// Etiqueta de estado con punto semántico e indicador de actividad en vivo.
 // Azules/grises: etapas del proceso. Verde, amarillo y rojo: SOLO estados (aprobado, advertencia, error).
 const colores = {
   // Etapas del pedido
@@ -58,11 +58,26 @@ const colores = {
   Entregada: 'verde',
 }
 
+const ESTADOS_EN_VIVO = new Set([
+  'En proceso',
+  'Impresión',
+  'Acabados',
+  'En validación',
+  'En despacho',
+  'En trámite',
+  'En revisión',
+  'Abierto',
+  'Retrasada',
+])
+
 export default function StatusBadge({ estado, texto }) {
+  const tono = colores[estado] || 'gris'
+  const enVivo = ESTADOS_EN_VIVO.has(estado)
+
   return (
-    <span className={`badge badge-${colores[estado] || 'gris'}`}>
-      <span className="badge-dot" />
-      {texto || estado}
+    <span className={`badge badge-${tono}${enVivo ? ' badge-live' : ''}`}>
+      <span className={`badge-dot${enVivo ? ' live-indicator' : ''}`} />
+      <span className="badge-label">{texto || estado}</span>
     </span>
   )
 }

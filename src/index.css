@@ -100,7 +100,7 @@ html, body, #root {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif);
   background-color: var(--bg-app);
   color: var(--text-main);
   line-height: 1.5;
@@ -925,11 +925,10 @@ button { font-family: inherit; font-size: inherit; cursor: pointer; border: none
 .kpi::before {
   content: '';
   position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 4px;
+  inset: 0 0 auto 0;
+  height: 1px;
   background: var(--blue-600);
+  opacity: 0.45;
 }
 
 .kpi-azul::before { background: var(--blue-600); }
@@ -1465,11 +1464,13 @@ button { font-family: inherit; font-size: inherit; cursor: pointer; border: none
 }
 
 .order-card-rojo {
-  border-left: 4px solid var(--state-red);
+  border-color: rgba(220, 38, 38, 0.35);
+  box-shadow: inset 0 1px 0 rgba(220, 38, 38, 0.25);
 }
 
 .order-card-amarillo {
-  border-left: 4px solid var(--state-amber);
+  border-color: rgba(217, 119, 6, 0.35);
+  box-shadow: inset 0 1px 0 rgba(217, 119, 6, 0.25);
 }
 
 .order-card header {
@@ -1839,8 +1840,8 @@ button { font-family: inherit; font-size: inherit; cursor: pointer; border: none
   box-shadow: var(--shadow-md);
 }
 
-.kc-rojo { border-left: 3px solid var(--state-red); }
-.kc-amarillo { border-left: 3px solid var(--state-amber); }
+.kc-rojo { border-color: rgba(220, 38, 38, 0.4); }
+.kc-amarillo { border-color: rgba(217, 119, 6, 0.4); }
 
 .kanban-top {
   display: flex;
@@ -1889,13 +1890,13 @@ button { font-family: inherit; font-size: inherit; cursor: pointer; border: none
   flex-direction: column;
   gap: 12px;
   padding: 20px;
-  border-left: 4px solid var(--blue-600);
+  border: 1px solid var(--border-light);
 }
 
-.task-card.prioridad-alta { border-left-color: var(--state-red); }
-.task-card.prioridad-media { border-left-color: var(--state-amber); }
-.task-card.prioridad-baja { border-left-color: var(--text-light); }
-.task-card.done { border-left-color: var(--state-green); opacity: 0.85; }
+.task-card.prioridad-alta { border-color: rgba(220, 38, 38, 0.4); }
+.task-card.prioridad-media { border-color: rgba(217, 119, 6, 0.4); }
+.task-card.prioridad-baja { border-color: var(--border-light); }
+.task-card.done { border-color: rgba(22, 163, 74, 0.35); opacity: 0.85; }
 
 .task-card header {
   display: flex;
@@ -1917,7 +1918,7 @@ button { font-family: inherit; font-size: inherit; cursor: pointer; border: none
 
 .note {
   background: var(--bg-subtle);
-  border-left: 3px solid var(--blue-600);
+  border: 1px solid rgba(37, 99, 235, 0.22);
   padding: 8px 12px;
   border-radius: var(--radius-sm);
   font-size: 0.78rem;
@@ -1925,7 +1926,7 @@ button { font-family: inherit; font-size: inherit; cursor: pointer; border: none
 }
 
 .note-error {
-  border-left-color: var(--state-red);
+  border-color: rgba(220, 38, 38, 0.35);
   background: var(--state-red-bg);
   color: var(--state-red-text);
 }
@@ -2293,13 +2294,13 @@ input:focus, select:focus, textarea:focus {
   to { opacity: 1; transform: translateX(0); }
 }
 
-.toast-exito { border-left: 4px solid var(--state-green); }
+.toast-exito { border: 1px solid rgba(22, 163, 74, 0.35); }
 .toast-exito svg { color: var(--state-green); }
-.toast-error { border-left: 4px solid var(--state-red); }
+.toast-error { border: 1px solid rgba(220, 38, 38, 0.35); }
 .toast-error svg { color: var(--state-red); }
-.toast-aviso { border-left: 4px solid var(--state-amber); }
+.toast-aviso { border: 1px solid rgba(217, 119, 6, 0.35); }
 .toast-aviso svg { color: var(--state-amber); }
-.toast-info  { border-left: 4px solid var(--blue-600); }
+.toast-info  { border: 1px solid rgba(37, 99, 235, 0.35); }
 .toast-info svg { color: var(--blue-600); }
 
 .toast-close {
@@ -2516,12 +2517,12 @@ input:focus, select:focus, textarea:focus {
 }
 
 .alert-row-rojo {
-  border-left: 4px solid var(--state-red);
+  border-color: rgba(220, 38, 38, 0.35);
   background: #fff8f8;
 }
 
 .alert-row-amarillo {
-  border-left: 4px solid var(--state-amber);
+  border-color: rgba(217, 119, 6, 0.35);
   background: #fffcf4;
 }
 
@@ -3048,8 +3049,7 @@ input:focus, select:focus, textarea:focus {
 
 .callc {
   background: var(--surface);
-  border: 1px solid var(--border-color);
-  border-left: 4px solid var(--blue-600);
+  border: 1px solid rgba(37, 99, 235, 0.28);
   border-radius: var(--radius-md);
   padding: 10px 14px;
   max-width: 88%;
@@ -3428,10 +3428,8 @@ body {
 
 .kpi-value {
   font-size: 2rem;
-  background: linear-gradient(180deg, var(--navy-900), var(--navy-600));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: var(--navy-900);
+  font-variant-numeric: tabular-nums;
 }
 
 .kpi-title {
@@ -3957,3 +3955,39 @@ input:focus, select:focus, textarea:focus {
 .pill { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 7px; border-radius: var(--radius-pill); font-size: 0.72rem; font-weight: 700; background: var(--sky-100); color: var(--blue-700); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7); }
 .tabs > button.on .pill, .tab.active .pill { background: rgba(255, 255, 255, 0.25); color: #ffffff; }
 .tabs { border-bottom: 0; }
+
+
+/* Destacar solicitudes pendientes de envío para Comercial */
+.table tr.fila-pendiente-envio td {
+  background-color: rgba(245, 158, 11, 0.05);
+}
+.table tr.fila-pendiente-envio:hover td {
+  background-color: rgba(245, 158, 11, 0.11) !important;
+}
+.table tr.fila-pendiente-envio td:first-child {
+  border-left: 3px solid #f59e0b;
+}
+
+.chip-pendiente-envio {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.14);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: var(--radius-pill, 9999px);
+  padding: 2px 8px;
+  margin-top: 4px;
+}
+
+.btn-enviar-destacado {
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.25);
+  transition: all 0.15s ease-in-out;
+}
+.btn-enviar-destacado:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 6px rgba(37, 99, 235, 0.35);
+}

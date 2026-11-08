@@ -1,13 +1,15 @@
 import Icon from './Icon.jsx'
 
-// Estado vacío: se muestra cuando una lista no tiene registros
+// Estado vacío con icono vectorial animado y llamada a la acción contextual
 export default function EmptyState({ icono = 'inbox', titulo, texto, accion }) {
   return (
     <div className="empty">
-      <span className="empty-icon"><Icon nombre={icono} tamano={28} /></span>
+      <span className="empty-icon" aria-hidden="true">
+        <Icon nombre={icono} tamano={26} />
+      </span>
       <strong>{titulo}</strong>
       {texto && <p>{texto}</p>}
-      {accion}
+      {accion && <div className="empty-action">{accion}</div>}
     </div>
   )
 }

@@ -1,5 +1,5 @@
 // Generador visual de piezas publicitarias para ORVEX / Huellas Publicidad.
-// Renderiza gráficos SVG vectoriales basados en la pieza real, dimensiones y cliente.
+// Renderiza gráficos SVG vectoriales de alta precisión con inspección de sustrato, guías de corte y versión.
 
 const PALETAS = {
   C1: { pri: '#0f223d', sec: '#2563eb', acento: '#dcfce7', txt: '#ffffff', brand: 'ABC' },
@@ -25,10 +25,20 @@ export default function DesignPreview({ order, version, grande = false, classNam
   // Sello o indicador de versión en la esquina
   const TagVersion = () => (
     <g className="design-vtag" transform="translate(6, 6)">
-      <rect width="32" height="18" rx="4" fill="#0b1a30" opacity="0.82" />
-      <text x="16" y="13" fontSize="10" fontWeight="700" fill="#ffffff" textAnchor="middle" fontFamily="sans-serif">
+      <rect width="34" height="18" rx="4" fill="#0b1a30" opacity="0.88" stroke="rgba(255,255,255,0.22)" strokeWidth="0.75" />
+      <text x="17" y="13" fontSize="9.5" fontWeight="700" fill="#ffffff" textAnchor="middle" fontFamily="monospace">
         v{v}
       </text>
+    </g>
+  )
+
+  // Marcas de corte de imprenta (crop marks) sutiles
+  const CropMarks = ({ w, h }) => (
+    <g stroke="rgba(148, 163, 184, 0.45)" strokeWidth="0.8" fill="none" aria-hidden="true">
+      <path d="M 3 8 L 3 3 L 8 3" />
+      <path d={`M ${w - 8} 3 L ${w - 3} 3 L ${w - 3} 8`} />
+      <path d={`M 3 ${h - 8} L 3 ${h - 3} L 8 ${h - 3}`} />
+      <path d={`M ${w - 8} ${h - 3} L ${w - 3} ${h - 3} L ${w - 3} ${h - 8}`} />
     </g>
   )
 
@@ -37,7 +47,7 @@ export default function DesignPreview({ order, version, grande = false, classNam
     return (
       <svg
         viewBox="0 0 160 260"
-        className={`design-svg ${grande ? 'svg-grande' : ''} ${className}`}
+        className={`design-svg ${grande ? 'svg-grande' : ''} ${className}`.trim()}
         role="img"
         aria-label={`Diseño de ${producto} versión ${v}`}
       >
@@ -47,10 +57,16 @@ export default function DesignPreview({ order, version, grande = false, classNam
             <stop offset="60%" stopColor={pal.sec} />
             <stop offset="100%" stopColor="#0b1a30" />
           </linearGradient>
+          <linearGradient id={`pSheen-${order.id}-${v}`} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.14" />
+            <stop offset="45%" stopColor="#ffffff" stopOpacity="0" />
+            <stop offset="100%" stopColor="#ffffff" stopOpacity="0.05" />
+          </linearGradient>
         </defs>
-        {/* Fondo del pendón con refuerzo y ojales */}
         <rect width="160" height="260" rx="4" fill={`url(#pGrad-${order.id}-${v})`} />
-        {/* Ojales simulados */}
+        <rect width="160" height="260" rx="4" fill={`url(#pSheen-${order.id}-${v})`} />
+        <CropMarks w={160} h={260} />
+        {/* Ojales metálicos simulados */}
         <circle cx="10" cy="10" r="4" fill="#cbd5e1" stroke="#475569" strokeWidth="1.5" />
         <circle cx="150" cy="10" r="4" fill="#cbd5e1" stroke="#475569" strokeWidth="1.5" />
         <circle cx="10" cy="250" r="4" fill="#cbd5e1" stroke="#475569" strokeWidth="1.5" />
@@ -72,12 +88,12 @@ export default function DesignPreview({ order, version, grande = false, classNam
         <text x="80" y="170" fontSize="10" fontWeight="600" textAnchor="middle" fill="#f1f5f9" fontFamily="sans-serif">
           COMUNICACIÓN GRÁFICA
         </text>
-        <text x="80" y="186" fontSize="9" textAnchor="middle" fill="#cbd5e1" fontFamily="sans-serif">
+        <text x="80" y="186" fontSize="9" textAnchor="middle" fill="#cbd5e1" fontFamily="monospace">
           {order.dimensiones || '2.00m x 1.00m'}
         </text>
 
         {/* Franja de contacto inferior */}
-        <rect x="0" y="215" width="160" height="45" fill="#081326" opacity="0.9" />
+        <rect x="0" y="215" width="160" height="45" fill="#081326" opacity="0.92" />
         <rect x="0" y="215" width="160" height="2" fill={pal.acento} />
         <text x="80" y="234" fontSize="9" fontWeight="700" textAnchor="middle" fill="#ffffff" fontFamily="sans-serif">
           TEL: 300 111 2233
@@ -96,11 +112,12 @@ export default function DesignPreview({ order, version, grande = false, classNam
     return (
       <svg
         viewBox="0 0 240 160"
-        className={`design-svg ${grande ? 'svg-grande' : ''} ${className}`}
+        className={`design-svg ${grande ? 'svg-grande' : ''} ${className}`.trim()}
         role="img"
         aria-label={`Diseño de ${producto} versión ${v}`}
       >
         <rect width="240" height="160" rx="6" fill="#ffffff" stroke="#cbd5e1" strokeWidth="2" />
+        <CropMarks w={240} h={160} />
         {/* Lomo y encuadernación */}
         <rect x="0" y="0" width="18" height="160" rx="3" fill={pal.pri} />
         <line x1="8" y1="0" x2="8" y2="160" stroke="#ffffff" strokeWidth="1" strokeDasharray="6 4" opacity="0.5" />
@@ -136,14 +153,14 @@ export default function DesignPreview({ order, version, grande = false, classNam
     return (
       <svg
         viewBox="0 0 240 140"
-        className={`design-svg ${grande ? 'svg-grande' : ''} ${className}`}
+        className={`design-svg ${grande ? 'svg-grande' : ''} ${className}`.trim()}
         role="img"
         aria-label={`Diseño de ${producto} versión ${v}`}
       >
         <rect width="240" height="140" rx="6" fill="#0f2038" />
-        {/* Curvas modernas de diseño */}
         <path d="M0 0 L140 0 L90 140 L0 140 Z" fill={pal.pri} opacity="0.9" />
         <path d="M120 0 L150 0 L100 140 L70 140 Z" fill={pal.sec} opacity="0.5" />
+        <CropMarks w={240} h={140} />
 
         {/* Logo de la empresa */}
         <circle cx="48" cy="48" r="22" fill="#ffffff" />
@@ -179,7 +196,7 @@ export default function DesignPreview({ order, version, grande = false, classNam
   return (
     <svg
       viewBox="0 0 240 150"
-      className={`design-svg ${grande ? 'svg-grande' : ''} ${className}`}
+      className={`design-svg ${grande ? 'svg-grande' : ''} ${className}`.trim()}
       role="img"
       aria-label={`Diseño de ${producto} versión ${v}`}
     >
@@ -191,6 +208,7 @@ export default function DesignPreview({ order, version, grande = false, classNam
       </defs>
       <rect width="240" height="150" rx="6" fill={`url(#stdGrad-${order.id}-${v})`} stroke="#cbd5e1" strokeWidth="1.5" />
       <rect x="0" y="0" width="240" height="34" fill={pal.pri} />
+      <CropMarks w={240} h={150} />
 
       <circle cx="204" cy="74" r="32" fill={pal.sec} opacity="0.4" />
       <circle cx="204" cy="74" r="16" fill={pal.acento} opacity="0.8" />
@@ -208,7 +226,7 @@ export default function DesignPreview({ order, version, grande = false, classNam
       <rect x="16" y="98" width="95" height="4" rx="2" fill="#cbd5e1" />
 
       <rect x="0" y="122" width="240" height="28" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
-      <text x="16" y="140" fontSize="8.5" fontWeight="600" fill="#64748b" fontFamily="sans-serif">
+      <text x="16" y="140" fontSize="8.5" fontWeight="600" fill="#64748b" fontFamily="monospace">
         Especificaciones: {order.material} · {order.dimensiones}
       </text>
 

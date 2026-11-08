@@ -459,6 +459,11 @@ export const api = {
       () => pedir(`/solicitudes/${id}/enviar`, { method: 'PATCH' }),
       { modoMock: true, data: { id, estado: 'En validación' } }
     ),
+  corregirSolicitud: (id, datos) =>
+    ejecutarConFallback(
+      () => pedir(`/solicitudes/${id}/corregir`, { method: 'PATCH', body: JSON.stringify(datos) }),
+      { modoMock: true, data: { id, ...datos, estado: 'En validación' } }
+    ),
   validarSolicitud: (id) =>
     ejecutarConFallback(
       () => pedir(`/solicitudes/${id}/validar`, { method: 'POST' }),
@@ -700,6 +705,25 @@ export const api = {
       { modoMock: true }
     ),
 
+  // Métricas ejecutivas y consolidadas del Dashboard de Gerencia (Fase 3.2)
+  async obtenerDashboard() {
+    try {
+      const res = await pedir('/dashboard')
+      return { ok: true, data: res }
+    } catch (err) {
+      // Manejo transparente de errores sin activar el modo demo global (setModoDemoLocal)
+      if (err.status === 401 || err.status === 403) {
+        throw err // Propagar errores de autenticación y autorización
+      }
+      return {
+        ok: false,
+        error: err.message || 'Error al consultar las métricas del dashboard en PostgreSQL.',
+        status: err.status || 500,
+        data: null,
+      }
+    }
+  },
+
   // Carga inicial de toda la información que necesita la aplicación
   async cargarTodo() {
     if (getModoDemoLocal()) {
@@ -716,6 +740,7 @@ export const api = {
       inventory,
       suppliers,
       inventoryMovements,
+      dashboardResult,
     ] = await Promise.all([
       this.listarClientes(),
       this.listarOrdenes(),
@@ -727,6 +752,7 @@ export const api = {
       this.listarInventario(),
       this.listarProveedores(),
       this.listarMovimientosInventario(),
+      this.obtenerDashboard().catch((err) => ({ ok: false, error: err.message, status: err.status })),
     ])
     // Si la base de datos conectó pero está vacía (sin seed), usar estado de demostración persistido
     if (clients.length === 0 && orders.length === 0 && requests.length === 0) {
@@ -746,6 +772,7 @@ export const api = {
       inventoryMovements: inventoryMovements.length
         ? inventoryMovements
         : leerEstadoDemo().inventoryMovements,
+      dashboard: dashboardResult?.ok ? dashboardResult.data : (dashboardResult?.error ? { error: dashboardResult.error, status: dashboardResult.status } : null),
     }
   },
 }

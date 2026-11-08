@@ -1,4 +1,5 @@
 const { pool } = require('../db');
+const { normalizarRol } = require('../middleware/auth');
 const {
   esUuid,
   resolverOrden,
@@ -106,6 +107,16 @@ const asignarTarea = async (req, res) => {
       return res.status(404).json({ error: 'Actividad no encontrada.' });
     }
 
+    const rolNorm = req.usuario?.rol_normalizado || (req.usuario?.rol ? normalizarRol(req.usuario.rol) : '');
+    if (['produccion', 'disenador'].includes(rolNorm)) {
+      if (tarea.owner_id && tarea.owner_id !== req.usuario.id) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({
+          error: 'Acceso denegado: Solo puedes modificar o reportar avance sobre las tareas asignadas a tu usuario.',
+        });
+      }
+    }
+
     const usr = await resolverUsuario(client, responsable);
     const nombreResp = usr ? usr.nombre_completo : String(responsable).trim();
 
@@ -178,6 +189,16 @@ const ejecutarAccionTarea = async (req, res) => {
       return res.status(404).json({ error: 'Actividad no encontrada.' });
     }
 
+    const rolNorm = req.usuario?.rol_normalizado || (req.usuario?.rol ? normalizarRol(req.usuario.rol) : '');
+    if (['produccion', 'disenador'].includes(rolNorm)) {
+      if (tarea.owner_id && tarea.owner_id !== req.usuario.id) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({
+          error: 'Acceso denegado: Solo puedes modificar o reportar avance sobre las tareas asignadas a tu usuario.',
+        });
+      }
+    }
+
     const nuevoPct = c.pct(tarea.porcentaje);
     await client.query(
       `UPDATE tareas
@@ -237,6 +258,16 @@ const actualizarAvanceTarea = async (req, res) => {
     if (!tarea) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Actividad no encontrada.' });
+    }
+
+    const rolNorm = req.usuario?.rol_normalizado || (req.usuario?.rol ? normalizarRol(req.usuario.rol) : '');
+    if (['produccion', 'disenador'].includes(rolNorm)) {
+      if (tarea.owner_id && tarea.owner_id !== req.usuario.id) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({
+          error: 'Acceso denegado: Solo puedes modificar o reportar avance sobre las tareas asignadas a tu usuario.',
+        });
+      }
     }
 
     const numPct = Math.max(0, Math.min(100, Number(rawPct ?? tarea.porcentaje ?? 0)));
@@ -319,6 +350,16 @@ const agregarNotaTarea = async (req, res) => {
     if (!tarea) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Actividad no encontrada.' });
+    }
+
+    const rolNorm = req.usuario?.rol_normalizado || (req.usuario?.rol ? normalizarRol(req.usuario.rol) : '');
+    if (['produccion', 'disenador'].includes(rolNorm)) {
+      if (tarea.owner_id && tarea.owner_id !== req.usuario.id) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({
+          error: 'Acceso denegado: Solo puedes modificar o reportar avance sobre las tareas asignadas a tu usuario.',
+        });
+      }
     }
 
     const actor = await resolveActor(req, client);

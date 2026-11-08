@@ -47,6 +47,9 @@ export default function Communications({ data, actions, irA }) {
   const ordenesCliente = actual
     ? data.orders.filter((o) => o.clienteId === actual.clienteId || o.cliente === actual.cliente)
     : []
+  const solicitudesCliente = actual
+    ? (data.requests || []).filter((r) => r.clienteId === actual.clienteId || r.cliente === actual.cliente)
+    : []
 
   function handleEnviar(e) {
     e.preventDefault()
@@ -66,14 +69,14 @@ export default function Communications({ data, actions, irA }) {
   return (
     <div>
       <PageHeader
-        titulo="Comunicaciones"
-        subtitulo="Mensajería omnicanal vinculada a clientes y órdenes de producción."
+        titulo="Centro de Comunicaciones"
+        subtitulo="Mensajería unificada vinculada a clientes, solicitudes comerciales y órdenes de producción."
         icono="message"
         acciones={
-          <div className="comm-status-bar" aria-label="Canales sincronizados">
+          <div className="comm-status-bar" aria-label="Canales integrados">
             <span className="comm-status-pill">
               <span className="chp-dot" />
-              Canales sincronizados: WhatsApp · IMAP · VoIP
+              Canales integrados: WhatsApp · Correo · Telefonía
             </span>
             <span className="comm-count-tag">{comms.length} hilos</span>
           </div>
@@ -260,7 +263,7 @@ export default function Communications({ data, actions, irA }) {
                 <div className="comm-reply-actions">
                   <span className="comm-trace-note">
                     <Icon nombre={(CANALES[actual.canal] || CANALES.wa).icono} tamano={13} />
-                    <span>{(CANALES[actual.canal] || CANALES.wa).nombre} · Registro automático en orden</span>
+                    <span>{(CANALES[actual.canal] || CANALES.wa).nombre} · Trazabilidad unificada</span>
                   </span>
                   <button type="submit" className="btn btn-primary btn-sm" disabled={!textoRespuesta.trim()}>
                     <Icon nombre="send" tamano={14} /> Enviar
@@ -295,6 +298,23 @@ export default function Communications({ data, actions, irA }) {
                 </dl>
               )}
             </div>
+
+            {solicitudesCliente.length > 0 && (
+              <div className="comm-context-section">
+                <span className="comm-context-label">Solicitudes comerciales ({solicitudesCliente.length})</span>
+                <div className="comm-mini-list">
+                  {solicitudesCliente.slice(0, 3).map((r) => (
+                    <button key={r.id} className="comm-mini-order" onClick={() => irA('solicitudes')}>
+                      <div>
+                        <strong>{r.id}</strong>
+                        <small>{r.producto || r.tipo}</small>
+                      </div>
+                      <StatusBadge estado={r.estado} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {ordenAsociada ? (
               <div className="comm-context-section">

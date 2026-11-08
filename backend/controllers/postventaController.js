@@ -68,6 +68,9 @@ function formatearCasoPostventa(pv) {
     aspectosEvaluados: Array.isArray(pv.aspectos_evaluados) ? pv.aspectos_evaluados : [],
     calificacion: pv.nivel_conformidad !== null && pv.nivel_conformidad !== undefined ? Number(pv.nivel_conformidad) : null,
     nivel_conformidad: pv.nivel_conformidad !== null && pv.nivel_conformidad !== undefined ? Number(pv.nivel_conformidad) : null,
+    solicitudReimpresion: Boolean(pv.solicitud_reimpresion),
+    reimpresionAutorizada: Boolean(pv.reimpresion_autorizada),
+    reimpresionOrdenId: pv.reimpresion_orden_id || null,
     created_at: pv.created_at,
   };
 }
@@ -520,8 +523,327 @@ const actualizarPostventa = async (req, res) => {
   }
 };
 
+// 4. Solicitar reimpresión por garantía (exclusivo Postventa y Coordinación)
+const solicitarReimpresion = async (req, res) => {
+  const { motivo } = req.body;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const caso = await resolverCaso(client, req.params.id);
+    if (!caso) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: `Caso de postventa ${req.params.id} no encontrado.` });
+    }
+
+    // Bloqueo pesimista del caso para prevenir condiciones de carrera y dobles autorizaciones
+    await client.query('SELECT id FROM postventa WHERE id = $1 FOR UPDATE', [caso.id]);
+
+    if (caso.tipo !== 'Garantía') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        error: 'Solo los casos de tipo "Garantía" pueden solicitar reimpresión de producto.',
+      });
+    }
+
+    if (caso.reimpresion_autorizada || caso.reimpresion_orden_id) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error: 'Este caso ya cuenta con una reimpresión autorizada previamente.',
+      });
+    }
+
+    const accionCorr = motivo ? `Solicitud de reimpresión: ${motivo}` : 'Solicitud de reimpresión por garantía';
+    await client.query(
+      `UPDATE postventa
+       SET solicitud_reimpresion = true,
+           accion_correctiva = $1,
+           dictamen_garantia = 'Evaluación de garantía: Solicitud de reimpresión enviada a Coordinación'
+       WHERE id = $2`,
+      [accionCorr, caso.id]
+    );
+
+    const respUser = (req.usuario?.id && req.usuario.rol !== 'cliente')
+      ? (await resolverUsuario(client, req.usuario.id))
+      : (await resolverUsuario(client, caso.ejecutiva_id));
+    const respNombre = req.usuario?.nombre_completo || respUser.nombre_completo;
+
+    await client.query(
+      `INSERT INTO registro_sesion (
+        orden_id, usuario_responsable_id, accion_texto,
+        fecha_texto, hora_texto, responsable_nombre, estado_evento, interno
+      ) VALUES ($1,$2,$3,$4,$5,$6,'Pendiente',false)`,
+      [
+        caso.orden_id,
+        respUser.id,
+        `Solicitud de reimpresión radicada por Postventa para el caso ${caso.codigo || caso.id}. Pendiente de autorización técnica por Coordinación.`,
+        formatearFechaHoy(),
+        formatearHoraAhora(),
+        respNombre,
+      ]
+    );
+
+    await client.query('COMMIT');
+
+    const fullRes = await pool.query(
+      `SELECT pv.*, o.codigo AS orden_codigo, o.producto, c.empresa AS cliente_empresa, u.nombre_completo AS ejecutiva_nombre
+       FROM postventa pv
+       INNER JOIN ordenes o ON pv.orden_id = o.id
+       INNER JOIN clientes c ON o.cliente_id = c.id
+       INNER JOIN usuarios u ON pv.ejecutiva_id = u.id
+       WHERE pv.id = $1`,
+      [caso.id]
+    );
+
+    res.json({
+      message: `Solicitud de reimpresión para el caso ${caso.codigo || caso.id} registrada exitosamente. Pendiente de evaluación y autorización por Coordinación.`,
+      data: formatearCasoPostventa(fullRes.rows[0]),
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('postventaController.solicitarReimpresion error:', error.message);
+    res.status(500).json({ error: 'Error al solicitar reimpresión.' });
+  } finally {
+    client.release();
+  }
+};
+
+// 5. Autorizar reimpresión técnica y generar nueva OP a costo cero (exclusivo Coordinación)
+const autorizarReimpresion = async (req, res) => {
+  const { motivo } = req.body;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const caso = await resolverCaso(client, req.params.id);
+    if (!caso) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: `Caso de postventa ${req.params.id} no encontrado.` });
+    }
+
+    // Bloqueo pesimista del caso para prevenir condiciones de carrera y dobles autorizaciones
+    await client.query('SELECT id FROM postventa WHERE id = $1 FOR UPDATE', [caso.id]);
+
+    if (caso.tipo !== 'Garantía') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        error: 'Solo los casos de tipo "Garantía" pueden generar órdenes de reimpresión.',
+      });
+    }
+
+    // Prevención estricta de duplicidad mediante el índice único idx_orden_postventa_unica
+    const ordExistenteRes = await client.query(
+      'SELECT id, codigo FROM ordenes WHERE postventa_caso_origen_id = $1',
+      [caso.id]
+    );
+    if (ordExistenteRes.rowCount > 0 || caso.reimpresion_orden_id) {
+      await client.query('ROLLBACK');
+      const codOrdExistente = ordExistenteRes.rows[0]?.codigo || `OP-#${caso.reimpresion_orden_id}`;
+      return res.status(409).json({
+        error: `Ya existe una orden de reimpresión autorizada y generada para este caso (${codOrdExistente}). No se permiten órdenes duplicadas.`,
+      });
+    }
+
+    // Cargar la orden original
+    const origRes = await client.query('SELECT * FROM ordenes WHERE id = $1', [caso.orden_id]);
+    if (origRes.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: `Orden original #${caso.orden_id} no encontrada.` });
+    }
+    const original = origRes.rows[0];
+
+    // Verificar si la orden original contaba con aprobación documental formal de diseño (RF-07)
+    const arteAprobadoRes = await client.query(
+      `SELECT a.*, COALESCE(u.nombre_completo, a.disenador_nombre) AS aprobador_nombre
+       FROM archivos_arte a
+       LEFT JOIN usuarios u ON a.decision_por = u.id
+       WHERE a.orden_id = $1 AND (a.estado_aprobacion = 'aprobado' OR a.estado_ui = 'Aprobada' OR a.estado_ui = 'Aprobada (Externa)')
+       ORDER BY a.numero_version DESC
+       LIMIT 1`,
+      [original.id]
+    );
+
+    const tieneAprobacionValida =
+      original.diseno_estado === 'Aprobado' && arteAprobadoRes.rowCount > 0;
+    const arteAprobado = arteAprobadoRes.rows[0] || null;
+
+    const etapaInicial = tieneAprobacionValida ? 4 : 1;
+    const estadoNombreInicial = tieneAprobacionValida ? 'Impresión' : 'Diseño';
+    const disenoEstadoInicial = tieneAprobacionValida ? 'Aprobado' : 'Pendiente';
+    const avanceInicial = tieneAprobacionValida ? 50.00 : 15.00;
+
+    const entregaCalc = new Date();
+    entregaCalc.setDate(entregaCalc.getDate() + 3);
+    const fechaSol = formatearFechaHoy();
+    const fechaEnt = formatearFechaHoy(entregaCalc);
+
+    const entregaBase = (original.entrega_json && typeof original.entrega_json === 'object')
+      ? { ...original.entrega_json, fechaReal: null, conformidad: null, evidencia: null }
+      : {};
+
+    const origCodigo = original.codigo || `OP-2026-${String(original.id).padStart(4, '0')}`;
+
+    // Creación de la nueva OP a COSTO CERO para el cliente por garantía
+    const insOrd = await client.query(
+      `INSERT INTO ordenes (
+        cliente_id, producto, ejecutiva_id, disenador_id, produccion_id,
+        etapa, prioridad, porcentaje_avance, bloqueado,
+        solicitud_codigo, cantidad, material, dimensiones, colores, acabados,
+        fecha_solicitud, fecha_entrega, estado_nombre, diseno_estado,
+        responsable_nombre, disenador_nombre_asignado, presupuesto, costo_interno,
+        metodo_entrega, requerimientos, observaciones, entrega_json,
+        es_reimpresion, orden_original_codigo, postventa_caso_origen_id
+      ) VALUES (
+        $1,$2,$3,$4,$5,
+        $6,'Alta',$7,false,
+        $8,$9,$10,$11,$12,$13,
+        $14,$15,$16,$17,
+        $18,$19,0.00,$20,
+        $21,$22,$23,$24,
+        true,$25,$26
+      ) RETURNING *`,
+      [
+        original.cliente_id,
+        original.producto,
+        original.ejecutiva_id,
+        original.disenador_id,
+        original.produccion_id,
+        etapaInicial,
+        avanceInicial,
+        original.solicitud_codigo,
+        original.cantidad,
+        original.material,
+        original.dimensiones,
+        original.colores,
+        original.acabados,
+        fechaSol,
+        fechaEnt,
+        estadoNombreInicial,
+        disenoEstadoInicial,
+        original.responsable_nombre || 'María López',
+        original.disenador_nombre_asignado || 'María López',
+        original.costo_interno || 0,
+        original.metodo_entrega,
+        original.requerimientos,
+        `Reimpresión autorizada por garantía del caso ${caso.codigo || caso.id}. ${motivo || ''}`.trim(),
+        JSON.stringify(entregaBase),
+        origCodigo,
+        caso.id,
+      ]
+    );
+
+    const nuevaRow = insOrd.rows[0];
+    const nuevoCodigo = `OP-2026-${String(nuevaRow.id).padStart(4, '0')}`;
+    await client.query('UPDATE ordenes SET codigo = $1 WHERE id = $2', [nuevoCodigo, nuevaRow.id]);
+
+    // Reutilizar arte aprobado conservando trazabilidad formal si cumplía RF-07
+    if (tieneAprobacionValida && arteAprobado) {
+      await client.query(
+        `INSERT INTO archivos_arte (
+          orden_id, numero_version, ruta_archivo, creador_id, estado_aprobacion,
+          decision_por, comentario, fecha_texto, disenador_nombre, estado_ui,
+          archivo_nombre, tipo_aprobacion, soporte_evidencia, soporte_tipo, soporte_validado
+        ) VALUES ($1, 1, $2, $3, 'aprobado', $4, $5, $6, $7, 'Aprobada', $8, $9, $10, $11, true)`,
+        [
+          nuevaRow.id,
+          arteAprobado.ruta_archivo || `uploads/Arte_Final_${nuevoCodigo}_v1.pdf`,
+          arteAprobado.creador_id || original.disenador_id || original.ejecutiva_id,
+          req.usuario.id,
+          `Arte aprobado reutilizado de orden original ${origCodigo} (v${arteAprobado.numero_version}). Reimpresión autorizada por garantía.`,
+          fechaSol,
+          arteAprobado.disenador_nombre || 'María López',
+          arteAprobado.archivo_nombre || `Arte_Final_${nuevoCodigo}_v1.pdf`,
+          arteAprobado.tipo_aprobacion || 'digital',
+          arteAprobado.soporte_evidencia || 'Aprobación original verificada',
+          arteAprobado.soporte_tipo || 'garantia_reutilizacion',
+        ]
+      );
+    }
+
+    const respUser = await resolverUsuario(client, req.usuario.id);
+    const respNombre = req.usuario?.nombre_completo || respUser.nombre_completo;
+
+    // Actualizar caso de postventa con la vinculación formal de la orden generada en estado intermedio 'En reposición'
+    await client.query(
+      `UPDATE postventa
+       SET solicitud_reimpresion = true,
+           reimpresion_autorizada = true,
+           reimpresion_autorizada_por = $1,
+           reimpresion_fecha = CURRENT_TIMESTAMP,
+           reimpresion_orden_id = $2,
+           estado = 'En reposición',
+           dictamen_garantia = 'Garantía aceptada — Reimpresión en proceso de producción (' || $3 || ')',
+           accion_correctiva = 'Reimpresión autorizada a costo cero',
+           solucion = $4
+       WHERE id = $5`,
+      [
+        req.usuario.id,
+        nuevaRow.id,
+        nuevoCodigo,
+        `Garantía aceptada. Se autorizó y generó la nueva orden de reimpresión ${nuevoCodigo} a costo cero. Caso en reposición hasta entrega formal.`,
+        caso.id,
+      ]
+    );
+
+    // Auditoría inmutable en ambas órdenes
+    await client.query(
+      `INSERT INTO registro_sesion (
+        orden_id, usuario_responsable_id, accion_texto,
+        fecha_texto, hora_texto, responsable_nombre, estado_evento, interno
+      ) VALUES
+        ($1, $2, $3, $4, $5, $6, 'Completado', false),
+        ($7, $2, $8, $4, $5, $6, 'Completado', false)`,
+      [
+        original.id,
+        req.usuario.id,
+        `Reimpresión autorizada por garantía: se generó la nueva OP ${nuevoCodigo} para el caso ${caso.codigo || caso.id} (estado: En reposición).`,
+        fechaSol,
+        formatearHoraAhora(),
+        respNombre,
+        nuevaRow.id,
+        `Orden de reimpresión ${nuevoCodigo} creada a costo cero ($0 COP) por garantía autorizada a partir de ${origCodigo}.`,
+      ]
+    );
+
+    await client.query('COMMIT');
+
+    const fullRes = await pool.query(
+      `SELECT pv.*, o.codigo AS orden_codigo, o.producto, c.empresa AS cliente_empresa, u.nombre_completo AS ejecutiva_nombre
+       FROM postventa pv
+       INNER JOIN ordenes o ON pv.orden_id = o.id
+       INNER JOIN clientes c ON o.cliente_id = c.id
+       INNER JOIN usuarios u ON pv.ejecutiva_id = u.id
+       WHERE pv.id = $1`,
+      [caso.id]
+    );
+
+    const [ordenCompleta] = await cargarOrdenesEnriquecidas(pool, 'AND o.id = $1', [nuevaRow.id], req.usuario?.rol);
+
+    res.status(201).json({
+      message: `Reimpresión autorizada exitosamente. Se generó la orden ${nuevoCodigo} a costo cero vinculada al caso ${caso.codigo || caso.id} (en reposición).`,
+      data: formatearCasoPostventa(fullRes.rows[0]),
+      orden: ordenCompleta,
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('postventaController.autorizarReimpresion error:', error.message);
+    if (error.code === '23505') {
+      return res.status(409).json({
+        error: 'Ya existe una orden de reimpresión autorizada y generada para este caso de garantía (restricción de unicidad). No se permiten órdenes duplicadas.',
+      });
+    }
+    res.status(500).json({ error: 'Error al autorizar reimpresión.' });
+  } finally {
+    client.release();
+  }
+};
+
 module.exports = {
   listarPostventa,
   crearPostventa,
   actualizarPostventa,
+  solicitarReimpresion,
+  autorizarReimpresion,
 };

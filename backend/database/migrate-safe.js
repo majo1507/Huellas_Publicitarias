@@ -6,21 +6,28 @@ const path = require('path');
 const { pool } = require('../db');
 
 async function runSafeMigration() {
-  const migrationPath = path.join(__dirname, 'migrations', '001_integracion_orvex.sql');
-  console.log(`⏳  [Migración Segura] Leyendo script aditivo: ${migrationPath}`);
+  const migrationsDir = path.join(__dirname, 'migrations');
+  console.log(`⏳  [Migración Segura] Leyendo scripts aditivos desde: ${migrationsDir}`);
 
-  if (!fs.existsSync(migrationPath)) {
-    console.error('❌  El archivo 001_integracion_orvex.sql no existe.');
+  if (!fs.existsSync(migrationsDir)) {
+    console.error('❌  El directorio de migraciones no existe.');
     process.exit(1);
   }
 
-  const sql = fs.readFileSync(migrationPath, 'utf8');
+  const migrationFiles = fs.readdirSync(migrationsDir)
+    .filter(file => file.endsWith('.sql'))
+    .sort();
+
   const client = await pool.connect();
 
   try {
-    console.log('⏳  Aplicando cambios aditivos e idempotentes en PostgreSQL (sin DROP ni TRUNCATE)...');
-    await client.query(sql);
-    console.log('✅  Migración aditiva completada con éxito.');
+    for (const file of migrationFiles) {
+      const fullPath = path.join(migrationsDir, file);
+      console.log(`⏳  Aplicando migración ${file}...`);
+      const sql = fs.readFileSync(fullPath, 'utf8');
+      await client.query(sql);
+      console.log(`✅  ${file} aplicada con éxito.`);
+    }
 
     const res = await client.query(`
       SELECT table_name

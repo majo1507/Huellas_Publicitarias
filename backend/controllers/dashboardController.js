@@ -2,6 +2,7 @@
 // controllers/dashboardController.js — Controlador de Dashboard
 // ============================================================
 const { pool } = require('../db');
+const { normalizarRol } = require('../middleware/auth');
 
 const ETAPAS_HUELLAS = {
   0: '0. Solicitud Recibida',
@@ -15,20 +16,74 @@ const ETAPAS_HUELLAS = {
   8: '8. Entregada / Finalizada',
 };
 
+const ETAPAS_UI_MAP = {
+  0: 'Solicitud',
+  1: 'Diseño',
+  2: 'Aprobación',
+  3: 'Preprensa',
+  4: 'Impresión',
+  5: 'Acabados',
+  6: 'Calidad',
+  7: 'Despacho',
+  8: 'Entrega',
+};
+
+function parseFechaTexto(texto) {
+  if (!texto) return null;
+  if (texto instanceof Date) return texto;
+  if (typeof texto === 'string' && texto.includes('/')) {
+    const [dia, mes, anio] = texto.split('/').map(Number);
+    return new Date(anio, mes - 1, dia);
+  }
+  return new Date(texto);
+}
+
 // Obtener resumen ejecutivo y KPIs del dashboard
-const obtenerMetricas = async (_req, res) => {
+const obtenerMetricas = async (req, res) => {
   try {
-    // 1. Conteo total de órdenes activas vs finalizadas
-    const totalesRes = await pool.query(`
+    const rolUsuario = normalizarRol(req.usuario?.rol || req.usuario?.rol_normalizado || 'gerente');
+    const esRolOperativoSinFinanciero = ['disenador', 'produccion', 'operario', 'cliente'].includes(rolUsuario);
+
+    // 1. Conteo y detalle de órdenes
+    const ordRes = await pool.query(`
       SELECT
-        COUNT(*) AS total_ordenes,
-        COUNT(*) FILTER (WHERE etapa < 8) AS activas,
-        COUNT(*) FILTER (WHERE etapa = 8) AS finalizadas,
-        COUNT(*) FILTER (WHERE bloqueado = true) AS bloqueadas
+        id, codigo, etapa, estado_nombre, fecha_entrega, bloqueado, presupuesto, created_at, updated_at
       FROM ordenes;
     `);
 
-    // 2. Órdenes por cada etapa (flujo Kanban)
+    const totalOrdenes = ordRes.rowCount;
+    const activas = ordRes.rows.filter(o => o.etapa < 8);
+    const finalizadas = ordRes.rows.filter(o => o.etapa >= 8);
+    const bloqueadas = ordRes.rows.filter(o => o.bloqueado);
+
+    // Criterio temporal unificado con normalización a medianoche
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+
+    let retrasadasCount = 0;
+    for (const o of activas) {
+      if (o.fecha_entrega) {
+        const fDate = parseFechaTexto(o.fecha_entrega);
+        if (fDate && !isNaN(fDate.getTime())) {
+          fDate.setHours(0, 0, 0, 0);
+          if (fDate < hoy) {
+            retrasadasCount++;
+          }
+        }
+      }
+    }
+
+    // Cumplimiento de entregas sobre el universo total de órdenes comprometidas
+    const enPlazoTotal = Math.max(0, totalOrdenes - retrasadasCount);
+    const aTiempoPct = totalOrdenes > 0
+      ? Math.round((enPlazoTotal / totalOrdenes) * 100)
+      : 100;
+
+    const totalPresupuesto = esRolOperativoSinFinanciero
+      ? undefined
+      : ordRes.rows.reduce((sum, o) => sum + Number(o.presupuesto || 0), 0);
+
+    // 2. Órdenes por cada etapa (flujo Kanban completo)
     const etapasRes = await pool.query(`
       SELECT etapa, COUNT(*) AS total
       FROM ordenes
@@ -46,7 +101,7 @@ const obtenerMetricas = async (_req, res) => {
       };
     });
 
-    // 3. Distribución por prioridad
+    // 3. Distribución por prioridad activa
     const prioridadRes = await pool.query(`
       SELECT prioridad, COUNT(*) AS total
       FROM ordenes
@@ -54,34 +109,141 @@ const obtenerMetricas = async (_req, res) => {
       GROUP BY prioridad;
     `);
 
-    // 4. Carga de trabajo actual por diseñador
-    const disenadoresRes = await pool.query(`
+    // 4. Solicitudes comerciales
+    const solRes = await pool.query(`
       SELECT
-        u.id,
-        u.nombre_completo,
-        COUNT(o.id) AS ordenes_en_proceso
-      FROM usuarios u
-      LEFT JOIN ordenes o ON u.id = o.disenador_id AND o.etapa < 8
-      WHERE u.rol = 'disenador' AND u.esta_activo = true
-      GROUP BY u.id, u.nombre_completo
-      ORDER BY ordenes_en_proceso DESC;
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE estado = 'pendiente')::int AS pendientes,
+        COUNT(*) FILTER (WHERE estado = 'en_validacion')::int AS en_validacion,
+        COUNT(*) FILTER (WHERE estado = 'aprobada')::int AS aprobadas,
+        COUNT(*) FILTER (WHERE estado = 'rechazada')::int AS rechazadas
+      FROM solicitudes;
     `);
 
-    // 5. Promedio de satisfacción de clientes en Postventa
+    // 5. Actividades de taller (tareas)
+    const tarRes = await pool.query(`
+      SELECT
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE estado = 'Pendiente')::int AS pendientes,
+        COUNT(*) FILTER (WHERE estado IN ('En Proceso', 'En proceso', 'Iniciada'))::int AS en_proceso,
+        COUNT(*) FILTER (WHERE estado = 'Finalizada')::int AS finalizadas,
+        COALESCE(ROUND(AVG(porcentaje)::numeric, 1), 0)::float AS promedio_avance
+      FROM tareas;
+    `);
+
+    // 6. Postventa y satisfacción
     const postventaStatsRes = await pool.query(`
       SELECT
-        ROUND(AVG(nivel_conformidad)::numeric, 2) AS promedio_satisfaccion,
-        COUNT(*) AS total_evaluaciones
-      FROM postventa
-      WHERE nivel_conformidad IS NOT NULL;
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE estado = 'Abierto')::int AS abiertos,
+        COUNT(*) FILTER (WHERE estado = 'En trámite')::int AS en_tramite,
+        COUNT(*) FILTER (WHERE estado = 'En reposición')::int AS en_reposicion,
+        COUNT(*) FILTER (WHERE estado = 'Resuelto')::int AS resueltos,
+        COALESCE(ROUND(AVG(nivel_conformidad)::numeric, 1), 0)::float AS promedio_satisfaccion,
+        COUNT(*) FILTER (WHERE nivel_conformidad IS NOT NULL)::int AS total_evaluaciones
+      FROM postventa;
     `);
 
-    // 6. Top 5 Clientes con mayor número de órdenes activas
+    // 7. Aprobación de artes en primera versión (eficiencia sobre diseños concluidos y evaluados)
+    const arteRes = await pool.query(`
+      SELECT
+        COUNT(DISTINCT a.orden_id) FILTER (WHERE evaluado.aprobada_en_v1 = true)::int AS aprobadas_v1,
+        COUNT(DISTINCT a.orden_id) FILTER (WHERE evaluado.tiene_aprobado = true)::int AS total_evaluadas,
+        COUNT(DISTINCT a.orden_id) FILTER (WHERE evaluado.tiene_aprobado = false)::int AS total_pendientes,
+        COUNT(DISTINCT a.orden_id)::int AS total_con_arte
+      FROM archivos_arte a
+      INNER JOIN ordenes o ON a.orden_id = o.id
+      INNER JOIN (
+        SELECT
+          orden_id,
+          BOOL_OR(estado_aprobacion = 'aprobado') AS tiene_aprobado,
+          (
+            BOOL_OR(numero_version = 1 AND estado_aprobacion = 'aprobado') = true
+            AND MAX(numero_version) = 1
+          ) AS aprobada_en_v1
+        FROM archivos_arte
+        GROUP BY orden_id
+      ) evaluado ON a.orden_id = evaluado.orden_id;
+    `);
+
+    const arteStats = arteRes.rows[0] || {
+      aprobadas_v1: 0,
+      total_evaluadas: 0,
+      total_pendientes: 0,
+      total_con_arte: 0,
+    };
+
+    const aprobadosPrimeraVersionPct = arteStats.total_evaluadas > 0
+      ? Math.round((arteStats.aprobadas_v1 / arteStats.total_evaluadas) * 100)
+      : null;
+
+    // 8. Carga de tareas por usuario (colaboradores operativos)
+    const cargaRes = await pool.query(`
+      SELECT
+        u.nombre_completo AS label,
+        COUNT(t.id)::int AS value
+      FROM usuarios u
+      LEFT JOIN tareas t ON u.id = t.owner_id AND t.estado != 'Finalizada'
+      WHERE u.rol != 'gerente' AND u.esta_activo = true
+      GROUP BY u.id, u.nombre_completo
+      ORDER BY value DESC, label ASC;
+    `);
+
+    // 9. Comunicaciones reales: discriminación estricta de conversaciones y mensajes individuales
+    const commRes = await pool.query(`
+      SELECT
+        CASE
+          WHEN LOWER(c.canal::text) IN ('wa', 'whatsapp') THEN 'WhatsApp'
+          WHEN LOWER(c.canal::text) IN ('mail', 'correo', 'email') THEN 'Correo'
+          WHEN LOWER(c.canal::text) IN ('call', 'telefono', 'telefonia') THEN 'Telefonía'
+          ELSE 'Otro'
+        END AS canal_nombre,
+        COUNT(DISTINCT c.id)::int AS total_conversaciones,
+        COUNT(m.id)::int AS total_mensajes
+      FROM canales_contacto c
+      LEFT JOIN mensajes_entrantes m ON c.id = m.canal_id
+      GROUP BY 1;
+    `);
+
+    const commMap = new Map(commRes.rows.map(r => [r.canal_nombre, r]));
+    const canalesLista = ['WhatsApp', 'Correo', 'Telefonía'];
+    const colores = { WhatsApp: 'verde', Correo: 'azul', Telefonía: 'amarillo' };
+
+    const conversacionesPorCanal = canalesLista.map(nombre => ({
+      label: nombre,
+      value: commMap.get(nombre)?.total_conversaciones || 0,
+      mensajes: commMap.get(nombre)?.total_mensajes || 0,
+      color: colores[nombre],
+    }));
+
+    const mensajesPorCanal = canalesLista.map(nombre => ({
+      label: nombre,
+      value: commMap.get(nombre)?.total_mensajes || 0,
+      color: colores[nombre],
+    }));
+
+    const totalConversaciones = conversacionesPorCanal.reduce((s, c) => s + c.value, 0);
+    const totalMensajes = mensajesPorCanal.reduce((s, c) => s + c.value, 0);
+
+    // 10. Órdenes activas por etapa (Donut de Producción)
+    const etapasUi = ['Diseño', 'Aprobación', 'Impresión', 'Acabados', 'Despacho'];
+    const porEtapa = etapasUi.map(etapaNombre => {
+      const val = activas.filter(o => {
+        const nom = o.estado_nombre || ETAPAS_UI_MAP[o.etapa] || '';
+        return nom.toLowerCase().includes(etapaNombre.toLowerCase());
+      }).length;
+      return { label: etapaNombre, value: val };
+    });
+
+    // Cuello de botella: etapa activa con más órdenes acumuladas
+    const cuello = [...porEtapa].sort((a, b) => b.value - a.value)[0] || { label: 'Diseño', value: 0 };
+
+    // 11. Top 5 Clientes con mayor número de órdenes activas
     const topClientesRes = await pool.query(`
       SELECT
         c.id,
         c.empresa,
-        COUNT(o.id) AS ordenes_activas
+        COUNT(o.id)::int AS ordenes_activas
       FROM clientes c
       INNER JOIN ordenes o ON c.id = o.cliente_id AND o.etapa < 8
       GROUP BY c.id, c.empresa
@@ -89,19 +251,66 @@ const obtenerMetricas = async (_req, res) => {
       LIMIT 5;
     `);
 
+    // 12. Ciclo promedio de orden en días (para órdenes finalizadas con fecha verificable)
+    const cicloRes = await pool.query(`
+      SELECT
+        ROUND(AVG(EXTRACT(EPOCH FROM (updated_at - created_at)) / 86400)::numeric, 1)::float AS ciclo_promedio
+      FROM ordenes
+      WHERE etapa >= 8 AND updated_at > created_at;
+    `);
+    const cicloPromedioDias = cicloRes.rows[0]?.ciclo_promedio != null && cicloRes.rows[0]?.ciclo_promedio > 0
+      ? cicloRes.rows[0].ciclo_promedio
+      : null;
+
     res.json({
       resumen: {
-        total_ordenes: parseInt(totalesRes.rows[0].total_ordenes, 10),
-        activas: parseInt(totalesRes.rows[0].activas, 10),
-        finalizadas: parseInt(totalesRes.rows[0].finalizadas, 10),
-        bloqueadas: parseInt(totalesRes.rows[0].bloqueadas, 10),
-        promedio_satisfaccion_estrellas: parseFloat(postventaStatsRes.rows[0].promedio_satisfaccion || 0),
-        total_evaluaciones_postventa: parseInt(postventaStatsRes.rows[0].total_evaluaciones, 10),
+        total_ordenes: totalOrdenes,
+        activas: activas.length,
+        finalizadas: finalizadas.length,
+        bloqueadas: bloqueadas.length,
+        retrasadas: retrasadasCount,
+        a_tiempo_pct: aTiempoPct,
+        ...(totalPresupuesto !== undefined ? { total_presupuestado: totalPresupuesto } : {}),
+        solicitudes: solRes.rows[0],
+        actividades: tarRes.rows[0],
+        postventa: postventaStatsRes.rows[0],
+        promedio_satisfaccion_estrellas: postventaStatsRes.rows[0].promedio_satisfaccion,
+        total_evaluaciones_postventa: postventaStatsRes.rows[0].total_evaluaciones,
+        eficiencia_diseno: {
+          aprobados_primera_version_pct: aprobadosPrimeraVersionPct,
+          aprobadas_v1: arteStats.aprobadas_v1,
+          total_evaluadas: arteStats.total_evaluadas,
+          total_pendientes: arteStats.total_pendientes,
+          total_con_arte: arteStats.total_con_arte,
+        },
+        aprobados_primera_version_pct: aprobadosPrimeraVersionPct,
+        total_artes_evaluados: arteStats.total_evaluadas,
+        artes_pendientes_evaluacion: arteStats.total_pendientes,
+        ciclo_promedio_dias: cicloPromedioDias,
+        comunicaciones_totales: {
+          conversaciones: totalConversaciones,
+          mensajes: totalMensajes,
+        },
       },
       embudo_produccion_kanban: embudoEtapas,
+      ordenes_activas_por_etapa: porEtapa,
+      cuello_de_botella: cuello,
       prioridades_activas: prioridadRes.rows,
-      carga_disenadores: disenadoresRes.rows,
+      carga_usuarios: cargaRes.rows,
+      comunicaciones: {
+        conversaciones_por_canal: conversacionesPorCanal,
+        mensajes_por_canal: mensajesPorCanal,
+        total_conversaciones: totalConversaciones,
+        total_mensajes: totalMensajes,
+      },
+      comunicaciones_por_canal: conversacionesPorCanal,
       top_clientes_activos: topClientesRes.rows,
+      // Tiempos promedio por etapa: honestamente sin datos de telemetría histórica
+      tiempos_promedio_etapa: {
+        disponible: false,
+        mensaje: 'Sin datos disponibles',
+        items: [],
+      },
     });
   } catch (error) {
     console.error('dashboardController.obtenerMetricas error:', error.message);
