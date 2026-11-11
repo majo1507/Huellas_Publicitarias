@@ -14,7 +14,8 @@ router.post(
   '/',
   verificarToken,
   asociarCapacidad('postventa.crear'),
-  verificarRol('postventa', 'ejecutiva', 'coord', 'gerente', 'cliente'),
+  // Gerencia supervisa y consulta; no radica casos (acción operativa de Postventa, Comercial o Coordinación).
+  verificarRol('postventa', 'ejecutiva', 'coord'),
   upload.single('archivo'),
   postventaController.crearPostventa
 );

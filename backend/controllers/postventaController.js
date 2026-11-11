@@ -9,6 +9,7 @@ const {
   resolverOrden,
   resolverUsuario,
   obtenerUsuarioPorDefecto,
+  esDisenoAprobado,
 } = require('../utils/resolvers');
 const { cargarOrdenesEnriquecidas } = require('./ordenesController');
 
@@ -659,19 +660,19 @@ const autorizarReimpresion = async (req, res) => {
       `SELECT a.*, COALESCE(u.nombre_completo, a.disenador_nombre) AS aprobador_nombre
        FROM archivos_arte a
        LEFT JOIN usuarios u ON a.decision_por = u.id
-       WHERE a.orden_id = $1 AND (a.estado_aprobacion = 'aprobado' OR a.estado_ui = 'Aprobada' OR a.estado_ui = 'Aprobada (Externa)')
+       WHERE a.orden_id = $1 AND (a.estado_aprobacion = 'aprobado' OR a.estado_ui = 'Aprobada' OR a.estado_ui = 'Aprobada (Externa)' OR a.estado_ui = 'Aprobado por el cliente')
        ORDER BY a.numero_version DESC
        LIMIT 1`,
       [original.id]
     );
 
     const tieneAprobacionValida =
-      original.diseno_estado === 'Aprobado' && arteAprobadoRes.rowCount > 0;
+      esDisenoAprobado(original.diseno_estado) && arteAprobadoRes.rowCount > 0;
     const arteAprobado = arteAprobadoRes.rows[0] || null;
 
     const etapaInicial = tieneAprobacionValida ? 4 : 1;
     const estadoNombreInicial = tieneAprobacionValida ? 'Impresión' : 'Diseño';
-    const disenoEstadoInicial = tieneAprobacionValida ? 'Aprobado' : 'Pendiente';
+    const disenoEstadoInicial = tieneAprobacionValida ? 'Aprobado por el cliente' : 'Pendiente';
     const avanceInicial = tieneAprobacionValida ? 50.00 : 15.00;
 
     const entregaCalc = new Date();

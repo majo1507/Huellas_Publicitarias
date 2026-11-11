@@ -227,25 +227,11 @@ const CUENTAS_DEMO_LOCAL = [
     cargo: 'Gerente general',
     estado: 'Activo',
   },
-  {
-    id: 'C1',
-    rol: 'cliente',
-    rolUi: 'cliente',
-    rolBd: 'cliente',
-    correo: 'carlos.mendoza@alpina.com',
-    email: 'carlos.mendoza@alpina.com',
-    aliases: ['carlos.mendoza@alpina.com', 'laura@empresaabc.test', 'carlos mendoza'],
-    clave: 'cliente123',
-    nombre: 'Carlos Mendoza',
-    nombre_completo: 'Carlos Mendoza',
-    cargo: 'Cliente (Alpina S.A.)',
-    estado: 'Activo',
-  },
 ]
 
 export function getAuthToken() {
   try {
-    return sessionStorage.getItem(TOKEN_KEY) || ''
+    return sessionStorage.getItem(TOKEN_KEY) || localStorage.getItem(TOKEN_KEY) || ''
   } catch {
     return ''
   }
@@ -253,8 +239,13 @@ export function getAuthToken() {
 
 export function setAuthToken(token) {
   try {
-    if (token) sessionStorage.setItem(TOKEN_KEY, token)
-    else sessionStorage.removeItem(TOKEN_KEY)
+    if (token) {
+      sessionStorage.setItem(TOKEN_KEY, token)
+      localStorage.setItem(TOKEN_KEY, token)
+    } else {
+      sessionStorage.removeItem(TOKEN_KEY)
+      localStorage.removeItem(TOKEN_KEY)
+    }
   } catch {}
 }
 
@@ -345,12 +336,23 @@ async function pedir(ruta, opciones = {}) {
   return payload
 }
 
-// Determina si el error proviene de falta de conexión al backend o de PostgreSQL no disponible
+// Determina si el error proviene de falta de conexión al backend o de PostgreSQL no disponible.
+// Solo se usa al INICIAR SESIÓN: el modo demostración nunca se activa en silencio a mitad de una
+// sesión real, para no presentar datos simulados como si estuvieran guardados en el servidor.
 function esErrorDeConexionOBaseDatos(err) {
   if (!err || !err.status) return true // Fallo de red (backend apagado o inaccesible)
   if (err.status >= 500) return true   // Error 500 por PostgreSQL desconectado o sin configurar
-  if (err.status === 401 && getAuthToken() === 'mock-jwt-token') return true
   return false
+}
+
+// Las sesiones reales propagan el error del servidor; la interfaz lo muestra al usuario.
+function errorDeSesionReal(err) {
+  if (!err.status) {
+    const e = new Error('No hay conexión con el servidor ORVEX. La operación no se guardó; verifica que el backend esté en ejecución.')
+    e.status = 0
+    return e
+  }
+  return err
 }
 
 async function consultarLista(ruta, datosMock, claveDemo = null) {
@@ -366,11 +368,7 @@ async function consultarLista(ruta, datosMock, claveDemo = null) {
     const res = await pedir(ruta)
     return Array.isArray(res) ? res : res?.data || []
   } catch (err) {
-    if (esErrorDeConexionOBaseDatos(err)) {
-      setModoDemoLocal(true)
-      return structuredClone(obtenerRespaldo())
-    }
-    throw err
+    throw errorDeSesionReal(err)
   }
 }
 
@@ -379,11 +377,7 @@ async function ejecutarConFallback(fnReal, valorFallback) {
   try {
     return await fnReal()
   } catch (err) {
-    if (esErrorDeConexionOBaseDatos(err)) {
-      setModoDemoLocal(true)
-      return structuredClone(valorFallback)
-    }
-    throw err
+    throw errorDeSesionReal(err)
   }
 }
 
@@ -407,16 +401,19 @@ export const api = {
       if (res?.token) setAuthToken(res.token)
       return res
     } catch (err) {
-      if (esErrorDeConexionOBaseDatos(err) || (err.status === 401 && buscarCuentaDemoLocal(credenciales))) {
+      // Solo se entra al modo demostración cuando el servidor o PostgreSQL no están disponibles.
+      // Un 401 real del servidor es un rechazo de credenciales y nunca se sustituye por datos locales.
+      if (esErrorDeConexionOBaseDatos(err) && buscarCuentaDemoLocal(credenciales)) {
         return autenticarDemoLocal(credenciales)
       }
-      throw err
+      throw errorDeSesionReal(err)
     }
   },
 
   async logout() {
     const eraMock = getModoDemoLocal()
     setAuthToken('')
+    setModoDemoLocal(false)
     if (eraMock || USAR_MOCK) return simular({ ok: true })
     try {
       return await pedir('/auth/logout', { method: 'POST' })
@@ -431,10 +428,7 @@ export const api = {
       const res = await pedir('/auth/perfil')
       return res?.data || res
     } catch (err) {
-      if (esErrorDeConexionOBaseDatos(err)) {
-        setModoDemoLocal(true)
-        return null
-      }
+      if (esErrorDeConexionOBaseDatos(err)) return null
       throw err
     }
   },
@@ -566,12 +560,44 @@ export const api = {
         }),
       { modoMock: true }
     ),
-  responderDiseno: (ordenId, decision, comentario = '', decisor = '') =>
+  responderDiseno: (ordenId, decision, comentario = '', decisor = '', extra = {}) =>
     ejecutarConFallback(
       () =>
         pedir(`/disenos/orden/${ordenId}/aprobacion`, {
           method: 'PATCH',
-          body: JSON.stringify({ estado: decision, comentario, decisor }),
+          body: JSON.stringify({ estado: decision, comentario, decisor, ...extra }),
+        }),
+      { modoMock: true }
+    ),
+  gestionarPropuestaComercial: (ordenId, datos) =>
+    ejecutarConFallback(
+      () => {
+        if (typeof FormData !== 'undefined' && datos?.archivo instanceof File) {
+          const formData = new FormData()
+          Object.entries(datos).forEach(([k, v]) => {
+            if (v !== undefined && v !== null && k !== 'archivo') {
+              formData.append(k, String(v))
+            }
+          })
+          formData.append('archivo', datos.archivo)
+          return pedir(`/disenos/orden/${ordenId}/gestion-comercial`, {
+            method: 'PATCH',
+            body: formData,
+          })
+        }
+        const { archivo, ...payloadJson } = datos || {}
+        return pedir(`/disenos/orden/${ordenId}/gestion-comercial`, {
+          method: 'PATCH',
+          body: JSON.stringify(payloadJson),
+        })
+      },
+      { modoMock: true }
+    ),
+  liberarParaImpresion: (ordenId) =>
+    ejecutarConFallback(
+      () =>
+        pedir(`/disenos/orden/${ordenId}/liberar-impresion`, {
+          method: 'PATCH',
         }),
       { modoMock: true }
     ),
@@ -620,6 +646,15 @@ export const api = {
         pedir(`/actividades/${id}/notas`, {
           method: 'POST',
           body: JSON.stringify({ texto, esIncidencia }),
+        }),
+      { modoMock: true }
+    ),
+  resolverIncidenciaActividad: (id, index, solucion) =>
+    ejecutarConFallback(
+      () =>
+        pedir(`/actividades/${id}/resolver-incidencia`, {
+          method: 'PATCH',
+          body: JSON.stringify({ index, solucion }),
         }),
       { modoMock: true }
     ),
@@ -704,6 +739,64 @@ export const api = {
         }),
       { modoMock: true }
     ),
+  reintentarMensajeComunicacion: (commId, mensajeId) =>
+    ejecutarConFallback(
+      () => pedir(`/comunicaciones/${commId}/mensajes/${mensajeId}/reintentar`, { method: 'POST' }),
+      { modoMock: true }
+    ),
+  enviarNuevoCorreo: (datos) =>
+    ejecutarConFallback(
+      () =>
+        pedir('/comunicaciones/nuevo-correo', {
+          method: 'POST',
+          body: JSON.stringify(datos),
+        }),
+      { modoMock: true }
+    ),
+  enviarNuevoWhatsApp: (datos) =>
+    ejecutarConFallback(
+      () =>
+        pedir('/comunicaciones/nuevo-whatsapp', {
+          method: 'POST',
+          body: JSON.stringify(datos),
+        }),
+      { modoMock: true }
+    ),
+  sincronizarComunicaciones: () =>
+    ejecutarConFallback(
+      () => pedir('/comunicaciones/gmail/sincronizar', { method: 'POST' }),
+      { modoMock: true, data: { ok: true, sincronizados: 0, nuevos: 0 } }
+    ),
+  obtenerRevisionComunicaciones: () =>
+    ejecutarConFallback(
+      () => pedir('/comunicaciones/revision'),
+      { modoMock: true, total: 0, ultimoTs: 0, version: '0' }
+    ),
+  marcarConversacionLeida: (id) =>
+    ejecutarConFallback(
+      () => pedir(`/comunicaciones/${id}/leido`, { method: 'PATCH' }),
+      { modoMock: true }
+    ),
+  API_URL,
+  getAuthToken,
+
+  // Integración Gmail OAuth 2.0
+  obtenerEstadoGmail: () =>
+    ejecutarConFallback(
+      () => pedir('/comunicaciones/gmail/estado'),
+      { modoMock: true, data: { conectado: false, email: null, diasRestantes: 0 } }
+    ),
+  iniciarAutorizacionGmail: () =>
+    pedir('/comunicaciones/gmail/auth'),
+  desconectarGmail: () =>
+    pedir('/comunicaciones/gmail/desconectar', { method: 'POST' }),
+
+  // Integración Meta WhatsApp Cloud API
+  obtenerEstadoWhatsApp: () =>
+    ejecutarConFallback(
+      () => pedir('/comunicaciones/whatsapp/estado'),
+      { modoMock: true, data: { conectado: false, numeroOficial: '+57 311 608 8542' } }
+    ),
 
   // Métricas ejecutivas y consolidadas del Dashboard de Gerencia (Fase 3.2)
   async obtenerDashboard() {
@@ -724,11 +817,138 @@ export const api = {
     }
   },
 
-  // Carga inicial de toda la información que necesita la aplicación
-  async cargarTodo() {
+  // Carga inicial de toda la información que necesita la aplicación según el rol activo
+  async cargarTodo(rolParam) {
     if (getModoDemoLocal()) {
       return simular(leerEstadoDemo(), 40)
     }
+
+    // Resolver rol activo de manera resiliente (parámetro -> sessionStorage -> fallback)
+    let rol = rolParam
+    if (!rol && typeof sessionStorage !== 'undefined') {
+      try {
+        const guardadoUser = sessionStorage.getItem('orvex_auth_user')
+        if (guardadoUser) {
+          const u = JSON.parse(guardadoUser)
+          rol = u.rolUi || u.rol || u.rolBd
+        }
+        if (!rol) {
+          rol = sessionStorage.getItem('orvex_auth_role')
+        }
+      } catch {}
+    }
+    const r = (rol || '').toString().trim().toLowerCase()
+
+    // Helper para tolerar errores 403 Forbidden o 404 Not Found en recursos no autorizados o ausentes
+    const tolerar = (promesa, fallback = []) =>
+      promesa.catch((err) => {
+        if (err && (err.status === 403 || err.status === 404)) {
+          return fallback
+        }
+        return Promise.reject(err)
+      })
+
+    // 1. Rol Operario: Interfaz mínima exclusiva de taller (Pedro Morales / Juan Pérez)
+    // Solo requiere sus tareas asignadas y órdenes para contexto técnico
+    if (r === 'operario' || r === 'produccion') {
+      const [orders, tasks] = await Promise.all([
+        tolerar(this.listarOrdenes()),
+        tolerar(this.listarActividades()),
+      ])
+      return {
+        clients: [],
+        orders: orders || [],
+        requests: [],
+        tasks: tasks || [],
+        cases: [],
+        users: [],
+        comms: [],
+        inventory: [],
+        suppliers: [],
+        inventoryMovements: [],
+        dashboard: null,
+      }
+    }
+
+    // 2. Rol Diseñador: Mesa de diseño técnico y aprobaciones (María López)
+    // Requiere órdenes, tareas, solicitudes para briefing, clientes y usuarios
+    if (r === 'disenador' || r === 'diseno' || r === 'diseñador') {
+      const [clients, orders, requests, tasks, users] = await Promise.all([
+        tolerar(this.listarClientes()),
+        tolerar(this.listarOrdenes()),
+        tolerar(this.listarSolicitudes()),
+        tolerar(this.listarActividades()),
+        tolerar(this.listarUsuarios()),
+      ])
+      return {
+        clients: clients || [],
+        orders: orders || [],
+        requests: requests || [],
+        tasks: tasks || [],
+        cases: [],
+        users: users || [],
+        comms: [],
+        inventory: [],
+        suppliers: [],
+        inventoryMovements: [],
+        dashboard: null,
+      }
+    }
+
+    // 3. Rol Postventa: Casos, garantías y atención
+    if (r === 'postventa') {
+      const [clients, orders, cases, users, comms, tasks] = await Promise.all([
+        tolerar(this.listarClientes()),
+        tolerar(this.listarOrdenes()),
+        tolerar(this.listarCasos()),
+        tolerar(this.listarUsuarios()),
+        tolerar(this.listarComunicaciones()),
+        tolerar(this.listarActividades()),
+      ])
+      return {
+        clients: clients || [],
+        orders: orders || [],
+        requests: [],
+        tasks: tasks || [],
+        cases: cases || [],
+        users: users || [],
+        comms: comms || [],
+        inventory: [],
+        suppliers: [],
+        inventoryMovements: [],
+        dashboard: null,
+      }
+    }
+
+    // 4. Rol Comercial / Recepción (Ana Martínez):
+    // Clientes, órdenes, solicitudes, tareas, casos, usuarios, comunicaciones
+    if (r === 'comercial' || r === 'ejecutiva') {
+      const [clients, orders, requests, tasks, cases, users, comms] = await Promise.all([
+        tolerar(this.listarClientes()),
+        tolerar(this.listarOrdenes()),
+        tolerar(this.listarSolicitudes()),
+        tolerar(this.listarActividades()),
+        tolerar(this.listarCasos()),
+        tolerar(this.listarUsuarios()),
+        tolerar(this.listarComunicaciones()),
+      ])
+      return {
+        clients: clients || [],
+        orders: orders || [],
+        requests: requests || [],
+        tasks: tasks || [],
+        cases: cases || [],
+        users: users || [],
+        comms: comms || [],
+        inventory: [],
+        suppliers: [],
+        inventoryMovements: [],
+        dashboard: null,
+      }
+    }
+
+    // 5. Coordinador y Gerencia (o cualquier otro rol administrativo):
+    // Carga completa con protección 403 en cada recurso individual
     const [
       clients,
       orders,
@@ -742,37 +962,32 @@ export const api = {
       inventoryMovements,
       dashboardResult,
     ] = await Promise.all([
-      this.listarClientes(),
-      this.listarOrdenes(),
-      this.listarSolicitudes(),
-      this.listarActividades(),
-      this.listarCasos(),
-      this.listarUsuarios(),
-      this.listarComunicaciones(),
-      this.listarInventario(),
-      this.listarProveedores(),
-      this.listarMovimientosInventario(),
+      tolerar(this.listarClientes()),
+      tolerar(this.listarOrdenes()),
+      tolerar(this.listarSolicitudes()),
+      tolerar(this.listarActividades()),
+      tolerar(this.listarCasos()),
+      tolerar(this.listarUsuarios()),
+      tolerar(this.listarComunicaciones()),
+      tolerar(this.listarInventario()),
+      tolerar(this.listarProveedores()),
+      tolerar(this.listarMovimientosInventario()),
       this.obtenerDashboard().catch((err) => ({ ok: false, error: err.message, status: err.status })),
     ])
-    // Si la base de datos conectó pero está vacía (sin seed), usar estado de demostración persistido
-    if (clients.length === 0 && orders.length === 0 && requests.length === 0) {
-      setModoDemoLocal(true)
-      return leerEstadoDemo()
-    }
     return {
-      clients,
-      orders,
-      requests,
-      tasks,
-      cases,
-      users,
-      comms,
-      inventory: inventory.length ? inventory : leerEstadoDemo().inventory,
-      suppliers: suppliers.length ? suppliers : leerEstadoDemo().suppliers,
-      inventoryMovements: inventoryMovements.length
-        ? inventoryMovements
-        : leerEstadoDemo().inventoryMovements,
+      clients: clients || [],
+      orders: orders || [],
+      requests: requests || [],
+      tasks: tasks || [],
+      cases: cases || [],
+      users: users || [],
+      comms: comms || [],
+      inventory: inventory || [],
+      suppliers: suppliers || [],
+      inventoryMovements: inventoryMovements || [],
       dashboard: dashboardResult?.ok ? dashboardResult.data : (dashboardResult?.error ? { error: dashboardResult.error, status: dashboardResult.status } : null),
     }
   },
 }
+
+export default api

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Component } from 'react'
 import Sidebar from './components/Sidebar.jsx'
 import Header from './components/Header.jsx'
 import Loader from './components/Loader.jsx'
@@ -28,16 +28,15 @@ import Inventory from './pages/Inventory.jsx'
 import Reports from './pages/Reports.jsx'
 import Users from './pages/Users.jsx'
 import Login from './pages/Login.jsx'
-import { ROLES, normalizarRol } from './data/roles.js'
+import { ROLES, normalizarRol, PAGINAS_AUTORIZADAS_POR_ROL } from './data/roles.js'
 import { api, getAuthToken, setAuthToken, DEMO_STATE_KEY, guardarEstadoDemo, leerEstadoDemo } from './services/api.js'
-import { formatearFecha, formatearHora, puedeAvanzar, validarCierreOrden } from './utils/format.js'
+import { formatearFecha, formatearHora, formatearFechaBogota, formatearHoraBogota, puedeAvanzar, validarCierreOrden } from './utils/format.js'
 
-// Dashboard (opción "Inicio") que corresponde a cada rol
+// Dashboard (opción "Inicio") que corresponde a cada rol interno
 const dashboards = {
-  cliente: ClientDashboard,
   comercial: CommercialDashboard,
   coordinador: CoordinatorDashboard,
-  disenador: DesignerDashboard,
+  disenador: DesignWorkspace,
   operario: OperatorDashboard,
   postventa: AfterSalesDashboard,
   gerencia: ManagementDashboard,
@@ -64,6 +63,38 @@ function cambiarUltimaVersion(versiones, cambios) {
   return versiones.map((v, idx) => (idx === versiones.length - 1 ? { ...v, ...cambios } : v))
 }
 
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false, error: null }
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error }
+  }
+  componentDidCatch(error, errorInfo) {
+    console.error('Error visual capturado por ErrorBoundary:', error, errorInfo)
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '24px' }}>
+          <Alert tipo="error" titulo="Ocurrió una novedad al renderizar esta vista">
+            {this.state.error?.message || 'Error visual inesperado.'}
+          </Alert>
+          <button
+            className="btn btn-primary"
+            style={{ marginTop: '12px' }}
+            onClick={() => this.setState({ hasError: false, error: null })}
+          >
+            Reintentar vista
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 export default function App() {
   const [orders, setOrders] = useState([])
   const [requests, setRequests] = useState([])
@@ -75,6 +106,8 @@ export default function App() {
   const [inventory, setInventory] = useState([])
   const [suppliers, setSuppliers] = useState([])
   const [inventoryMovements, setInventoryMovements] = useState([])
+  // Indicadores consolidados de PostgreSQL (GET /dashboard) para Gerencia y Reportes
+  const [dashboard, setDashboard] = useState(null)
   const [cargando, setCargando] = useState(false)
   const [datosListos, setDatosListos] = useState(false)
   const [errorCarga, setErrorCarga] = useState('')
@@ -92,7 +125,8 @@ export default function App() {
       if (guardado && (token || api.usarMock)) {
         const parsed = JSON.parse(guardado)
         if (parsed && typeof parsed === 'object') {
-          const rolNormalizado = normalizarRol(parsed.rolUi || parsed.rol || 'coordinador')
+          let rolNormalizado = normalizarRol(parsed.rolUi || parsed.rol || 'coordinador')
+          if (rolNormalizado === 'cliente') rolNormalizado = 'comercial'
           return {
             ...parsed,
             rol: rolNormalizado,
@@ -111,7 +145,8 @@ export default function App() {
     try {
       if (sessionStorage.getItem('orvex_auth_logged_out') === 'true') return 'coordinador'
       const guardadoRol = sessionStorage.getItem('orvex_auth_role')
-      return normalizarRol(guardadoRol || 'coordinador')
+      const norm = normalizarRol(guardadoRol || 'coordinador')
+      return norm === 'cliente' ? 'comercial' : norm
     } catch {
       return 'coordinador'
     }
@@ -138,7 +173,7 @@ export default function App() {
     let cancelado = false
     setCargando(true)
     setErrorCarga('')
-    api.cargarTodo()
+    api.cargarTodo(currentUser?.rolUi || currentUser?.rol || role)
       .then((d) => {
         if (cancelado) return
         setOrders(d.orders || [])
@@ -151,6 +186,7 @@ export default function App() {
         setInventory(d.inventory || [])
         setSuppliers(d.suppliers || [])
         setInventoryMovements(d.inventoryMovements || [])
+        setDashboard(d.dashboard || null)
         setDatosListos(true)
         setCargando(false)
       })
@@ -166,7 +202,7 @@ export default function App() {
         setCargando(false)
       })
     return () => { cancelado = true }
-  }, [intento, currentUser?.correo])
+  }, [intento, currentUser?.correo, currentUser?.rol, role])
 
   useEffect(() => { window.scrollTo(0, 0) }, [page])
 
@@ -232,6 +268,7 @@ export default function App() {
     inventory,
     suppliers,
     inventoryMovements,
+    dashboard,
   }
 
   function notify(texto, tipo = 'exito') {
@@ -251,17 +288,51 @@ export default function App() {
     })
   }
 
-  // Navegación con protección de rutas según rol (HU-02 y HU-07)
+  // Navegación con protección estricta de rutas según rol (Regla 5 y HU-07)
   const irA = (name, orderId = null) => {
-    const paginasComunes = ['inicio', 'detalle', 'aprobacion', 'historial', 'disenos']
-    const itemMenu = ROLES[role]?.menu.find((m) => m.page === name)
-    if (!itemMenu && !paginasComunes.includes(name)) {
-      notify(`Acceso restringido: tu rol (${ROLES[role]?.nombre || role}) no tiene acceso a "${name}".`, 'aviso')
+    const rolNormal = normalizarRol(role)
+    const permitidas = PAGINAS_AUTORIZADAS_POR_ROL[rolNormal] || ['inicio']
+    if (!permitidas.includes(name)) {
+      notify(`Acceso denegado: el perfil de ${ROLES[rolNormal]?.nombre || rolNormal} no tiene autorización para acceder a "${name}".`, 'error')
       setPage({ name: 'inicio', orderId: null })
+      if (typeof window !== 'undefined') window.location.hash = '#/inicio'
       return
     }
     setPage({ name, orderId })
+    if (typeof window !== 'undefined') {
+      window.location.hash = orderId ? `#/${name}/${orderId}` : `#/${name}`
+    }
   }
+
+  // Sincronización y validación estricta de rutas directas por URL hash (Regla 5)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    function sincronizarRutaDesdeHash() {
+      const rawHash = window.location.hash.replace(/^#\/?/, '').trim()
+      if (!rawHash) return
+
+      const partes = rawHash.split('/')
+      const targetPage = partes[0] || 'inicio'
+      const targetOrderId = partes[1] || null
+
+      const rolNormal = normalizarRol(role)
+      const permitidas = PAGINAS_AUTORIZADAS_POR_ROL[rolNormal] || ['inicio']
+
+      if (!permitidas.includes(targetPage)) {
+        notify(`Acceso denegado por URL: el perfil de ${ROLES[rolNormal]?.nombre || rolNormal} no tiene autorización para acceder al módulo "${targetPage}".`, 'error')
+        window.location.hash = '#/inicio'
+        setPage({ name: 'inicio', orderId: null })
+        return
+      }
+
+      setPage({ name: targetPage, orderId: targetOrderId })
+    }
+
+    sincronizarRutaDesdeHash()
+    window.addEventListener('hashchange', sincronizarRutaDesdeHash)
+    return () => window.removeEventListener('hashchange', sincronizarRutaDesdeHash)
+  }, [role])
 
   // Inicio de sesión (HU-02)
   function handleLogin(usuarioElegido, rolElegido) {
@@ -396,12 +467,13 @@ export default function App() {
             presupuesto: datos.presupuesto !== undefined ? Number(datos.presupuesto) : ordenActual.presupuesto,
             costoInterno: datos.costoInterno !== undefined ? Number(datos.costoInterno) : ordenActual.costoInterno,
             fechaEntrega: datos.fechaEntrega || ordenActual.fechaEntrega,
+            prioridad: datos.prioridad || ordenActual.prioridad || 'Media',
           }
           updateOrder(
             id,
             cambios,
             crearEvento(
-              `Coordinación de orden actualizada: Diseño (${cambios.disenador}), Responsable operativo (${cambios.responsable})`,
+              `Planificación y coordinación actualizada: Prioridad (${cambios.prioridad}), Entrega (${cambios.fechaEntrega}), Diseño (${cambios.disenador}), Responsable taller (${cambios.responsable})`,
               usuario,
               'Completado',
               true
@@ -422,7 +494,7 @@ export default function App() {
 
   // ---------------- Solicitudes (HU-03, HU-04, HU-05, HU-06) ----------------
   function addRequest(form) {
-    api.crearSolicitud(form)
+    return api.crearSolicitud(form)
       .then((res) => {
         const nueva = res?.data || {
           ...form,
@@ -443,9 +515,11 @@ export default function App() {
           'Solicitud registrada correctamente. Recuerda enviarla a Coordinación para iniciar su proceso de validación.',
           'exito'
         )
+        return nueva
       })
       .catch((err) => {
         notify(err.message || 'Error al registrar la solicitud.', 'error')
+        throw err
       })
   }
 
@@ -556,6 +630,12 @@ export default function App() {
             responsable: 'María López',
             disenador: 'María López',
             presupuesto: Number(s.presupuesto) || 0,
+            cotizacionTotal: Number(s.cotizacionTotal || s.presupuesto) || 0,
+            estadoPago: s.estadoPago || 'Pendiente de pago',
+            totalAbonado: Number(s.totalAbonado || 0),
+            saldoPendiente: Number(s.saldoPendiente != null ? s.saldoPendiente : (s.presupuesto || 0)),
+            tipoPago: s.tipoPago || 'sin_pago',
+            pagos: s.pagos || [],
             costoInterno: Math.round((Number(s.presupuesto) || 0) * 0.6),
             requerimientos: s.requerimientos || 'Sin especificaciones adicionales',
             observaciones: s.observaciones || '',
@@ -597,6 +677,10 @@ export default function App() {
 
   // ---------------- Flujo de la orden ----------------
   function advanceStage(id) {
+    if (normalizarRol(role) === 'coordinador') {
+      notify('El avance de etapas es automático según la ejecución de actividades de los operarios y las aprobaciones registradas.', 'aviso')
+      return false
+    }
     const order = orders.find((o) => o.id === id)
     if (!order) return false
     const regla = puedeAvanzar(order)
@@ -658,6 +742,10 @@ export default function App() {
 
   // ---------------- Registro de entregas y evidencias (HU-17) ----------------
   function registerDelivery(ordenId, datosEntrega) {
+    if (normalizarRol(role) === 'coordinador') {
+      notify('El registro de entrega final al cliente corresponde a Comercial / Recepción y el seguimiento posterior a Postventa.', 'aviso')
+      return false
+    }
     const orden = orders.find((o) => o.id === ordenId)
     if (!orden) return false
 
@@ -740,36 +828,170 @@ export default function App() {
     api.enviarDiseno(id, observaciones)
       .then((res) => {
         if (res?.modoMock) {
+          const ahora = new Date()
+          const fechaEnvioTexto = formatearFechaBogota(ahora)
+          const horaEnvioTexto = formatearHoraBogota(ahora)
           updateOrder(
             id,
-            (o) => ({ versiones: cambiarUltimaVersion(o.versiones, { estado: 'Enviada' }), disenoEstado: 'Enviado', estado: 'Aprobación' }),
-            crearEvento('Diseño enviado para aprobación', usuario)
+            (o) => {
+              const ult = o.versiones?.[o.versiones.length - 1]
+              return {
+                versiones: cambiarUltimaVersion(o.versiones, {
+                  estado: 'Pendiente de gestión comercial',
+                  fechaEnvio: ult?.fechaEnvio || ahora.toISOString(),
+                  fechaEnvioTexto: ult?.fechaEnvioTexto || fechaEnvioTexto,
+                  horaEnvioTexto: ult?.horaEnvioTexto || horaEnvioTexto,
+                  fechaHoraEnvio: `${ult?.fechaEnvioTexto || fechaEnvioTexto} ${ult?.horaEnvioTexto || horaEnvioTexto}`,
+                  enviadoAComercialNombre: usuario,
+                }),
+                disenoEstado: 'Pendiente de gestión comercial',
+                estado: 'Aprobación',
+              }
+            },
+            crearEvento('Diseño enviado a Comercial para gestión con el cliente', usuario)
           )
-          notify(`Diseño de ${id} enviado para aprobación del cliente.`)
+          notify(`Diseño de ${id} enviado a Comercial para gestión con el cliente.`)
           return
         }
         if (res?.orden) replaceOrderFromServer(res.orden)
-        notify(`Diseño de ${id} enviado para aprobación del cliente.`)
+        notify(`Diseño de ${id} enviado a Comercial para gestión con el cliente.`)
       })
       .catch((err) => {
-        notify(err.message || 'No se pudo enviar el diseño a aprobación.', 'error')
+        notify(err.message || 'No se pudo enviar el diseño a Comercial.', 'error')
       })
   }
 
-  function designApprove(id, comentario = '') {
-    api.responderDiseno(id, 'aprobado', comentario, usuario)
+  function designCommercialManage(id, datosGestion) {
+    return api.gestionarPropuestaComercial(id, datosGestion)
+      .then((res) => {
+        if (res?.modoMock) {
+          const {
+            accion,
+            numero_version,
+            fechaAprobacion,
+            nombreAutoriza,
+            canal,
+            evidencia,
+            observaciones,
+          } = datosGestion
+          const actualizarVersionElegida = (versiones = [], cambios = {}) => {
+            if (!versiones.length) return []
+            const targetNum = Number(numero_version || versiones[versiones.length - 1]?.numero)
+            return versiones.map((v, idx) =>
+              Number(v.numero) === targetNum || (!numero_version && idx === versiones.length - 1)
+                ? { ...v, ...cambios }
+                : v
+            )
+          }
+          if (accion === 'aprobar') {
+            updateOrder(
+              id,
+              (o) => ({
+                versiones: actualizarVersionElegida(o.versiones, {
+                  estado: 'Aprobado por el cliente',
+                  contactoClienteNombre: nombreAutoriza,
+                  contactoClienteCanal: canal,
+                  contactoClienteFechaTexto: fechaAprobacion || fechaActual(),
+                  contactoClienteHoraTexto: horaActual(),
+                  contactoClienteEvidencia: evidencia,
+                  comentario: observaciones || undefined,
+                  soporte_validado: true,
+                }),
+                disenoEstado: 'Aprobado por el cliente',
+                estado: o.estado === 'Diseño' ? 'Aprobación' : o.estado,
+              }),
+              crearEvento(
+                `Diseño v${numero_version || 1} aprobado por el cliente (${nombreAutoriza}) vía ${canal}. Evidencia: ${evidencia}`,
+                usuario
+              )
+            )
+            notify(`Aprobación formal registrada con éxito para ${id}. Lista para verificación de Coordinación.`)
+          } else if (accion === 'cambios') {
+            updateOrder(
+              id,
+              (o) => ({
+                versiones: actualizarVersionElegida(o.versiones, {
+                  estado: 'Cambios solicitados',
+                  contactoClienteNombre: nombreAutoriza,
+                  contactoClienteCanal: canal,
+                  contactoClienteFechaTexto: fechaActual(),
+                  contactoClienteHoraTexto: horaActual(),
+                  comentario: observaciones,
+                  contactoClienteObservaciones: observaciones,
+                }),
+                disenoEstado: 'Cambios solicitados',
+                estado: 'Diseño',
+              }),
+              crearEvento(
+                `Cliente solicitó modificaciones vía ${canal}: "${observaciones}". Trabajo devuelto a Diseño.`,
+                usuario,
+                'Pendiente'
+              )
+            )
+            notify(`Modificaciones registradas. Trabajo devuelto a Diseño para ${id}.`, 'aviso')
+          } else if (accion === 'esperando') {
+            updateOrder(
+              id,
+              (o) => ({
+                versiones: actualizarVersionElegida(o.versiones, {
+                  estado: 'Esperando respuesta del cliente',
+                  contactoClienteNombre: nombreAutoriza,
+                  contactoClienteCanal: canal,
+                }),
+                disenoEstado: 'Esperando respuesta del cliente',
+              }),
+              crearEvento(`Gestión iniciada vía ${canal}. Esperando respuesta del cliente`, usuario, 'Pendiente')
+            )
+            notify(`Estado actualizado a: Esperando respuesta del cliente (${id}).`)
+          }
+          return res
+        }
+        if (res?.orden) replaceOrderFromServer(res.orden)
+        notify(res?.message || `Gestión comercial registrada con éxito para ${id}.`)
+        return res
+      })
+      .catch((err) => {
+        notify(err.message || 'No se pudo registrar la gestión comercial.', 'error')
+        throw err
+      })
+  }
+
+  function designReleasePrint(id) {
+    return api.liberarParaImpresion(id)
       .then((res) => {
         if (res?.modoMock) {
           updateOrder(
             id,
-            (o) => ({ versiones: cambiarUltimaVersion(o.versiones, { estado: 'Aprobada' }), disenoEstado: 'Aprobado' }),
-            crearEvento('Diseño aprobado', usuario)
+            { disenoEstado: 'Listo para impresión' },
+            crearEvento('Diseño verificado y liberado para impresión por Coordinación', usuario)
           )
-          notify(`Diseño de ${id} aprobado. La orden ya puede pasar a impresión.`)
+          notify(`Orden ${id} liberada formalmente para impresión.`)
+          return res
+        }
+        if (res?.orden) replaceOrderFromServer(res.orden)
+        notify(res?.message || `Orden ${id} liberada formalmente para impresión.`)
+        return res
+      })
+      .catch((err) => {
+        notify(err.message || 'No se pudo liberar la orden para impresión.', 'error')
+        throw err
+      })
+  }
+
+  function designApprove(id, comentario = '', extra = {}) {
+    api.responderDiseno(id, 'aprobado', comentario, usuario, extra)
+      .then((res) => {
+        if (res?.modoMock) {
+          updateOrder(
+            id,
+            (o) => ({ versiones: cambiarUltimaVersion(o.versiones, { estado: 'Aprobado por el cliente' }), disenoEstado: 'Aprobado por el cliente' }),
+            crearEvento('Diseño aprobado por el cliente', usuario)
+          )
+          notify(`Diseño de ${id} aprobado. La orden ya puede pasar a verificación de Coordinación.`)
           return
         }
         if (res?.orden) replaceOrderFromServer(res.orden)
-        notify(`Diseño de ${id} aprobado. La orden ya puede pasar a impresión.`)
+        notify(`Diseño de ${id} aprobado. La orden ya puede pasar a verificación de Coordinación.`)
       })
       .catch((err) => {
         notify(err.message || 'No se pudo registrar la aprobación del diseño.', 'error')
@@ -782,17 +1004,17 @@ export default function App() {
         if (res?.modoMock) {
           updateOrder(
             id,
-            (o) => ({ versiones: cambiarUltimaVersion(o.versiones, { estado: 'Rechazada', comentario }), disenoEstado: 'Requiere cambios', estado: 'Diseño' }),
-            crearEvento(`Diseño rechazado: ${comentario}`, usuario, 'Pendiente')
+            (o) => ({ versiones: cambiarUltimaVersion(o.versiones, { estado: 'Cambios solicitados', comentario }), disenoEstado: 'Cambios solicitados', estado: 'Diseño' }),
+            crearEvento(`Cliente solicitó modificaciones: ${comentario}`, usuario, 'Pendiente')
           )
-          notify(`Se solicitaron cambios al diseño de ${id}.`, 'aviso')
+          notify(`Se solicitaron cambios al diseño de ${id}. Trabajo devuelto a Diseño.`, 'aviso')
           return
         }
         if (res?.orden) replaceOrderFromServer(res.orden)
-        notify(`Se solicitaron cambios al diseño de ${id}.`, 'aviso')
+        notify(`Se solicitaron cambios al diseño de ${id}. Trabajo devuelto a Diseño.`, 'aviso')
       })
       .catch((err) => {
-        notify(err.message || 'No se pudo registrar el rechazo del diseño.', 'error')
+        notify(err.message || 'No se pudo registrar la solicitud de cambios del diseño.', 'error')
       })
   }
 
@@ -906,7 +1128,17 @@ export default function App() {
         }
         if (res?.data) updateTask(id, { ...res.data, pct: res.data.pct ?? nuevoPct })
         if (res?.orden) replaceOrderFromServer(res.orden)
-        notify(`Tarea "${t.actividad}" ${verbo}.`, accion === 'pausar' ? 'aviso' : 'exito')
+        if (res?.avanceAutomatico?.avanzada) {
+          notify(`¡Etapa completada! La orden ${t.ordenId} avanzó automáticamente a ${res.avanceAutomatico.nuevaEtapa}.`, 'exito')
+          if (Array.isArray(res.avanceAutomatico.nuevasTareas) && res.avanceAutomatico.nuevasTareas.length > 0) {
+            setTasks((prev) => {
+              const ids = new Set(res.avanceAutomatico.nuevasTareas.map((nt) => nt.id))
+              return [...prev.filter((nt) => !ids.has(nt.id)), ...res.avanceAutomatico.nuevasTareas]
+            })
+          }
+        } else {
+          notify(`Tarea "${t.actividad}" ${verbo}.`, accion === 'pausar' ? 'aviso' : 'exito')
+        }
       })
       .catch((err) => {
         notify(err.message || 'No se pudo actualizar la actividad.', 'error')
@@ -922,7 +1154,7 @@ export default function App() {
     api.agregarNotaActividad(id, texto, esIncidencia)
       .then((res) => {
         if (res?.modoMock) {
-          const registro = { fecha: formatearFecha(), hora: formatearHora(), texto, autor: usuario }
+          const registro = { fecha: formatearFecha(), hora: formatearHora(), texto, autor: usuario, resuelto: esIncidencia ? false : undefined }
           updateTask(id, { [tipo]: [...(t[tipo] || []), registro] })
           updateOrder(t.ordenId, {}, crearEvento(`${etiqueta} en "${t.actividad}": ${texto}`, usuario, 'Pendiente', true))
           notify(`${etiqueta} registrada.`, esIncidencia ? 'aviso' : 'exito')
@@ -934,6 +1166,42 @@ export default function App() {
       })
       .catch((err) => {
         notify(err.message || 'No se pudo guardar la nota en la actividad.', 'error')
+      })
+  }
+
+  function resolveTaskIncident(id, index, solucion) {
+    const t = tasks.find((x) => x.id === id)
+    if (!t) return Promise.reject(new Error('Actividad no encontrada.'))
+
+    return api.resolverIncidenciaActividad(id, index, solucion)
+      .then((res) => {
+        if (res?.modoMock) {
+          const incs = [...(t.incidencias || [])]
+          if (incs.length > 0) {
+            const idx = index !== undefined ? index : 0
+            incs[idx] = { ...incs[idx], resuelto: true, resuelta: true, solucion }
+          }
+          updateTask(id, { incidencias: incs })
+          updateOrder(t.ordenId, {}, crearEvento(`Incidencia técnica resuelta en "${t.actividad}": ${solucion}`, usuario, 'Completado', true))
+          notify(`Incidencia resuelta en "${t.actividad}".`, 'exito')
+          return
+        }
+        if (res?.data) updateTask(id, res.data)
+        if (res?.orden) replaceOrderFromServer(res.orden)
+        if (res?.avanceAutomatico?.avanzada) {
+          notify(`¡Incidencia resuelta! La orden ${t.ordenId} avanzó automáticamente a ${res.avanceAutomatico.nuevaEtapa}.`, 'exito')
+          if (Array.isArray(res.avanceAutomatico.nuevasTareas) && res.avanceAutomatico.nuevasTareas.length > 0) {
+            setTasks((prev) => {
+              const ids = new Set(res.avanceAutomatico.nuevasTareas.map((nt) => nt.id))
+              return [...prev.filter((nt) => !ids.has(nt.id)), ...res.avanceAutomatico.nuevasTareas]
+            })
+          }
+        } else {
+          notify(`Incidencia resuelta en "${t.actividad}".`, 'exito')
+        }
+      })
+      .catch((err) => {
+        notify(err.message || 'No se pudo resolver la incidencia.', 'error')
       })
   }
 
@@ -983,7 +1251,17 @@ export default function App() {
         }
         if (res?.data) updateTask(taskId, res.data)
         if (res?.orden) replaceOrderFromServer(res.orden)
-        notify(`Actividad "${t?.actividad || ''}" actualizada a ${nuevoEstado} (${nuevoPct}%).`)
+        if (res?.avanceAutomatico?.avanzada) {
+          notify(`¡Etapa completada! La orden ${t?.ordenId} avanzó automáticamente a ${res.avanceAutomatico.nuevaEtapa}.`, 'exito')
+          if (Array.isArray(res.avanceAutomatico.nuevasTareas) && res.avanceAutomatico.nuevasTareas.length > 0) {
+            setTasks((prev) => {
+              const ids = new Set(res.avanceAutomatico.nuevasTareas.map((nt) => nt.id))
+              return [...prev.filter((nt) => !ids.has(nt.id)), ...res.avanceAutomatico.nuevasTareas]
+            })
+          }
+        } else {
+          notify(`Actividad "${t?.actividad || ''}" actualizada a ${nuevoEstado} (${nuevoPct}%).`)
+        }
       })
       .catch((err) => {
         notify(err.message || 'No se pudo actualizar el avance de la actividad.', 'error')
@@ -1372,8 +1650,8 @@ export default function App() {
           // RF-07: Validación estricta de aprobación documentada en la orden original
           const ultimaVer = ordenOriginal.versiones?.[ordenOriginal.versiones.length - 1]
           const tieneAprobacionOriginal =
-            ordenOriginal.disenoEstado === 'Aprobado' &&
-            Boolean(ultimaVer && (ultimaVer.estado === 'Aprobada' || ultimaVer.estado_aprobacion === 'aprobado'))
+            ['Aprobado', 'Aprobado por el cliente', 'Listo para impresión'].includes(ordenOriginal.disenoEstado) &&
+            Boolean(ultimaVer && (ultimaVer.estado === 'Aprobada' || ultimaVer.estado === 'Aprobado por el cliente' || ultimaVer.estado_aprobacion === 'aprobado'))
 
           const eventoAprobado = (ordenOriginal.historial || []).find((h) =>
             (h.actividad || h.accion_texto || '').toLowerCase().includes('diseño aprobado') ||
@@ -1485,7 +1763,7 @@ export default function App() {
   // ---------------- Comunicaciones ----------------
   function sendCommMessage(commId, nuevoMensaje) {
     const comm = comms.find((c) => c.id === commId)
-    api.enviarMensajeComunicacion(commId, nuevoMensaje)
+    return api.enviarMensajeComunicacion(commId, nuevoMensaje)
       .then((res) => {
         if (res?.modoMock) {
           setComms((prev) =>
@@ -1502,17 +1780,127 @@ export default function App() {
             )
           }
           notify(`Respuesta enviada a ${comm?.cliente || 'cliente'}.`)
-          return
+          return res
         }
         if (res?.data) {
           setComms((prev) => prev.map((c) => (c.id === commId ? res.data : c)))
         }
         if (res?.orden) replaceOrderFromServer(res.orden)
-        notify(`Respuesta enviada a ${comm?.cliente || 'cliente'}.`)
+        notify(res?.mensaje || `Respuesta enviada a ${comm?.cliente || 'cliente'}.`)
+        return res
       })
       .catch((err) => {
+        if (err?.data) {
+          setComms((prev) => prev.map((c) => (c.id === commId ? err.data : c)))
+        }
         notify(err.message || 'No se pudo enviar el mensaje.', 'error')
+        throw err
       })
+  }
+
+  function retryCommMessage(commId, mensajeId) {
+    return api.reintentarMensajeComunicacion(commId, mensajeId)
+      .then((res) => {
+        if (res?.data) {
+          setComms((prev) => prev.map((c) => (c.id === commId ? res.data : c)))
+        }
+        if (res?.orden) replaceOrderFromServer(res.orden)
+        notify(res?.mensaje || 'Reintento exitoso.')
+        return res
+      })
+      .catch((err) => {
+        if (err?.data) {
+          setComms((prev) => prev.map((c) => (c.id === commId ? err.data : c)))
+        }
+        notify(err.message || 'Fallo al reintentar el envío del correo.', 'error')
+        throw err
+      })
+  }
+
+  function sendNewEmail(datos) {
+    return api.enviarNuevoCorreo(datos)
+      .then((res) => {
+        if (res?.data) {
+          setComms((prev) => [res.data, ...prev.filter((c) => c.id !== res.data.id)])
+        }
+        notify(res?.mensaje || 'Correo enviado exitosamente.', 'exito')
+        return res
+      })
+      .catch((err) => {
+        if (err?.data) {
+          setComms((prev) => [err.data, ...prev.filter((c) => c.id !== err.data.id)])
+        }
+        notify(err.message || 'No se pudo enviar el correo.', 'error')
+        throw err
+      })
+  }
+
+  function sendNewWhatsApp(datos) {
+    return api.enviarNuevoWhatsApp(datos)
+      .then((res) => {
+        if (res?.data) {
+          setComms((prev) => [res.data, ...prev.filter((c) => c.id !== res.data.id)])
+        }
+        notify(res?.mensaje || 'Mensaje de WhatsApp enviado.', 'exito')
+        return res
+      })
+      .catch((err) => {
+        if (err?.data) {
+          setComms((prev) => [err.data, ...prev.filter((c) => c.id !== err.data.id)])
+        }
+        notify(err.message || 'No se pudo enviar el WhatsApp.', 'error')
+        throw err
+      })
+  }
+
+  function syncComms() {
+    return api.sincronizarComunicaciones()
+      .catch(() => ({}))
+      .then((res) => {
+        return api.listarComunicaciones().then((lista) => {
+          if (Array.isArray(lista)) {
+            setComms(lista)
+          }
+          return res
+        })
+      })
+      .catch((err) => {
+        console.warn('[SyncComms] Error al sincronizar:', err.message)
+      })
+  }
+
+  function syncCommsSilently() {
+    return api.listarComunicaciones()
+      .then((lista) => {
+        if (Array.isArray(lista)) {
+          setComms(lista)
+        }
+        return lista
+      })
+      .catch(() => {})
+  }
+
+  function markCommAsRead(commId) {
+    if (!commId) return
+    setComms((prev) =>
+      prev.map((c) =>
+        c.id === commId
+          ? {
+              ...c,
+              tieneNoLeidos: false,
+              noLeidos: 0,
+              mensajes: c.mensajes.map((m) => (m.de === 'cliente' ? { ...m, leido: true } : m)),
+            }
+          : c
+      )
+    )
+    api.marcarConversacionLeida(commId)
+      .then((res) => {
+        if (res?.data) {
+          setComms((prev) => prev.map((c) => (c.id === commId ? res.data : c)))
+        }
+      })
+      .catch(() => {})
   }
 
   const actions = {
@@ -1527,17 +1915,26 @@ export default function App() {
     registerDelivery,
     designNewVersion,
     designSend,
+    designCommercialManage,
+    designReleasePrint,
     designApprove,
     designReject,
     createTask,
     taskAction,
     addTaskNote,
+    resolveTaskIncident,
     assignTask,
     updateTaskProgress,
     addInventoryMaterial,
     addSupplier,
     registerInventoryMovement,
     sendCommMessage,
+    retryCommMessage,
+    sendNewEmail,
+    sendNewWhatsApp,
+    syncComms,
+    syncCommsSilently,
+    markCommAsRead,
     createCase,
     updateCase,
     closeOrder,
@@ -1554,6 +1951,12 @@ export default function App() {
   const props = { data, actions, irA, role: rolActivo, order: selectedOrder, usuarioActual: currentUser }
 
   function renderPage() {
+    const permitidas = PAGINAS_AUTORIZADAS_POR_ROL[rolActivo] || ['inicio']
+    if (!permitidas.includes(page.name)) {
+      const Dashboard = dashboards[rolActivo] || CoordinatorDashboard
+      return <Dashboard {...props} />
+    }
+
     switch (page.name) {
       case 'inicio': {
         const Dashboard = dashboards[rolActivo] || CoordinatorDashboard
@@ -1574,6 +1977,7 @@ export default function App() {
       case 'historial':
         return <OrderDetail key={`h-${page.orderId}`} {...props} tabInicial="historial" />
       case 'aprobacion':
+      case 'aprobacion_disenos':
         return <DesignApproval {...props} />
       case 'disenos':
         return <DesignWorkspace key={page.orderId || 'lista'} {...props} />
@@ -1631,6 +2035,7 @@ export default function App() {
         onClose={() => setMenuAbierto(false)}
         onLogout={handleLogout}
         onToggleColapso={toggleMenu}
+        usuarioActual={currentUser}
       />
       <div className="main">
         <Header
@@ -1643,10 +2048,14 @@ export default function App() {
           onMenu={toggleMenu}
           onLogout={handleLogout}
           onToggleColapso={toggleMenu}
+          usuarioNombre={currentUser?.nombre || ''}
+          modoDemo={api.usarMock}
         />
         <main className="content">
           <div key={`${rolActivo}-${page.name}-${page.orderId || ''}`} className="page-transition">
-            {renderPage()}
+            <ErrorBoundary key={`${rolActivo}-${page.name}`}>
+              {renderPage()}
+            </ErrorBoundary>
           </div>
         </main>
       </div>

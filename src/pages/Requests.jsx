@@ -13,6 +13,11 @@ import {
   CATALOGO_ACABADOS,
   METODOS_ENTREGA,
 } from '../data/catalogos.js'
+import {
+  validarDimensiones,
+  MENSAJE_ERROR_DIMENSIONES,
+} from '../utils/validacionesDimensiones.js'
+import { calcularCotizacion } from '../utils/cotizador.js'
 
 function aFechaInput(val) {
   if (!val) return ''
@@ -55,41 +60,94 @@ function ModalCorregirSolicitud({ solicitud, onClose, onGuardar }) {
     requerimientos: solicitud.requerimientos || '',
     observaciones: solicitud.observaciones || '',
   }))
-  const [error, setError] = useState('')
+  const [errores, setErrores] = useState({})
+  const [errorGeneral, setErrorGeneral] = useState('')
   const [guardando, setGuardando] = useState(false)
+
+  function validarForm(f) {
+    const errs = {}
+    if (!f.producto || !f.producto.trim()) {
+      errs.producto = 'Selecciona o indica el tipo de producto publicitario.'
+    }
+    const cant = Number(f.cantidad)
+    if (!f.cantidad || isNaN(cant) || cant <= 0 || !Number.isInteger(cant)) {
+      errs.cantidad = 'Ingresa una cantidad válida (número entero mayor a 0, ej: 10).'
+    }
+    const dim = (f.dimensiones || '').trim()
+    if (!dim) {
+      errs.dimensiones = 'Las dimensiones del producto son obligatorias.'
+    } else if (!validarDimensiones(dim)) {
+      errs.dimensiones = MENSAJE_ERROR_DIMENSIONES
+    }
+    if (!f.material || !f.material.trim()) {
+      errs.material = 'Selecciona o indica el material técnico (ej: Lona banner 13 oz).'
+    }
+    if (!f.metodoEntrega) {
+      errs.metodoEntrega = 'Selecciona el método de entrega acordado.'
+    }
+    if (!f.fechaEntrega) {
+      errs.fechaEntrega = 'Indica la fecha de entrega acordada.'
+    }
+    if (f.presupuesto === '' || isNaN(Number(f.presupuesto)) || Number(f.presupuesto) < 0) {
+      errs.presupuesto = 'Ingresa un presupuesto comercial válido en COP (0 o más, ej: 300000).'
+    }
+    return errs
+  }
 
   function handleChange(e) {
     const { name, value } = e.target
-    setForm((prev) => ({ ...prev, [name]: value }))
-    if (error) setError('')
+    const nuevoForm = { ...form, [name]: value }
+    setForm(nuevoForm)
+
+    // Revalidación reactiva: si el campo tenía error, eliminarlo al corregir el valor
+    if (Object.keys(errores).length > 0) {
+      const errsNuevos = validarForm(nuevoForm)
+      setErrores((prev) => {
+        const actualizado = { ...prev }
+        if (!errsNuevos[name]) {
+          delete actualizado[name]
+        }
+        return actualizado
+      })
+    }
+    if (errorGeneral) setErrorGeneral('')
   }
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (!form.producto.trim()) {
-      setError('El producto es obligatorio.')
-      return
-    }
-    const cant = Number(form.cantidad)
-    if (!cant || cant <= 0 || !Number.isInteger(cant)) {
-      setError('La cantidad debe ser un número entero mayor a 0.')
-      return
-    }
-    if (!form.dimensiones.trim()) {
-      setError('Las dimensiones son obligatorias.')
-      return
-    }
-    if (!form.material.trim()) {
-      setError('El material es obligatorio.')
-      return
-    }
-    if (!form.fechaEntrega) {
-      setError('La fecha de entrega es obligatoria.')
-      return
-    }
-    const pres = Number(form.presupuesto)
-    if (isNaN(pres) || pres < 0) {
-      setError('El presupuesto debe ser un número mayor o igual a 0.')
+    const errs = validarForm(form)
+    setErrores(errs)
+
+    if (Object.keys(errs).length > 0) {
+      const mapaIds = {
+        producto: 'corr-producto',
+        cantidad: 'corr-cantidad',
+        dimensiones: 'corr-dimensiones',
+        material: 'corr-material',
+        metodoEntrega: 'corr-metodoEntrega',
+        fechaEntrega: 'corr-fechaEntrega',
+        presupuesto: 'corr-presupuesto',
+      }
+      const ordenCampos = [
+        'producto',
+        'cantidad',
+        'dimensiones',
+        'material',
+        'metodoEntrega',
+        'fechaEntrega',
+        'presupuesto',
+      ]
+      const primerCampoErr = ordenCampos.find((c) => errs[c]) || Object.keys(errs)[0]
+      const idControl = mapaIds[primerCampoErr]
+      if (idControl) {
+        setTimeout(() => {
+          const el = document.getElementById(idControl)
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            el.focus()
+          }
+        }, 50)
+      }
       return
     }
 
@@ -97,18 +155,54 @@ function ModalCorregirSolicitud({ solicitud, onClose, onGuardar }) {
       setGuardando(true)
       await onGuardar({
         producto: form.producto.trim(),
-        cantidad: cant,
+        cantidad: Number(form.cantidad),
         dimensiones: form.dimensiones.trim(),
         material: form.material.trim(),
         acabados: form.acabados.trim(),
         metodoEntrega: form.metodoEntrega,
         fechaEntrega: aFechaTexto(form.fechaEntrega),
-        presupuesto: pres,
+        presupuesto: Number(form.presupuesto),
         requerimientos: form.requerimientos.trim(),
         observaciones: form.observaciones.trim(),
       })
     } catch (err) {
-      setError(err.message || 'Error al guardar los cambios.')
+      const msg = err.message || err.error || 'Error al guardar los cambios.'
+      const msgLower = msg.toLowerCase()
+      const nuevosErr = {}
+      let campoEnfocar = null
+
+      if (msgLower.includes('dimensiones')) {
+        nuevosErr.dimensiones = msg
+        campoEnfocar = 'corr-dimensiones'
+      } else if (msgLower.includes('cantidad')) {
+        nuevosErr.cantidad = msg
+        campoEnfocar = 'corr-cantidad'
+      } else if (msgLower.includes('presupuesto')) {
+        nuevosErr.presupuesto = msg
+        campoEnfocar = 'corr-presupuesto'
+      } else if (msgLower.includes('material')) {
+        nuevosErr.material = msg
+        campoEnfocar = 'corr-material'
+      } else if (msgLower.includes('producto')) {
+        nuevosErr.producto = msg
+        campoEnfocar = 'corr-producto'
+      } else if (msgLower.includes('fecha')) {
+        nuevosErr.fechaEntrega = msg
+        campoEnfocar = 'corr-fechaEntrega'
+      } else {
+        setErrorGeneral(msg)
+      }
+
+      if (campoEnfocar) {
+        setErrores((prev) => ({ ...prev, ...nuevosErr }))
+        setTimeout(() => {
+          const el = document.getElementById(campoEnfocar)
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            el.focus()
+          }
+        }, 50)
+      }
       setGuardando(false)
     }
   }
@@ -116,6 +210,15 @@ function ModalCorregirSolicitud({ solicitud, onClose, onGuardar }) {
   const listaProductos = [...new Set([form.producto, ...CATALOGO_PRODUCTOS].filter(Boolean))]
   const listaMateriales = [...new Set([form.material, ...CATALOGO_MATERIALES].filter(Boolean))]
   const listaDimensiones = [...new Set([form.dimensiones, ...CATALOGO_DIMENSIONES].filter(Boolean))]
+
+  const cotizacionSugerida = calcularCotizacion({
+    producto: form.producto,
+    material: form.material,
+    dimensiones: form.dimensiones,
+    cantidad: form.cantidad,
+    acabados: form.acabados ? form.acabados.split(',').map((s) => s.trim()) : [],
+    incluirIva: true,
+  })
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -144,7 +247,7 @@ function ModalCorregirSolicitud({ solicitud, onClose, onGuardar }) {
           <button className="icon-btn" onClick={onClose} aria-label="Cerrar"><Icon nombre="x" /></button>
         </div>
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+        <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
           <div className="modal-body" style={{ overflowY: 'auto', flex: 1, padding: '20px 24px' }}>
             {/* Banner con motivo de devolución */}
             <div
@@ -160,9 +263,9 @@ function ModalCorregirSolicitud({ solicitud, onClose, onGuardar }) {
                 borderRadius: 'var(--radius-md)',
               }}
             >
-              <Icon nombre="alert-triangle" tamano={18} style={{ color: '#b45309', flexShrink: 0, marginTop: '2px' }} />
+              <Icon nombre="alert-triangle" tamano={18} style={{ color: 'var(--state-amber-text)', flexShrink: 0, marginTop: '2px' }} />
               <div>
-                <strong style={{ display: 'block', fontSize: '13px', color: '#b45309', marginBottom: '2px' }}>
+                <strong style={{ display: 'block', fontSize: '13px', color: 'var(--state-amber-text)', marginBottom: '2px' }}>
                   Motivo de devolución de Coordinación:
                 </strong>
                 <span style={{ fontSize: '13px', color: 'var(--text-main)', lineHeight: 1.4 }}>
@@ -171,7 +274,7 @@ function ModalCorregirSolicitud({ solicitud, onClose, onGuardar }) {
               </div>
             </div>
 
-            {error && (
+            {errorGeneral && (
               <div
                 className="ban re"
                 style={{
@@ -188,12 +291,12 @@ function ModalCorregirSolicitud({ solicitud, onClose, onGuardar }) {
                 }}
               >
                 <Icon nombre="alert-triangle" tamano={16} />
-                <span>{error}</span>
+                <span>{errorGeneral}</span>
               </div>
             )}
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
-              <div>
+              <div className={`field${errores.producto ? ' has-error' : ''}`}>
                 <label className="field-label" htmlFor="corr-producto" style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
                   Producto publicitario *
                 </label>
@@ -202,16 +305,21 @@ function ModalCorregirSolicitud({ solicitud, onClose, onGuardar }) {
                   name="producto"
                   value={form.producto}
                   onChange={handleChange}
-                  className="form-control"
+                  className={`form-control ${errores.producto ? 'is-invalid' : ''}`}
                   style={{ width: '100%', padding: '8px 10px', fontSize: '13px' }}
                 >
                   {listaProductos.map((p) => (
                     <option key={p} value={p}>{p}</option>
                   ))}
                 </select>
+                {errores.producto && (
+                  <span className="field-error" style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
+                    <Icon nombre="alert-triangle" tamano={12} /> {errores.producto}
+                  </span>
+                )}
               </div>
 
-              <div>
+              <div className={`field${errores.cantidad ? ' has-error' : ''}`}>
                 <label className="field-label" htmlFor="corr-cantidad" style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
                   Cantidad (unidades) *
                 </label>
@@ -223,14 +331,19 @@ function ModalCorregirSolicitud({ solicitud, onClose, onGuardar }) {
                   step="1"
                   value={form.cantidad}
                   onChange={handleChange}
-                  className="form-control"
+                  className={`form-control ${errores.cantidad ? 'is-invalid' : ''}`}
                   style={{ width: '100%', padding: '8px 10px', fontSize: '13px' }}
                 />
+                {errores.cantidad && (
+                  <span className="field-error" style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
+                    <Icon nombre="alert-triangle" tamano={12} /> {errores.cantidad}
+                  </span>
+                )}
               </div>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
-              <div>
+              <div className={`field${errores.dimensiones ? ' has-error' : ''}`}>
                 <label className="field-label" htmlFor="corr-dimensiones" style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
                   Dimensiones *
                 </label>
@@ -241,10 +354,20 @@ function ModalCorregirSolicitud({ solicitud, onClose, onGuardar }) {
                   list="datalist-dimensiones"
                   value={form.dimensiones}
                   onChange={handleChange}
-                  placeholder="Ej: 1.00 x 1.50 m o Medida personalizada"
-                  className="form-control"
+                  placeholder="Ej: 1.20 x 2.00 m, 9 x 5 cm o 6 x 3 m"
+                  className={`form-control ${errores.dimensiones ? 'is-invalid' : ''}`}
                   style={{ width: '100%', padding: '8px 10px', fontSize: '13px' }}
                 />
+                {!errores.dimensiones && (
+                  <small className="cell-sub" style={{ display: 'block', marginTop: '3px' }}>
+                    Formato esperado: ancho x alto (ej: 1.20 x 2.00 m, 9 x 5 cm o 6 x 3 m)
+                  </small>
+                )}
+                {errores.dimensiones && (
+                  <span className="field-error" style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
+                    <Icon nombre="alert-triangle" tamano={12} /> {errores.dimensiones}
+                  </span>
+                )}
                 <datalist id="datalist-dimensiones">
                   {listaDimensiones.map((d) => (
                     <option key={d} value={d} />
@@ -252,7 +375,7 @@ function ModalCorregirSolicitud({ solicitud, onClose, onGuardar }) {
                 </datalist>
               </div>
 
-              <div>
+              <div className={`field${errores.material ? ' has-error' : ''}`}>
                 <label className="field-label" htmlFor="corr-material" style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
                   Material *
                 </label>
@@ -261,13 +384,18 @@ function ModalCorregirSolicitud({ solicitud, onClose, onGuardar }) {
                   name="material"
                   value={form.material}
                   onChange={handleChange}
-                  className="form-control"
+                  className={`form-control ${errores.material ? 'is-invalid' : ''}`}
                   style={{ width: '100%', padding: '8px 10px', fontSize: '13px' }}
                 >
                   {listaMateriales.map((m) => (
                     <option key={m} value={m}>{m}</option>
                   ))}
                 </select>
+                {errores.material && (
+                  <span className="field-error" style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
+                    <Icon nombre="alert-triangle" tamano={12} /> {errores.material}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -294,7 +422,7 @@ function ModalCorregirSolicitud({ solicitud, onClose, onGuardar }) {
                 </datalist>
               </div>
 
-              <div>
+              <div className={`field${errores.metodoEntrega ? ' has-error' : ''}`}>
                 <label className="field-label" htmlFor="corr-metodoEntrega" style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
                   Método de entrega
                 </label>
@@ -303,18 +431,23 @@ function ModalCorregirSolicitud({ solicitud, onClose, onGuardar }) {
                   name="metodoEntrega"
                   value={form.metodoEntrega}
                   onChange={handleChange}
-                  className="form-control"
+                  className={`form-control ${errores.metodoEntrega ? 'is-invalid' : ''}`}
                   style={{ width: '100%', padding: '8px 10px', fontSize: '13px' }}
                 >
                   {METODOS_ENTREGA.map((me) => (
                     <option key={me} value={me}>{me}</option>
                   ))}
                 </select>
+                {errores.metodoEntrega && (
+                  <span className="field-error" style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
+                    <Icon nombre="alert-triangle" tamano={12} /> {errores.metodoEntrega}
+                  </span>
+                )}
               </div>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
-              <div>
+              <div className={`field${errores.fechaEntrega ? ' has-error' : ''}`}>
                 <label className="field-label" htmlFor="corr-fechaEntrega" style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
                   Fecha de entrega pactada *
                 </label>
@@ -324,12 +457,17 @@ function ModalCorregirSolicitud({ solicitud, onClose, onGuardar }) {
                   name="fechaEntrega"
                   value={form.fechaEntrega}
                   onChange={handleChange}
-                  className="form-control"
+                  className={`form-control ${errores.fechaEntrega ? 'is-invalid' : ''}`}
                   style={{ width: '100%', padding: '8px 10px', fontSize: '13px' }}
                 />
+                {errores.fechaEntrega && (
+                  <span className="field-error" style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
+                    <Icon nombre="alert-triangle" tamano={12} /> {errores.fechaEntrega}
+                  </span>
+                )}
               </div>
 
-              <div>
+              <div className={`field${errores.presupuesto ? ' has-error' : ''}`}>
                 <label className="field-label" htmlFor="corr-presupuesto" style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
                   Presupuesto comercial (COP) *
                 </label>
@@ -341,9 +479,29 @@ function ModalCorregirSolicitud({ solicitud, onClose, onGuardar }) {
                   value={form.presupuesto}
                   onChange={handleChange}
                   placeholder="Ej: 300000"
-                  className="form-control"
+                  className={`form-control ${errores.presupuesto ? 'is-invalid' : ''}`}
                   style={{ width: '100%', padding: '8px 10px', fontSize: '13px' }}
                 />
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '4px', fontSize: '11px' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>
+                    Cálculo sugerido en vivo: <strong>{formatoCOP(cotizacionSugerida.total)}</strong>
+                  </span>
+                  {Number(form.presupuesto) !== cotizacionSugerida.total && (
+                    <button
+                      type="button"
+                      onClick={() => setForm((prev) => ({ ...prev, presupuesto: cotizacionSugerida.total }))}
+                      className="btn btn-ghost btn-sm"
+                      style={{ fontSize: '11px', padding: '1px 6px', color: 'var(--primary, #2563eb)' }}
+                    >
+                      Aplicar cálculo
+                    </button>
+                  )}
+                </div>
+                {errores.presupuesto && (
+                  <span className="field-error" style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
+                    <Icon nombre="alert-triangle" tamano={12} /> {errores.presupuesto}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -439,72 +597,109 @@ export default function Requests({ data, actions, irA, role }) {
   const columnas = [
     {
       clave: 'id',
-      titulo: 'Solicitud',
+      titulo: 'Solicitud / Cliente',
+      ancho: '175px',
       ordenar: true,
       render: (s) => (
         <div>
           <button
             className="link-inline"
             onClick={() => setDetalle(s)}
-            title="Ver detalle de la solicitud"
-            style={{ fontWeight: 600 }}
+            title="Ver detalle completo de la solicitud"
+            style={{ fontWeight: 700 }}
           >
             {s.id}
           </button>
+          <div style={{ fontWeight: 600, fontSize: '12px', marginTop: '1px' }}>{s.cliente}</div>
           {role === 'comercial' && s.estado === 'Pendiente' && (
-            <div>
-              <span className="chip-pendiente-envio" title="Esta solicitud está registrada pero todavía no ha sido enviada a Coordinación">
-                <Icon nombre="send" tamano={10} /> Pendiente de envío
+            <div style={{ marginTop: '2px' }}>
+              <span className="chip-pendiente-envio" style={{ fontSize: '10px', padding: '1px 5px' }} title="Esta solicitud está registrada pero todavía no ha sido enviada a Coordinación">
+                <Icon nombre="send" tamano={9} /> Pendiente envío
               </span>
             </div>
           )}
           {s.archivosReferencia?.length > 0 && (
-            <small className="cell-sub" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Icon nombre="paperclip" tamano={12} /> {s.archivosReferencia.length} adjunto(s)
+            <small className="cell-sub" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px', marginTop: '2px' }}>
+              <Icon nombre="paperclip" tamano={11} /> {s.archivosReferencia.length} adjunto(s)
             </small>
           )}
         </div>
       ),
     },
-    { clave: 'cliente', titulo: 'Cliente', ordenar: true },
     {
       clave: 'producto',
-      titulo: 'Producto / Especificaciones',
+      titulo: 'Producto y Especificaciones',
+      minAncho: '210px',
       render: (s) => (
-        <>
-          <strong>{s.producto}</strong>
-          <small className="cell-sub">
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+            <strong style={{ fontSize: '13px' }}>{s.producto}</strong>
+            {s.modalidadDiseno === 'cliente' ? (
+              <span className="pill" style={{ fontSize: '10px', padding: '1px 5px', color: 'var(--blue-600)' }}>
+                Arte cliente
+              </span>
+            ) : s.modalidadDiseno === 'huellas' ? (
+              <span className="pill" style={{ fontSize: '10px', padding: '1px 5px', color: 'var(--primary)' }}>
+                Diseño Huellas
+              </span>
+            ) : null}
+          </div>
+          <small className="cell-sub" style={{ display: 'block', marginTop: '2px' }}>
             {s.cantidad} uds · {s.dimensiones} · {s.material || 'Lona'}
           </small>
-        </>
+          {s.acabados && (
+            <small className="cell-sub cell-truncate" title={s.acabados} style={{ display: 'block', maxWidth: '300px' }}>
+              Acabados: {s.acabados}
+            </small>
+          )}
+        </div>
       ),
     },
     {
-      clave: 'prioridad',
-      titulo: 'Prioridad',
+      clave: 'presupuesto',
+      titulo: 'Presupuesto / Prioridad',
+      ancho: '145px',
       ordenar: true,
-      render: (s) => <StatusBadge estado={s.prioridad || 'Media'} texto={s.prioridad || 'Media'} />,
+      render: (s) => (
+        <div>
+          <strong style={{ fontSize: '12.5px' }}>{formatoCOP(s.presupuesto)}</strong>
+          <div style={{ marginTop: '3px' }}>
+            <StatusBadge estado={s.prioridad || 'Media'} texto={s.prioridad || 'Media'} />
+          </div>
+        </div>
+      ),
     },
-    { clave: 'presupuesto', titulo: 'Presupuesto', ordenar: true, render: (s) => formatoCOP(s.presupuesto) },
-    { clave: 'fechaEntrega', titulo: 'Entrega' },
+    {
+      clave: 'fechaEntrega',
+      titulo: 'Entrega',
+      ancho: '105px',
+      ordenar: true,
+      render: (s) => (
+        <span style={{ fontSize: '12px', fontWeight: 500 }}>
+          {s.fechaEntrega}
+        </span>
+      ),
+    },
     {
       clave: 'estado',
       titulo: 'Estado',
+      ancho: '145px',
       render: (s) => (
         <div>
           <StatusBadge estado={s.estado} />
           {role === 'comercial' && s.estado === 'Pendiente' && (
             <small
               className="cell-sub text-amber"
-              style={{ display: 'flex', alignItems: 'center', gap: '3px', fontWeight: 600, marginTop: '3px' }}
+              style={{ display: 'flex', alignItems: 'center', gap: '3px', fontWeight: 600, marginTop: '3px', fontSize: '11px' }}
             >
-              <Icon nombre="clock" tamano={11} /> No enviada a Coordinación
+              <Icon nombre="clock" tamano={10} /> Sin enviar
             </small>
           )}
           {s.motivoRechazo && (
             <small
-              className={`cell-sub ${s.estado === 'Devuelta para corrección' ? 'text-amber' : 'text-rojo'}`}
-              style={{ display: 'block', maxWidth: '220px', whiteSpace: 'normal' }}
+              className={`cell-sub cell-truncate ${s.estado === 'Devuelta para corrección' ? 'text-amber' : 'text-rojo'}`}
+              style={{ display: 'block', maxWidth: '140px', marginTop: '2px', fontSize: '11px' }}
+              title={s.motivoRechazo}
             >
               {s.motivoRechazo}
             </small>
@@ -515,30 +710,31 @@ export default function Requests({ data, actions, irA, role }) {
     {
       clave: 'acciones',
       titulo: 'Acciones',
+      ancho: '160px',
       render: (s) => (
         <div className="row-actions" style={{ flexWrap: 'wrap', gap: '4px' }}>
           <button
-            className="btn btn-soft btn-sm"
+            className="btn btn-soft btn-xs"
             onClick={() => setDetalle(s)}
-            title="Ver ficha completa de la solicitud"
+            title="Ver detalle completo de la solicitud"
           >
-            <Icon nombre="eye" tamano={13} /> Detalle
+            <Icon nombre="eye" tamano={12} /> Detalle
           </button>
 
           {role === 'comercial' && s.estado === 'Pendiente' && (
             <button
-              className="btn btn-primary btn-sm btn-enviar-destacado"
+              className="btn btn-primary btn-xs btn-enviar-destacado"
               onClick={() => actions.sendToValidation(s.id)}
-              title="Enviar esta solicitud a Coordinación para iniciar validación técnica"
+              title="Enviar esta solicitud a Coordinación para validación técnica"
             >
-              <Icon nombre="send" tamano={13} /> Enviar a Coordinación
+              <Icon nombre="send" tamano={12} /> Enviar
             </button>
           )}
 
           {role === 'comercial' && s.estado === 'Devuelta para corrección' && (
             <>
               <button
-                className="btn btn-warning btn-sm"
+                className="btn btn-warning btn-xs"
                 onClick={() => setCorrigiendo(s)}
                 title="Editar y corregir datos de la solicitud devuelta"
                 style={{
@@ -548,14 +744,14 @@ export default function Requests({ data, actions, irA, role }) {
                   fontWeight: 600,
                 }}
               >
-                <Icon nombre="edit" tamano={13} /> Corregir solicitud
+                <Icon nombre="edit" tamano={12} /> Corregir
               </button>
               <button
-                className="btn btn-soft btn-sm"
+                className="btn btn-soft btn-xs"
                 onClick={() => actions.sendToValidation(s.id)}
                 title="Reenviar solicitud a validación técnica"
               >
-                <Icon nombre="send" tamano={13} /> Reenviar
+                <Icon nombre="send" tamano={12} /> Reenviar
               </button>
             </>
           )}
@@ -563,14 +759,14 @@ export default function Requests({ data, actions, irA, role }) {
           {esCoordinador && s.estado === 'En validación' && (
             <>
               <button
-                className="btn btn-success btn-sm"
+                className="btn btn-success btn-xs"
                 onClick={() => setValidando(s)}
                 title="Revisar y generar orden de producción"
               >
-                <Icon nombre="check" tamano={13} /> Validar
+                <Icon nombre="check" tamano={12} /> Validar
               </button>
               <button
-                className="btn btn-soft btn-sm"
+                className="btn btn-soft btn-xs"
                 onClick={() => setDevolviendo(s.id)}
                 title="Devolver al comercial para corrección de datos"
                 style={{ color: 'var(--state-amber-text)' }}
@@ -578,7 +774,7 @@ export default function Requests({ data, actions, irA, role }) {
                 Devolver
               </button>
               <button
-                className="btn btn-danger btn-sm"
+                className="btn btn-danger btn-xs"
                 onClick={() => setRechazando(s.id)}
                 title="Rechazar definitivamente la solicitud"
               >
@@ -589,11 +785,11 @@ export default function Requests({ data, actions, irA, role }) {
 
           {s.ordenId && (
             <button
-              className="btn btn-soft btn-sm"
+              className="btn btn-soft btn-xs"
               onClick={() => irA('detalle', s.ordenId)}
               title={`Ir al detalle de la orden ${s.ordenId}`}
             >
-              <Icon nombre="clipboard" tamano={13} /> Ver {s.ordenId}
+              <Icon nombre="clipboard" tamano={12} /> OP {s.ordenId}
             </button>
           )}
         </div>
@@ -686,9 +882,9 @@ export default function Requests({ data, actions, irA, role }) {
                     borderRadius: 'var(--radius-md)',
                   }}
                 >
-                  <Icon nombre="alert-triangle" tamano={18} style={{ color: '#b45309', flexShrink: 0, marginTop: '2px' }} />
+                  <Icon nombre="alert-triangle" tamano={18} style={{ color: 'var(--state-amber-text)', flexShrink: 0, marginTop: '2px' }} />
                   <div style={{ flex: 1 }}>
-                    <strong style={{ display: 'block', fontSize: '13px', marginBottom: '3px', color: '#b45309' }}>
+                    <strong style={{ display: 'block', fontSize: '13px', marginBottom: '3px', color: 'var(--state-amber-text)' }}>
                       Pendiente de envío a Coordinación
                     </strong>
                     <span style={{ fontSize: '13px', color: 'var(--text-main)', lineHeight: 1.4, display: 'block' }}>
@@ -720,7 +916,7 @@ export default function Requests({ data, actions, irA, role }) {
                 <div><dt>Fecha de entrega pactada</dt><dd>{detalle.fechaEntrega}</dd></div>
                 <div><dt>Presupuesto comercial</dt><dd>{formatoCOP(detalle.presupuesto)}</dd></div>
                 <div><dt>Requerimientos técnicos</dt><dd>{detalle.requerimientos || 'Sin requerimientos especiales'}</dd></div>
-                <div><dt>Observaciones</dt><dd>{detalle.observaciones || 'Sin observaciones registradas'}</dd></div>
+                <div><dt>Observaciones</dt><dd style={{ whiteSpace: 'pre-wrap' }}>{detalle.observaciones || 'Sin observaciones registradas'}</dd></div>
                 {detalle.ordenId && (
                   <div>
                     <dt>Orden de producción generada</dt>
@@ -772,6 +968,59 @@ export default function Requests({ data, actions, irA, role }) {
                   </div>
                 </div>
               )}
+
+              {/* COMUNICACIONES VINCULADAS AL CONTEXTO (Cliente -> Solicitud -> Orden) */}
+              {['comercial', 'coordinador', 'postventa', 'gerencia'].includes(role) && (() => {
+                const commsSolicitud = (data.comms || []).filter((c) =>
+                  c.solicitudId === detalle.id ||
+                  (detalle.ordenId && c.ordenId === detalle.ordenId) ||
+                  (detalle.clienteId && c.clienteId === detalle.clienteId) ||
+                  (detalle.cliente && c.cliente === detalle.cliente)
+                )
+                return (
+                  <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid var(--border-light)' }}>
+                    <div className="row" style={{ justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <div className="lbl" style={{ marginBottom: 0 }}>
+                        Comunicaciones y acuerdos del contexto ({commsSolicitud.length})
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => {
+                          setDetalle(null)
+                          irA('comunicaciones')
+                        }}
+                      >
+                        <Icon nombre="message" tamano={13} /> Abrir Comunicaciones
+                      </button>
+                    </div>
+                    {commsSolicitud.length === 0 ? (
+                      <div className="sm mut" style={{ padding: '8px 10px', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-sm)' }}>
+                        No hay conversaciones registradas para este cliente o solicitud.
+                      </div>
+                    ) : (
+                      <div className="stack" style={{ gap: '8px' }}>
+                        {commsSolicitud.map((c) => (
+                          <div key={c.id} style={{ padding: '8px 10px', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-light)' }}>
+                            <div className="row" style={{ justifyContent: 'space-between', marginBottom: '4px' }}>
+                              <strong className="sm">{c.asunto || `Canal ${c.canal?.toUpperCase()}`}</strong>
+                              <span className="badge badge-gris">{c.cliente} → {c.solicitudId || detalle.id}{c.ordenId ? ` → ${c.ordenId}` : ''}</span>
+                            </div>
+                            <div className="stack" style={{ gap: '4px' }}>
+                              {(c.mensajes || []).slice(-3).map((m, idx) => (
+                                <div key={idx} className="xs">
+                                  <span className="mut" style={{ fontWeight: 600 }}>{m.de === 'usuario' ? c.responsable : c.cliente} ({m.hora}): </span>
+                                  {m.texto}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
             </div>
 
             <div className="modal-foot">

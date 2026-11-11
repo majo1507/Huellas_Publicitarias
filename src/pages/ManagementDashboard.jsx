@@ -32,12 +32,16 @@ export default function ManagementDashboard({ data, actions, irA }) {
 
   // Cantidades reales de solicitudes, actividades y postventa
   const totalSolicitudes = resumen?.solicitudes ? resumen.solicitudes.total : (data.requests?.length ?? 0)
-  const solicitudesAprobadas = resumen?.solicitudes ? resumen.solicitudes.aprobadas : (data.requests?.filter(s => s.estado === 'aprobada').length ?? 0)
+  const solicitudesAprobadas = resumen?.solicitudes ? resumen.solicitudes.aprobadas : (data.requests?.filter((s) => s.estado === 'aprobada' || s.estado === 'Aprobada').length ?? 0)
   const totalActividades = resumen?.actividades ? resumen.actividades.total : (data.tasks?.length ?? 0)
-  const promedioAvance = resumen?.actividades ? resumen.actividades.promedio_avance : (data.tasks?.length ? Math.round(data.tasks.reduce((s, t) => s + (t.porcentaje ?? t.pct ?? 0), 0) / data.tasks.length) : 0)
+  const promedioAvance = resumen?.actividades
+    ? resumen.actividades.promedio_avance
+    : data.tasks?.length
+    ? Math.round(data.tasks.reduce((s, t) => s + (t.porcentaje ?? t.pct ?? 0), 0) / data.tasks.length)
+    : 0
   const casosAbiertos = resumen?.postventa
-    ? (resumen.postventa.abiertos + resumen.postventa.en_tramite + resumen.postventa.en_reposicion)
-    : data.cases.filter((c) => c.estado !== 'Resuelto').length
+    ? resumen.postventa.abiertos + resumen.postventa.en_tramite + resumen.postventa.en_reposicion
+    : data.cases.filter((c) => c.estado !== 'Resuelto' && c.estado !== 'Cerrado').length
   const totalCasos = resumen?.postventa ? resumen.postventa.total : data.cases.length
 
   // Distribución real por etapas activas
@@ -67,6 +71,7 @@ export default function ManagementDashboard({ data, actions, irA }) {
   return (
     <div>
       <PageHeader
+        etiqueta="GERENCIA · TELEMETRÍA Y CUMPLIMIENTO OPERATIVO"
         titulo="Resumen general"
         subtitulo="Indicadores consolidados de producción en tiempo real desde PostgreSQL."
         icono="home"
@@ -95,7 +100,7 @@ export default function ManagementDashboard({ data, actions, irA }) {
               <Icon nombre="download" tamano={15} /> Informe de gestión (PDF)
             </button>
             <button className="btn btn-primary" onClick={() => irA('reportes')}>
-              Ver reportes detallados
+              Ver reportes detallados <Icon nombre="arrow-right" tamano={14} />
             </button>
           </div>
         }
@@ -107,20 +112,53 @@ export default function ManagementDashboard({ data, actions, irA }) {
         </Alert>
       )}
 
+      {/* 4 Indicadores ejecutivos consolidados con redirección directa */}
       <div className="kpis">
-        <StatCard titulo="Solicitudes comerciales" valor={totalSolicitudes} icono="inbox" detalle={`${solicitudesAprobadas} aprobadas`} />
-        <StatCard titulo="Total de órdenes" valor={totalOrdenes} icono="clipboard" />
-        <StatCard titulo="Órdenes activas" valor={activasCount} icono="activity" />
-        <StatCard titulo="Órdenes retrasadas" valor={retrasadasCount} icono="alert-triangle" color={retrasadasCount ? 'rojo' : 'azul'} />
-        <StatCard titulo="Órdenes entregadas" valor={entregadasCount} icono="package" color="verde" />
-        <StatCard titulo="Actividades de taller" valor={totalActividades} icono="tool" detalle={`${promedioAvance}% de avance global`} />
-        <StatCard titulo="Cumplimiento en plazo" valor={`${aTiempoPct}%`} icono="trending-up" detalle={`${enPlazoGlobal} de ${totalOrdenes} órdenes en plazo`} />
-        <StatCard titulo="Casos postventa abiertos" valor={casosAbiertos} icono="life-buoy" detalle={`${totalCasos} casos registrados`} />
+        <StatCard
+          titulo="Cumplimiento en plazo"
+          valor={`${aTiempoPct}%`}
+          icono="trending-up"
+          color={aTiempoPct >= 80 ? 'verde' : 'amarillo'}
+          detalle={`${enPlazoGlobal} de ${totalOrdenes} en plazo · ${entregadasCount} entregadas`}
+          onClick={() => irA('reportes')}
+        />
+        <StatCard
+          titulo="Órdenes activas en planta"
+          valor={activasCount}
+          icono="activity"
+          color="azul"
+          detalle={`${totalSolicitudes} solicitudes (${solicitudesAprobadas} aprobadas)`}
+          onClick={() => irA('pedidos')}
+        />
+        <StatCard
+          titulo="Órdenes retrasadas"
+          valor={retrasadasCount}
+          icono="alert-triangle"
+          color={retrasadasCount ? 'rojo' : 'azul'}
+          detalle={`${totalActividades} actividades (${promedioAvance}% avance)`}
+          onClick={() => irA('pedidos')}
+        />
+        <StatCard
+          titulo="Casos postventa abiertos"
+          valor={casosAbiertos}
+          icono="life-buoy"
+          color={casosAbiertos > 0 ? 'amarillo' : 'verde'}
+          detalle={`${totalCasos} casos PQRSF y garantías registrados`}
+          onClick={() => irA('postventa')}
+        />
       </div>
 
       {cuello.value > 0 ? (
-        <Alert tipo="aviso" titulo="Cuello de botella detectado">
-          La etapa de {cuello.label} concentra {cuello.value} órdenes activas. Conviene revisar su capacidad operativa.
+        <Alert
+          tipo="aviso"
+          titulo="Cuello de botella detectado"
+          accion={
+            <button className="btn btn-sm" onClick={() => irA('produccion')}>
+              Ver tablero de planta
+            </button>
+          }
+        >
+          La etapa de <strong>{cuello.label}</strong> concentra {cuello.value} órdenes activas. Conviene revisar su capacidad operativa.
         </Alert>
       ) : (
         <Alert tipo="exito" titulo="Flujo de producción equilibrado">
@@ -128,11 +166,29 @@ export default function ManagementDashboard({ data, actions, irA }) {
         </Alert>
       )}
 
-      <div className="grid-main">
-        <Panel titulo="Órdenes recibidas y entregadas por semana" icono="trending-up">
+      <div className="grid-main" style={{ marginTop: '18px' }}>
+        <Panel
+          titulo="Órdenes recibidas y entregadas por semana"
+          subtitulo="Cadencia semanal de entrada vs. finalización."
+          icono="trending-up"
+          accion={
+            <button className="btn btn-ghost btn-sm" onClick={() => irA('reportes')}>
+              Analítica <Icon nombre="arrow-right" tamano={13} />
+            </button>
+          }
+        >
           <ColumnChart datos={serieSemanal(data.orders)} />
         </Panel>
-        <Panel titulo="Órdenes activas por etapa" icono="layers">
+        <Panel
+          titulo="Órdenes activas por etapa"
+          subtitulo="Distribución circular en tiempo real."
+          icono="layers"
+          accion={
+            <button className="btn btn-ghost btn-sm" onClick={() => irA('produccion')}>
+              Tablero <Icon nombre="arrow-right" tamano={13} />
+            </button>
+          }
+        >
           <DonutChart
             subtitulo="activas"
             items={porEtapa.map((e, i) => ({
@@ -157,7 +213,15 @@ export default function ManagementDashboard({ data, actions, irA }) {
             </div>
           )}
         </Panel>
-        <Panel titulo="Carga por responsable" icono="users">
+        <Panel
+          titulo="Carga por responsable"
+          icono="users"
+          accion={
+            <button className="btn btn-ghost btn-sm" onClick={() => irA('tareas')}>
+              Actividades <Icon nombre="arrow-right" tamano={13} />
+            </button>
+          }
+        >
           {carga.length > 0 ? (
             <BarChart items={carga} unidad=" tareas" />
           ) : (
@@ -166,7 +230,15 @@ export default function ManagementDashboard({ data, actions, irA }) {
             </div>
           )}
         </Panel>
-        <Panel titulo="Actividad reciente" icono="activity">
+        <Panel
+          titulo="Actividad reciente"
+          icono="activity"
+          accion={
+            <button className="btn btn-ghost btn-sm" onClick={() => irA('pedidos')}>
+              Ver órdenes <Icon nombre="arrow-right" tamano={13} />
+            </button>
+          }
+        >
           <ActivityFeed orders={data.orders} limite={5} onAbrir={(id) => irA('detalle', id)} />
         </Panel>
       </div>

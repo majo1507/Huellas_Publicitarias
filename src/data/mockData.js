@@ -60,7 +60,21 @@ export const initialClients = [
 // Atajos para escribir los datos de ejemplo más corto
 // ev = evento del historial, ver = versión de diseño
 const ev = (fecha, hora, actividad, responsable, estado = 'Completado', interno = false) => ({ fecha, hora, actividad, responsable, estado, interno })
-const ver = (numero, fecha, estado, comentario = '') => ({ numero, fecha, disenador: 'María López', estado, comentario })
+const ver = (numero, fecha, estado, comentario = '', fechaEnvioTexto = null, horaEnvioTexto = null) => {
+  const enviado = estado === 'Enviada' || estado === 'Aprobada' || estado === 'Rechazada'
+  const fEnv = fechaEnvioTexto || (enviado ? fecha : null)
+  const hEnv = horaEnvioTexto || (enviado ? '10:00' : null)
+  return {
+    numero,
+    fecha,
+    disenador: 'María López',
+    estado,
+    comentario,
+    fechaEnvioTexto: fEnv,
+    horaEnvioTexto: hEnv,
+    fechaHoraEnvio: fEnv && hEnv ? `${fEnv} ${hEnv}` : null,
+  }
+}
 
 // Completa los datos que se repiten en todas las órdenes
 function crearOrden(datos) {
@@ -116,8 +130,8 @@ export const initialOrders = [
     estado: 'Aprobación', disenoEstado: 'Enviado', responsable: 'María López', presupuesto: 180000, metodoEntrega: 'Instalación en sitio',
     requerimientos: 'Incluir horario de atención.', observaciones: 'Instalar en horario de la mañana.',
     versiones: [
-      ver(1, '30/09/2026', 'Rechazada', 'Cambiar el color del logo al verde corporativo.'),
-      ver(2, '02/10/2026', 'Enviada'),
+      ver(1, '30/09/2026', 'Rechazada', 'Cambiar el color del logo al verde corporativo.', '30/09/2026', '15:30'),
+      ver(2, '02/10/2026', 'Enviada', '', '02/10/2026', '16:15'),
     ],
     historial: [
       ev('29/09/2026', '08:45', 'Solicitud creada', 'Ana Martínez'),

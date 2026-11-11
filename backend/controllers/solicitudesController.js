@@ -6,10 +6,16 @@ const {
   esUuid,
   formatearFechaHoy,
   formatearHoraAhora,
+  formatearFechaBogota,
+  formatearHoraBogota,
   resolverCliente,
   resolverUsuario,
   obtenerUsuarioPorDefecto,
 } = require('../utils/resolvers');
+const {
+  validarDimensiones,
+  MENSAJE_ERROR_DIMENSIONES,
+} = require('../utils/validacionesDimensiones');
 const { cargarOrdenesEnriquecidas } = require('./ordenesController');
 
 const ESTADO_DB_TO_UI = {
@@ -41,6 +47,12 @@ function formatearSolicitud(s) {
     fechaSolicitud: s.fecha_solicitud || formatearFechaHoy(new Date(s.created_at)),
     fechaEntrega: s.fecha_entrega || formatearFechaHoy(new Date(s.created_at)),
     presupuesto: Number(s.presupuesto || 0),
+    cotizacionTotal: Number(s.cotizacion_total || s.presupuesto || 0),
+    estadoPago: s.estado_pago || (Number(s.total_abonado) > 0 ? (Number(s.saldo_pendiente) === 0 ? 'Pagado' : 'Abono parcial') : 'Pendiente de pago'),
+    totalAbonado: Number(s.total_abonado || 0),
+    saldoPendiente: Number(s.saldo_pendiente != null ? s.saldo_pendiente : (s.cotizacion_total || s.presupuesto || 0)),
+    tipoPago: s.tipo_pago || 'sin_pago',
+    pagos: Array.isArray(s.pagos) ? s.pagos : [],
     requerimientos: s.requerimientos || '',
     observaciones: s.observaciones || '',
     estado: ESTADO_DB_TO_UI[s.estado] || 'Pendiente',
@@ -128,6 +140,14 @@ const crearSolicitud = async (req, res) => {
     return res.status(400).json({ error: 'Campos obligatorios: clienteId y producto.' });
   }
 
+  const dimVal = String(dimensiones || '').trim();
+  if (!dimVal) {
+    return res.status(400).json({ error: 'Las dimensiones son obligatorias.' });
+  }
+  if (!validarDimensiones(dimVal)) {
+    return res.status(400).json({ error: MENSAJE_ERROR_DIMENSIONES });
+  }
+
   try {
     const cli = await resolverCliente(pool, targetCliente);
     if (!cli) {
@@ -142,8 +162,11 @@ const crearSolicitud = async (req, res) => {
       ejec = await obtenerUsuarioPorDefecto(pool, 'ejecutiva');
     }
 
-    const countRes = await pool.query('SELECT COUNT(*)::int AS total FROM solicitudes');
-    const numero = String(countRes.rows[0].total + 1).padStart(4, '0');
+    // Consecutivo basado en el mayor código existente (COUNT+1 colisionaba tras borrados o códigos manuales)
+    const countRes = await pool.query(
+      "SELECT COALESCE(MAX((substring(codigo FROM '^SOL-2026-([0-9]+)$'))::int), 0) + 1 AS siguiente FROM solicitudes"
+    );
+    const numero = String(countRes.rows[0].siguiente).padStart(4, '0');
     let codigo = req.body.id || req.body.codigo || `SOL-2026-${numero}`;
 
     const checkCod = await pool.query('SELECT 1 FROM solicitudes WHERE codigo = $1', [codigo]);
@@ -152,9 +175,68 @@ const crearSolicitud = async (req, res) => {
     }
 
     const cantNum = Number(cantidad || 1);
-    const presNum = Number(presupuesto || 0);
+    const presNum = Number(req.body.cotizacionTotal != null ? req.body.cotizacionTotal : (presupuesto || 0));
+    const cotizacionTotal = presNum;
+    if (cotizacionTotal < 0 || isNaN(cotizacionTotal)) {
+      return res.status(400).json({ error: 'El valor total de la cotización no puede ser negativo.' });
+    }
+
+    const tipoPagoInput = req.body.tipoPago || 'sin_pago';
+    const rawPagos = Array.isArray(req.body.pagos) ? req.body.pagos : [];
+    const pagosValidados = [];
+
+    for (let idx = 0; idx < rawPagos.length; idx++) {
+      const p = rawPagos[idx];
+      const val = Number(p.valor);
+      if (isNaN(val) || val <= 0) {
+        return res.status(400).json({ error: `El abono #${idx + 1} debe tener un valor numérico mayor a $0.` });
+      }
+      pagosValidados.push({
+        id: p.id || `PAG-${Date.now()}-${idx + 1}`,
+        valor: val,
+        metodo: p.metodo || p.metodoPago || p.metodo_pago || 'efectivo',
+        referencia: (p.referencia || '').trim(),
+        soporte: (p.soporte || '').trim(),
+        fecha: p.fecha || formatearFechaBogota(),
+        hora: p.hora || formatearHoraBogota(),
+        registradoPor: req.usuario?.nombre_completo || ejec.nombre_completo || 'Ana Martínez',
+        tipoDocumento: 'Recibo de caja interno (No constituye factura electrónica)',
+      });
+    }
+
+    const totalAbonado = pagosValidados.reduce((acc, p) => acc + p.valor, 0);
+
+    if (totalAbonado > cotizacionTotal) {
+      return res.status(400).json({
+        error: `El total abonado ($${totalAbonado.toLocaleString('es-CO')}) no puede superar el valor total de la cotización ($${cotizacionTotal.toLocaleString('es-CO')}).`,
+      });
+    }
+
+    if (tipoPagoInput === 'completo' && cotizacionTotal > 0 && totalAbonado < cotizacionTotal) {
+      return res.status(400).json({
+        error: `Para pago completo, los abonos deben cubrir el 100% de la cotización ($${cotizacionTotal.toLocaleString('es-CO')}). Total abonado actual: $${totalAbonado.toLocaleString('es-CO')}.`,
+      });
+    }
+
+    if (tipoPagoInput === 'parcial' && totalAbonado <= 0) {
+      return res.status(400).json({
+        error: 'En modalidad de abono parcial debes registrar al menos un abono mayor a $0.',
+      });
+    }
+
+    if (tipoPagoInput === 'parcial' && cotizacionTotal > 0 && totalAbonado >= cotizacionTotal) {
+      return res.status(400).json({
+        error: 'Los abonos cubren el 100% de la cotización. Selecciona la modalidad "Pago completo".',
+      });
+    }
+
+    const saldoPendiente = Math.max(0, cotizacionTotal - totalAbonado);
+    const estadoPago = cotizacionTotal > 0 && saldoPendiente === 0 ? 'Pagado' : (totalAbonado > 0 ? 'Abono parcial' : 'Pendiente de pago');
+
     const fechaSol = formatearFechaHoy();
-    const archRef = Array.isArray(req.body.archivosReferencia) ? req.body.archivosReferencia : [];
+    const archRef = Array.isArray(req.body.archivosReferencia)
+      ? req.body.archivosReferencia
+      : (Array.isArray(req.body.archivos_referencia) ? req.body.archivos_referencia : []);
     const prioridad = req.body.prioridad || 'Media';
     const metodoEntrega = req.body.metodoEntrega || req.body.metodo_entrega || 'Domicilio';
     const acabados = Array.isArray(req.body.acabados)
@@ -167,8 +249,9 @@ const crearSolicitud = async (req, res) => {
         producto, cantidad, dimensiones, material,
         prioridad, metodo_entrega, acabados,
         fecha_solicitud, fecha_entrega, presupuesto,
-        requerimientos, observaciones, motivo_rechazo, archivos_referencia
-      ) VALUES ($1,$2,$3,$4,'pendiente',$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'',$17::jsonb)
+        requerimientos, observaciones, motivo_rechazo, archivos_referencia,
+        cotizacion_total, estado_pago, total_abonado, saldo_pendiente, tipo_pago, pagos
+      ) VALUES ($1,$2,$3,$4,'pendiente',$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'',$17::jsonb,$18,$19,$20,$21,$22,$23::jsonb)
       RETURNING id`,
       [
         codigo,
@@ -188,8 +271,38 @@ const crearSolicitud = async (req, res) => {
         requerimientos || '',
         observaciones || '',
         JSON.stringify(archRef),
+        cotizacionTotal,
+        estadoPago,
+        totalAbonado,
+        saldoPendiente,
+        tipoPagoInput,
+        JSON.stringify(pagosValidados),
       ]
     );
+
+    const solicitudId = ins.rows[0].id;
+
+    for (const p of pagosValidados) {
+      await pool.query(
+        `INSERT INTO pagos_registro (
+          codigo, solicitud_id, cliente_id, valor, metodo_pago, referencia, soporte_nota,
+          fecha_pago, hora_pago, registrado_por, tipo_documento
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        [
+          p.id,
+          solicitudId,
+          cli.id,
+          p.valor,
+          p.metodo || 'efectivo',
+          p.referencia || null,
+          p.soporte || null,
+          p.fecha || formatearFechaBogota(),
+          p.hora || formatearHoraBogota(),
+          ejec.id,
+          'Recibo de caja interno (No constituye factura electrónica)',
+        ]
+      );
+    }
 
     const data = await consultarSolicitudCompleta(pool, ins.rows[0].id);
     res.status(201).json({
@@ -207,6 +320,12 @@ const enviarAValidacion = async (req, res) => {
     const sol = await resolverSolicitud(pool, req.params.id);
     if (!sol) {
       return res.status(404).json({ error: `Solicitud ${req.params.id} no encontrada.` });
+    }
+
+    if (!['pendiente', 'devuelta'].includes(sol.estado)) {
+      return res.status(409).json({
+        error: `La solicitud ${sol.codigo || sol.id} ya se encuentra en estado '${sol.estado}' y no puede enviarse nuevamente a validación.`,
+      });
     }
 
     await pool.query(
@@ -235,6 +354,12 @@ const devolverSolicitud = async (req, res) => {
     const sol = await resolverSolicitud(pool, req.params.id);
     if (!sol) {
       return res.status(404).json({ error: `Solicitud ${req.params.id} no encontrada.` });
+    }
+
+    if (['aprobada', 'convertida', 'rechazada'].includes(sol.estado)) {
+      return res.status(409).json({
+        error: `La solicitud ${sol.codigo || sol.id} ya se encuentra en estado '${sol.estado}' y no puede devolverse.`,
+      });
     }
 
     await pool.query(
@@ -293,6 +418,9 @@ const corregirSolicitud = async (req, res) => {
     const dimVal = String(dimensiones || '').trim();
     if (!dimVal) {
       return res.status(400).json({ error: 'Las dimensiones son obligatorias.' });
+    }
+    if (!validarDimensiones(dimVal)) {
+      return res.status(400).json({ error: MENSAJE_ERROR_DIMENSIONES });
     }
     const matVal = String(material || '').trim();
     if (!matVal) {
@@ -413,6 +541,12 @@ const rechazarSolicitud = async (req, res) => {
       return res.status(404).json({ error: `Solicitud ${req.params.id} no encontrada.` });
     }
 
+    if (['aprobada', 'convertida', 'rechazada'].includes(sol.estado)) {
+      return res.status(409).json({
+        error: `La solicitud ${sol.codigo || sol.id} ya se encuentra en estado '${sol.estado}' y no puede rechazarse.`,
+      });
+    }
+
     await pool.query(
       "UPDATE solicitudes SET estado = 'rechazada', motivo_rechazo = $1 WHERE id = $2",
       [String(motivo).trim(), sol.id]
@@ -473,8 +607,18 @@ const validarSolicitud = async (req, res) => {
       contacto: cliente.contacto_principal || cliente.empresa,
     };
 
-    const presNum = Number(sol.presupuesto || 0);
+    const presNum = Number(sol.presupuesto || sol.cotizacion_total || 0);
+    const cotizacionTotalOrd = Number(sol.cotizacion_total || presNum);
+    const totalAbonadoOrd = Number(sol.total_abonado || 0);
+    const saldoPendienteOrd = Number(sol.saldo_pendiente != null ? sol.saldo_pendiente : Math.max(0, cotizacionTotalOrd - totalAbonadoOrd));
+    const estadoPagoOrd = sol.estado_pago || (totalAbonadoOrd > 0 ? (saldoPendienteOrd === 0 ? 'Pagado' : 'Abono parcial') : 'Pendiente de pago');
+    const tipoPagoOrd = sol.tipo_pago || 'sin_pago';
+    const pagosOrd = Array.isArray(sol.pagos) ? sol.pagos : [];
+
     const archRef = Array.isArray(sol.archivos_referencia) ? sol.archivos_referencia : [];
+    const tieneArteCliente = archRef.some((a) => a && a.esArteCliente === true);
+    const disenoEstadoOrd = tieneArteCliente ? 'Revisión técnica de archivo' : 'En diseño';
+
     const insOrd = await client.query(
       `INSERT INTO ordenes (
         cliente_id, producto, ejecutiva_id, disenador_id, produccion_id,
@@ -482,14 +626,16 @@ const validarSolicitud = async (req, res) => {
         solicitud_codigo, cantidad, material, dimensiones, colores, acabados,
         fecha_solicitud, fecha_entrega, estado_nombre, diseno_estado,
         responsable_nombre, disenador_nombre_asignado, presupuesto, costo_interno,
-        metodo_entrega, requerimientos, observaciones, entrega_json, archivos_referencia
+        metodo_entrega, requerimientos, observaciones, entrega_json, archivos_referencia,
+        cotizacion_total, estado_pago, total_abonado, saldo_pendiente, tipo_pago, pagos
       ) VALUES (
         $1,$2,$3,$4,NULL,
         1,$17::prioridad_orden,12.50,false,
         $5,$6,$7,$8,'Por definir en pre-prensa',$18,
-        $9,$10,'Diseño','Pendiente',
+        $9,$10,'Diseño',$26,
         'María López','María López',$11,$12,
-        $19,$13,$14,$15,$16::jsonb
+        $19,$13,$14,$15,$16::jsonb,
+        $20,$21,$22,$23,$24,$25::jsonb
       ) RETURNING *`,
       [
         sol.cliente_id,
@@ -511,12 +657,51 @@ const validarSolicitud = async (req, res) => {
         prioridadOrd,
         acabadosOrd,
         metodoEntregaOrd,
+        cotizacionTotalOrd,
+        estadoPagoOrd,
+        totalAbonadoOrd,
+        saldoPendienteOrd,
+        tipoPagoOrd,
+        JSON.stringify(pagosOrd),
+        disenoEstadoOrd,
       ]
     );
 
     const nuevaOrdenRow = insOrd.rows[0];
     const codigoOrden = `OP-2026-${String(nuevaOrdenRow.id).padStart(4, '0')}`;
     await client.query('UPDATE ordenes SET codigo = $1 WHERE id = $2', [codigoOrden, nuevaOrdenRow.id]);
+
+    // Si el cliente suministró el arte, registrar la versión 1 en archivos_arte para revisión técnica
+    if (tieneArteCliente) {
+      const arteCliente = archRef.find((a) => a && a.esArteCliente === true) || archRef[0];
+      const nomArchCliente = arteCliente.nombre || 'Arte_Suministrado_Cliente.pdf';
+      const rutaArchCliente = arteCliente.url || arteCliente.dataUrl || `uploads/${nomArchCliente}`;
+      await client.query(
+        `INSERT INTO archivos_arte (
+          orden_id, numero_version, ruta_archivo, archivo_nombre, creador_id,
+          comentario, estado_aprobacion, estado_ui, fecha_texto, disenador_nombre,
+          gestion_comercial_estado, soporte_validado
+        ) VALUES ($1, 1, $2, $3, $4, $5, 'pendiente', 'Revisión técnica de archivo', $6, $7, 'en_diseno', false)`,
+        [
+          nuevaOrdenRow.id,
+          rutaArchCliente,
+          nomArchCliente,
+          disenador ? disenador.id : sol.ejecutiva_id,
+          'Arte final suministrado por el cliente. Requiere revisión técnica de pre-prensa antes de autorizar impresión.',
+          formatearFechaHoy(),
+          disenador ? disenador.nombre_completo : 'María López',
+        ]
+      );
+    }
+
+    // Asociar recibos de caja a la orden generada
+    await client.query('UPDATE pagos_registro SET orden_id = $1 WHERE solicitud_id = $2', [nuevaOrdenRow.id, sol.id]);
+
+    // Vincular hilos de comunicación del cliente sin orden asignada para mantener continuidad Cliente -> Solicitud -> Orden
+    await client.query(
+      'UPDATE canales_contacto SET orden_id = $1 WHERE cliente_id = $2 AND orden_id IS NULL',
+      [nuevaOrdenRow.id, sol.cliente_id]
+    );
 
     // Actualizar solicitud con el vínculo a la orden creada
     await client.query(
@@ -528,22 +713,32 @@ const validarSolicitud = async (req, res) => {
     const fechaHoy = formatearFechaHoy();
     const horaAhora = formatearHoraAhora();
     const codSol = sol.codigo || sol.id;
+    const actorSolId = req.usuario?.id || sol.ejecutiva_id;
+    const actorSolNombre = req.usuario?.nombre_completo || 'Equipo Comercial';
+
+    const textoEventoOrden = tieneArteCliente
+      ? `Orden generada desde solicitud ${codSol} (Modalidad: Arte suministrado por el cliente · Requiere revisión técnica de pre-prensa)`
+      : `Orden generada desde solicitud ${codSol} (Modalidad: Elaboración de diseño por Huellas)`;
+    const textoEventoTarea = tieneArteCliente
+      ? 'Actividad de pre-prensa asignada: revisión técnica de archivo a María López'
+      : 'Actividad asignada: propuesta gráfica a María López';
 
     await client.query(
       `INSERT INTO registro_sesion (orden_id, usuario_responsable_id, accion_texto, fecha_texto, hora_texto, responsable_nombre, estado_evento, interno)
        VALUES
          ($1, $2, $3, $4, $5, 'Ana Martínez', 'Completado', false),
          ($1, $6, $7, $4, $5, $8, 'Completado', false),
-         ($1, $6, 'Actividad asignada: propuesta gráfica a María López', $4, $5, $8, 'Completado', true)`,
+         ($1, $6, $9, $4, $5, $8, 'Completado', true)`,
       [
         nuevaOrdenRow.id,
         sol.ejecutiva_id,
         `Solicitud ${codSol} registrada en comercial`,
         fechaHoy,
         horaAhora,
-        coordUser.id,
-        `Orden generada desde solicitud ${codSol}`,
-        coordNombre,
+        actorSolId,
+        textoEventoOrden,
+        actorSolNombre,
+        textoEventoTarea,
       ]
     );
 

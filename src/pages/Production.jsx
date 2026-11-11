@@ -24,9 +24,14 @@ const ETAPAS_FLUJO = [
 
 export default function Production({ data, actions, irA, role }) {
   const [vistaTablero, setVistaTablero] = useState('planta') // 'planta' | 'flujo'
+  const puedeGestionarEtapas = false // El avance de etapas se controla automáticamente según ejecución de actividades y aprobaciones
 
   // Órdenes que esperan aprobación y NO pueden entrar a producción
-  const bloqueadasPorDiseno = data.orders.filter((o) => o.estado === 'Aprobación' && o.disenoEstado !== 'Aprobado')
+  const bloqueadasPorDiseno = data.orders.filter(
+    (o) =>
+      o.estado === 'Aprobación' &&
+      !['Aprobado', 'Aprobado por el cliente', 'Listo para impresión'].includes(o.disenoEstado)
+  )
 
   // En vista de planta, clasificamos las órdenes aprobadas o en producción
   function getOrdenesColumnaPlanta(colId) {
@@ -112,7 +117,7 @@ export default function Production({ data, actions, irA, role }) {
                   <p className="kanban-empty">Sin órdenes en este estado</p>
                 ) : (
                   ordenes.map((o) => {
-                    const regla = puedeAvanzar(o)
+                    const regla = puedeAvanzar(o, data.tasks)
                     const alertaColor = estaRetrasada(o) ? 'kc-rojo' : estaEnRiesgo(o) ? 'kc-amarillo' : ''
                     return (
                       <article key={o.id} className={`kanban-card ${alertaColor}`}>
@@ -151,7 +156,15 @@ export default function Production({ data, actions, irA, role }) {
                           <button className="btn btn-sm" onClick={() => irA('detalle', o.id)}>
                             <Icon nombre="eye" tamano={13} /> Ver orden
                           </button>
-                          {o.estado !== 'Entrega' && o.estado !== 'Postventa' && (
+                          {puedeGestionarEtapas && (o.estado === 'Impresión' || o.estado === 'Acabados') ? (
+                            <span
+                              className="chip chip-soft"
+                              style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 7px' }}
+                              title="Taller en ejecución: avanza automáticamente cuando el operario finalice sus actividades al 100% sin incidencias"
+                            >
+                              <Icon nombre="tool" tamano={12} /> Taller en curso
+                            </span>
+                          ) : puedeGestionarEtapas && o.estado !== 'Entrega' && o.estado !== 'Postventa' && (
                             <button
                               className={regla.bloqueada ? 'btn btn-sm btn-locked' : 'btn btn-sm btn-soft'}
                               onClick={() => actions.advanceStage(o.id)}
@@ -192,7 +205,7 @@ export default function Production({ data, actions, irA, role }) {
                   <p className="kanban-empty">Sin órdenes</p>
                 ) : (
                   ordenes.map((o) => {
-                    const regla = puedeAvanzar(o)
+                    const regla = puedeAvanzar(o, data.tasks)
                     const alertaColor = estaRetrasada(o) ? 'kc-rojo' : estaEnRiesgo(o) ? 'kc-amarillo' : ''
                     return (
                       <article key={o.id} className={`kanban-card ${alertaColor}`}>
@@ -219,7 +232,15 @@ export default function Production({ data, actions, irA, role }) {
 
                         <div className="row-actions">
                           <button className="btn btn-sm" onClick={() => irA('detalle', o.id)}>Ver</button>
-                          {etapa.id !== 'Entrega' && (
+                          {puedeGestionarEtapas && (o.estado === 'Impresión' || o.estado === 'Acabados') ? (
+                            <span
+                              className="chip chip-soft"
+                              style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 7px' }}
+                              title="Taller en ejecución: avanza automáticamente cuando el operario finalice sus actividades al 100% sin incidencias"
+                            >
+                              <Icon nombre="tool" tamano={12} /> Taller en curso
+                            </span>
+                          ) : puedeGestionarEtapas && etapa.id !== 'Entrega' && (
                             <button
                               className={regla.bloqueada ? 'btn btn-sm btn-locked' : 'btn btn-sm btn-soft'}
                               onClick={() => actions.advanceStage(o.id)}

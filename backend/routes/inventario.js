@@ -9,15 +9,15 @@ const { verificarToken, verificarRol } = require('../middleware/auth');
 router.use(verificarToken);
 
 router.get('/', inventarioController.listarInventario);
-router.post('/', verificarRol('coord', 'gerente'), inventarioController.crearMaterial);
+router.post('/', verificarRol('coord'), inventarioController.crearMaterial);
 
 router.get('/proveedores', inventarioController.listarProveedores);
-router.post('/proveedores', verificarRol('coord', 'gerente'), inventarioController.crearProveedor);
+router.post('/proveedores', verificarRol('coord'), inventarioController.crearProveedor);
 
 router.get('/movimientos', inventarioController.listarMovimientos);
-router.post('/movimientos', verificarRol('coord', 'produccion', 'gerente'), inventarioController.registrarMovimiento);
+router.post('/movimientos', verificarRol('coord', 'produccion'), inventarioController.registrarMovimiento);
 
-router.post('/reservar', verificarRol('coord', 'gerente'), inventarioController.reservarMateriales);
-router.post('/liberar/:orden_id', verificarRol('coord', 'gerente'), inventarioController.liberarReservas);
+router.post('/reservar', verificarRol('coord'), inventarioController.reservarMateriales);
+router.post('/liberar/:orden_id', verificarRol('coord'), inventarioController.liberarReservas);
 
 module.exports = router;

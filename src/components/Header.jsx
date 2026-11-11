@@ -3,6 +3,7 @@ import { ROLES, normalizarRol, obtenerConfigRol } from '../data/roles.js'
 import Icon from './Icon.jsx'
 import StatusBadge from './StatusBadge.jsx'
 import ThemeToggle from './ThemeToggle.jsx'
+import { construirNotificaciones } from '../utils/notificaciones.js'
 
 const ICONO_AVISO = { aviso: 'alert-triangle', error: 'alert-circle', info: 'info' }
 
@@ -11,12 +12,12 @@ const TITULOS_ORDEN = { detalle: 'Detalle de la orden', aprobacion: 'Aprobación
 
 // Barra superior: botón de menú lateral, título de la pantalla, buscador global, notificaciones y rol activo.
 // El selector de rol vive ahora en la barra lateral (Contexto de trabajo).
-export default function Header({ role, current, data, irA, colapsado = false, abierto = false, onMenu, onLogout }) {
+export default function Header({ role, current, data, irA, colapsado = false, abierto = false, onMenu, onLogout, usuarioNombre = '', modoDemo = false }) {
   const rolClave = normalizarRol(role)
   const actual = obtenerConfigRol(rolClave)
   const [busqueda, setBusqueda] = useState('')
   const [verNotif, setVerNotif] = useState(false)
-  const [leidas, setLeidas] = useState({}) // { rol: true } cuando ya se marcaron como leídas
+  const [leidas, setLeidas] = useState({}) // { idAviso: textoLeído } — un aviso vuelve a contar si su texto cambia
   const caja = useRef(null)
 
   // Título y módulo de la pantalla actual (las pantallas de orden cuelgan de "Órdenes" o "Inicio")
@@ -42,7 +43,11 @@ export default function Header({ role, current, data, irA, colapsado = false, ab
     ? ordenesVisibles.filter((o) => `${o.id} ${o.cliente} ${o.producto}`.toLowerCase().includes(q)).slice(0, 6)
     : []
 
-  const sinLeer = leidas[rolClave] ? 0 : actual.notificaciones.length
+  // Avisos calculados a partir de los datos cargados (no hay mensajería externa)
+  const notificaciones = construirNotificaciones(rolClave, data, usuarioNombre)
+  const esLeida = (n) => leidas[n.id] === n.texto
+  const sinLeer = notificaciones.filter((n) => !esLeida(n)).length
+  const marcarLeidas = () => setLeidas((prev) => ({ ...prev, ...Object.fromEntries(notificaciones.map((n) => [n.id, n.texto])) }))
 
   function abrirOrden(id) {
     irA(actual.ordenPage, id)
@@ -112,10 +117,11 @@ export default function Header({ role, current, data, irA, colapsado = false, ab
           <div className="dropdown notif-panel">
             <div className="dropdown-head">
               <strong>Notificaciones</strong>
-              {sinLeer > 0 && <button className="link-inline" onClick={() => setLeidas({ ...leidas, [rolClave]: true })}>Marcar como leídas</button>}
+              {sinLeer > 0 && <button className="link-inline" onClick={marcarLeidas}>Marcar como leídas</button>}
             </div>
-            {actual.notificaciones.map((n) => (
-              <button key={n.texto} className={leidas[rolClave] ? 'notif-item' : 'notif-item unread'} onClick={() => abrirNotificacion(n)}>
+            {notificaciones.length === 0 && <p className="dropdown-empty">Sin pendientes para tu rol.</p>}
+            {notificaciones.map((n) => (
+              <button key={n.id} className={esLeida(n) ? 'notif-item' : 'notif-item unread'} onClick={() => abrirNotificacion(n)}>
                 <span className={`notif-icon notif-${n.tipo}`}><Icon nombre={ICONO_AVISO[n.tipo]} tamano={16} /></span>
                 <span>{n.texto}</span>
               </button>
@@ -124,6 +130,12 @@ export default function Header({ role, current, data, irA, colapsado = false, ab
         )}
       </div>
 
+      {modoDemo && (
+        <span className="demo-tag" role="status" title="Sin conexión con el servidor: los datos son de demostración y se guardan solo en este navegador.">
+          <Icon nombre="alert-triangle" tamano={14} />
+          Modo demostración
+        </span>
+      )}
       <span className="role-tag" title="Vista actual (se cambia desde la barra lateral)">
         <Icon nombre="user" tamano={14} />
         {actual.nombre}

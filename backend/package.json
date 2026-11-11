@@ -8,9 +8,11 @@
     "dev": "nodemon index.js",
     "migrate:safe": "node database/migrate-safe.js",
     "seed:safe": "node database/seed-safe.js",
-    "test:integration": "node tests/integration.test.mjs",
+    "test:integration": "node tests/flujo_integral_presentacion.test.mjs",
     "migrate": "node database/migrate.js",
-    "seed": "node database/seed.js"
+    "seed": "node database/seed.js",
+    "test:all": "node tests/run-all.mjs",
+    "test:legacy": "node tests/integration.test.mjs"
   },
   "keywords": [
     "huellas",

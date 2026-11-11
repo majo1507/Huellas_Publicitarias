@@ -251,14 +251,19 @@ const obtenerMetricas = async (req, res) => {
       LIMIT 5;
     `);
 
-    // 12. Ciclo promedio de orden en días (para órdenes finalizadas con fecha verificable)
+    // 12. Ciclo promedio de orden en días: desde la fecha de solicitud hasta el cierre formal.
+    // updated_at no se actualiza en cada cambio, por lo que no sirve como fecha de cierre.
     const cicloRes = await pool.query(`
       SELECT
-        ROUND(AVG(EXTRACT(EPOCH FROM (updated_at - created_at)) / 86400)::numeric, 1)::float AS ciclo_promedio
+        ROUND(AVG(TO_DATE(fecha_cierre, 'DD/MM/YYYY') - TO_DATE(fecha_solicitud, 'DD/MM/YYYY'))::numeric, 1)::float AS ciclo_promedio,
+        COUNT(*)::int AS ordenes_medidas
       FROM ordenes
-      WHERE etapa >= 8 AND updated_at > created_at;
+      WHERE etapa >= 8
+        AND fecha_cierre ~ '^[0-9]{2}/[0-9]{2}/[0-9]{4}$'
+        AND fecha_solicitud ~ '^[0-9]{2}/[0-9]{2}/[0-9]{4}$'
+        AND TO_DATE(fecha_cierre, 'DD/MM/YYYY') >= TO_DATE(fecha_solicitud, 'DD/MM/YYYY');
     `);
-    const cicloPromedioDias = cicloRes.rows[0]?.ciclo_promedio != null && cicloRes.rows[0]?.ciclo_promedio > 0
+    const cicloPromedioDias = cicloRes.rows[0]?.ordenes_medidas > 0 && cicloRes.rows[0]?.ciclo_promedio != null
       ? cicloRes.rows[0].ciclo_promedio
       : null;
 

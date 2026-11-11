@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import StatusBadge from '../components/StatusBadge.jsx'
 import Alert from '../components/Alert.jsx'
+import PageHeader from '../components/PageHeader.jsx'
+import Icon from '../components/Icon.jsx'
 import AfterSalesDashboard from './AfterSalesDashboard.jsx'
 import { CLIENTE_ACTUAL } from '../data/roles.js'
 import {
@@ -181,14 +183,11 @@ export default function AfterSales(props) {
 
   return (
     <div>
-      <div className="page-header">
-        <div>
-          <h1>Atención Postventa, PQRSF y Garantías</h1>
-          <p>
-            Califica los pedidos recibidos, radica peticiones, quejas, reclamos, sugerencias o felicitaciones, y gestiona garantías técnicas
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        titulo="Atención postventa, PQRSF y garantías"
+        subtitulo="Califica pedidos recibidos, radica PQRSF y gestiona garantías técnicas."
+        icono="life-buoy"
+      />
 
       {/* Selector de las 3 secciones independientes */}
       <div className="filter-bar" style={{ marginBottom: 18 }}>
@@ -450,39 +449,55 @@ export default function AfterSales(props) {
               <table>
                 <thead>
                   <tr>
-                    <th>Caso</th>
-                    <th>Tipo</th>
-                    <th>Orden</th>
+                    <th style={{ width: '110px' }}>Caso</th>
+                    <th style={{ width: '150px' }}>Tipo y Orden</th>
                     <th>Motivo y Descripción</th>
-                    <th>Estado</th>
-                    <th>Respuesta / Solución</th>
-                    <th>Historial</th>
+                    <th style={{ width: '130px' }}>Estado</th>
+                    <th style={{ width: '200px' }}>Respuesta / Solución</th>
+                    <th style={{ width: '100px' }}>Detalle</th>
                   </tr>
                 </thead>
                 <tbody>
                   {misPqrsf.map((c) => (
                     <tr key={c.id}>
-                      <td className="mono">{c.id}</td>
-                      <td>
-                        <StatusBadge estado={c.subtipo || c.tipo} />
+                      <td className="mono">
+                        <button
+                          className="link-inline"
+                          onClick={() => setCasoHistorial(c)}
+                          title="Ver detalle e historial del caso"
+                          style={{ fontWeight: 700 }}
+                        >
+                          {c.id}
+                        </button>
                       </td>
                       <td>
-                        <a className="link" onClick={() => irA('detalle', c.ordenId)}>
-                          {c.ordenId}
-                        </a>
+                        <StatusBadge estado={c.subtipo || c.tipo} />
+                        <div style={{ marginTop: 2 }}>
+                          <a className="link" onClick={() => irA('detalle', c.ordenId)}>
+                            {c.ordenId}
+                          </a>
+                        </div>
                       </td>
                       <td>
                         <div style={{ fontWeight: 600, fontSize: 12 }}>{c.motivo}</div>
-                        <div className="muted" style={{ fontSize: 12 }}>{c.descripcion}</div>
+                        <div className="muted cell-truncate" style={{ fontSize: 12, maxWidth: 260 }} title={c.descripcion}>
+                          {c.descripcion}
+                        </div>
                       </td>
                       <td>
                         <StatusBadge estado={c.estado} />
                       </td>
                       <td style={{ fontSize: 12 }}>
-                        {c.respuestaCliente || c.solucion || <span className="muted">En gestión por {c.responsable || 'Postventa'}</span>}
+                        {c.respuestaCliente || c.solucion ? (
+                          <div className="cell-truncate text-verde" style={{ maxWidth: 190, fontWeight: 500 }} title={c.respuestaCliente || c.solucion}>
+                            {c.respuestaCliente || c.solucion}
+                          </div>
+                        ) : (
+                          <span className="muted">En gestión por {c.responsable || 'Postventa'}</span>
+                        )}
                       </td>
                       <td>
-                        <button className="btn btn-ghost btn-sm" onClick={() => setCasoHistorial(c)}>
+                        <button className="btn btn-ghost btn-xs" onClick={() => setCasoHistorial(c)} title="Ver detalle completo e historial">
                           Ver ({c.historial?.length || 1})
                         </button>
                       </td>
@@ -490,7 +505,7 @@ export default function AfterSales(props) {
                   ))}
                   {misPqrsf.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="empty">
+                      <td colSpan={6} className="empty">
                         No tienes solicitudes PQRSF registradas.
                       </td>
                     </tr>
@@ -580,19 +595,27 @@ export default function AfterSales(props) {
               <table>
                 <thead>
                   <tr>
-                    <th>Código</th>
-                    <th>Orden</th>
-                    <th>Causal</th>
-                    <th>Dictamen Técnico</th>
-                    <th>Estado</th>
-                    <th>Decisión y Respuesta</th>
-                    <th>Historial</th>
+                    <th style={{ width: '110px' }}>Código</th>
+                    <th style={{ width: '120px' }}>Orden</th>
+                    <th>Causal y Descripción</th>
+                    <th style={{ width: '160px' }}>Dictamen Técnico</th>
+                    <th style={{ width: '150px' }}>Estado / Decisión</th>
+                    <th style={{ width: '100px' }}>Detalle</th>
                   </tr>
                 </thead>
                 <tbody>
                   {misGarantias.map((c) => (
                     <tr key={c.id}>
-                      <td className="mono">{c.id}</td>
+                      <td className="mono">
+                        <button
+                          className="link-inline"
+                          onClick={() => setCasoHistorial(c)}
+                          title="Ver detalle completo de garantía"
+                          style={{ fontWeight: 700 }}
+                        >
+                          {c.id}
+                        </button>
+                      </td>
                       <td>
                         <a className="link" onClick={() => irA('detalle', c.ordenId)}>
                           {c.ordenId}
@@ -600,25 +623,28 @@ export default function AfterSales(props) {
                       </td>
                       <td>
                         <div style={{ fontWeight: 600, fontSize: 12 }}>{c.motivo}</div>
-                        <div className="muted" style={{ fontSize: 11 }}>{c.descripcion}</div>
+                        <div className="muted cell-truncate" style={{ fontSize: 11, maxWidth: 260 }} title={c.descripcion}>
+                          {c.descripcion}
+                        </div>
                       </td>
                       <td>
-                        <strong>{c.dictamenGarantia || 'Pendiente de evaluación'}</strong>
+                        <StatusBadge estado={c.dictamenGarantia || 'Pendiente de evaluación'} />
                         {c.justificacionDictamen && (
-                          <div className="muted" style={{ fontSize: 11 }}>{c.justificacionDictamen}</div>
+                          <div className="muted cell-truncate" style={{ fontSize: 11, marginTop: 2, maxWidth: 155 }} title={c.justificacionDictamen}>
+                            {c.justificacionDictamen}
+                          </div>
                         )}
                       </td>
                       <td>
                         <StatusBadge estado={c.estado} />
-                      </td>
-                      <td style={{ fontSize: 12 }}>
-                        <div>{c.accionCorrectiva || 'En revisión'}</div>
-                        {c.respuestaCliente && (
-                          <div className="muted" style={{ fontSize: 11 }}>{c.respuestaCliente}</div>
+                        {c.accionCorrectiva && (
+                          <div className="cell-truncate text-verde" style={{ fontSize: 11, marginTop: 2, maxWidth: 145 }} title={c.accionCorrectiva}>
+                            {c.accionCorrectiva}
+                          </div>
                         )}
                       </td>
                       <td>
-                        <button className="btn btn-ghost btn-sm" onClick={() => setCasoHistorial(c)}>
+                        <button className="btn btn-ghost btn-xs" onClick={() => setCasoHistorial(c)} title="Ver detalle e historial">
                           Ver ({c.historial?.length || 1})
                         </button>
                       </td>
@@ -626,7 +652,7 @@ export default function AfterSales(props) {
                   ))}
                   {misGarantias.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="empty">
+                      <td colSpan={6} className="empty">
                         No tienes reclamaciones de garantía registradas.
                       </td>
                     </tr>
@@ -638,7 +664,7 @@ export default function AfterSales(props) {
         </div>
       )}
 
-      {/* Modal de historial para el cliente */}
+      {/* Modal de detalle e historial para el cliente */}
       {casoHistorial && (
         <div
           style={{
@@ -655,31 +681,52 @@ export default function AfterSales(props) {
           <div className="card" style={{ maxWidth: 640, width: '100%', maxHeight: '88vh', overflowY: 'auto' }}>
             <div className="card-header">
               <div>
-                <h2>Historial del caso {casoHistorial.id}</h2>
+                <h2>Ficha del caso {casoHistorial.id}</h2>
                 <span className="muted">
-                  Orden {casoHistorial.ordenId} · Estado actual: {casoHistorial.estado}
+                  Orden {casoHistorial.ordenId} · Tipo: {casoHistorial.categoria || casoHistorial.subtipo || casoHistorial.tipo} · Estado: {casoHistorial.estado}
                 </span>
               </div>
-              <button className="btn btn-ghost btn-sm" onClick={() => setCasoHistorial(null)}>
-                ✕
+              <button className="btn btn-ghost btn-sm" onClick={() => setCasoHistorial(null)} aria-label="Cerrar">
+                <Icon nombre="x" tamano={16} />
               </button>
             </div>
-            <ul className="timeline">
-              {(casoHistorial.historial || []).map((h, i) => (
-                <li key={i} className="tl-done">
-                  <div className="tl-dot" />
-                  <div className="tl-body">
-                    <div className="tl-title">
-                      {h.accion} <StatusBadge estado={h.estado || casoHistorial.estado} />
+
+            <div style={{ padding: '16px', background: 'var(--surface-sunken)', borderBottom: '1px solid var(--border)', display: 'grid', gap: '8px', fontSize: '13px' }}>
+              <div><strong>Motivo / Causal:</strong> {casoHistorial.motivo || 'No especificado'}</div>
+              <div><strong>Descripción registrada:</strong> <span className="muted">{casoHistorial.descripcion}</span></div>
+              {casoHistorial.dictamenGarantia && (
+                <div>
+                  <strong>Dictamen técnico:</strong> <StatusBadge estado={casoHistorial.dictamenGarantia} />
+                  {casoHistorial.justificacionDictamen && <p style={{ marginTop: '4px', fontSize: '12px' }}>{casoHistorial.justificacionDictamen}</p>}
+                </div>
+              )}
+              {(casoHistorial.solucion || casoHistorial.respuestaCliente || casoHistorial.accionCorrectiva) && (
+                <div style={{ background: 'var(--state-green-bg, #f0fdf4)', padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--state-green-border, #bbf7d0)' }}>
+                  <strong style={{ color: 'var(--state-green-text, #166534)' }}>Respuesta / Solución emitida:</strong>
+                  <div style={{ marginTop: '3px' }}>{casoHistorial.solucion || casoHistorial.respuestaCliente || casoHistorial.accionCorrectiva}</div>
+                </div>
+              )}
+            </div>
+
+            <div style={{ padding: '16px' }}>
+              <h3 style={{ fontSize: '14px', marginBottom: '12px' }}>Historial y trazabilidad</h3>
+              <ul className="timeline">
+                {(casoHistorial.historial || []).map((h, i) => (
+                  <li key={i} className="tl-done">
+                    <div className="tl-dot" />
+                    <div className="tl-body">
+                      <div className="tl-title">
+                        {h.accion} <StatusBadge estado={h.estado || casoHistorial.estado} />
+                      </div>
+                      {h.detalle && <div style={{ fontSize: 12 }}>{h.detalle}</div>}
+                      <div className="tl-meta">
+                        {h.fecha} · {h.hora || '09:00'} — {h.autor}
+                      </div>
                     </div>
-                    {h.detalle && <div style={{ fontSize: 12 }}>{h.detalle}</div>}
-                    <div className="tl-meta">
-                      {h.fecha} · {h.hora || '09:00'} — {h.autor}
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
         </div>
       )}

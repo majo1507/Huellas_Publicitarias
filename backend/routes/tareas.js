@@ -8,6 +8,7 @@ const {
   ejecutarAccionTarea,
   actualizarAvanceTarea,
   agregarNotaTarea,
+  resolverIncidenciaTarea,
 } = require('../controllers/tareasController');
 
 router.use(verificarToken);
@@ -18,5 +19,6 @@ router.patch('/:id/asignar', asociarCapacidad('tareas.asignar'), verificarRol('c
 router.patch('/:id/accion', verificarRol('produccion', 'disenador', 'coord'), ejecutarAccionTarea);
 router.patch('/:id/avance', verificarRol('produccion', 'disenador', 'coord'), actualizarAvanceTarea);
 router.post('/:id/notas', verificarRol('produccion', 'disenador', 'coord'), agregarNotaTarea);
+router.patch('/:id/resolver-incidencia', verificarRol('produccion', 'coord'), resolverIncidenciaTarea);
 
 module.exports = router;

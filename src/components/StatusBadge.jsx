@@ -16,6 +16,12 @@ const colores = {
   // Diseño
   Aprobado: 'verde',
   Aprobada: 'verde',
+  'Aprobado por el cliente': 'verde',
+  'Listo para impresión': 'verde',
+  'En diseño': 'azul',
+  'Pendiente de gestión comercial': 'amarillo',
+  'Esperando respuesta del cliente': 'amarillo',
+  'Cambios solicitados': 'rojo',
   Pendiente: 'amarillo',
   Enviado: 'amarillo',
   Enviada: 'amarillo',
@@ -23,6 +29,11 @@ const colores = {
   'Requiere cambios': 'rojo',
   Rechazada: 'rojo',
   'Devuelta para corrección': 'amarillo',
+  // Estados financieros y pagos
+  Pagado: 'verde',
+  'Abono parcial': 'amarillo',
+  'Pendiente de pago': 'rojo',
+  'Sin pago': 'gris',
   // Historial, tareas y solicitudes
   Completado: 'verde',
   'En proceso': 'azul',

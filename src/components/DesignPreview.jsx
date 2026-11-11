@@ -22,9 +22,9 @@ export default function DesignPreview({ order, version, grande = false, classNam
   const cliente = order.cliente || 'Huellas Publicidad'
   const tipo = (order.producto || '').toLowerCase()
 
-  // Sello o indicador de versión en la esquina
-  const TagVersion = () => (
-    <g className="design-vtag" transform="translate(6, 6)">
+  // Sello de versión en la esquina superior derecha (a la izquierda tapaba el encabezado del arte)
+  const TagVersion = ({ ancho = 240 }) => (
+    <g className="design-vtag" transform={`translate(${ancho - 40}, 6)`}>
       <rect width="34" height="18" rx="4" fill="#0b1a30" opacity="0.88" stroke="rgba(255,255,255,0.22)" strokeWidth="0.75" />
       <text x="17" y="13" fontSize="9.5" fontWeight="700" fill="#ffffff" textAnchor="middle" fontFamily="monospace">
         v{v}
@@ -102,7 +102,7 @@ export default function DesignPreview({ order, version, grande = false, classNam
           HUELLAS PUBLICIDAD
         </text>
 
-        <TagVersion />
+        <TagVersion ancho={160} />
       </svg>
     )
   }
@@ -143,7 +143,7 @@ export default function DesignPreview({ order, version, grande = false, classNam
         <rect x="144" y="126" width="70" height="5" rx="2" fill="#94a3b8" />
         <rect x="144" y="134" width="50" height="4" rx="2" fill="#cbd5e1" />
 
-        <TagVersion />
+        <TagVersion ancho={240} />
       </svg>
     )
   }
@@ -187,7 +187,7 @@ export default function DesignPreview({ order, version, grande = false, classNam
           {cliente}
         </text>
 
-        <TagVersion />
+        <TagVersion ancho={240} />
       </svg>
     )
   }
@@ -230,7 +230,7 @@ export default function DesignPreview({ order, version, grande = false, classNam
         Especificaciones: {order.material} · {order.dimensiones}
       </text>
 
-      <TagVersion />
+      <TagVersion ancho={240} />
     </svg>
   )
 }

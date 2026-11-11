@@ -12,7 +12,7 @@ import { ROLES } from '../data/roles.js'
 import { ACTIVIDADES_TALLER_POR_ETAPA } from '../data/catalogos.js'
 import { estaActiva } from '../utils/format.js'
 
-export default function Tasks({ data, actions, irA, role }) {
+export default function Tasks({ data, actions, irA, role, usuarioActual: sesion }) {
   const [pestaña, setPestaña] = useState('todas')
   const [tareaSeleccionada, setTareaSeleccionada] = useState(null)
   const [nuevoEstado, setNuevoEstado] = useState('')
@@ -21,6 +21,7 @@ export default function Tasks({ data, actions, irA, role }) {
 
   // Modal HU-15: Registro de incidencia
   const [modalIncidencia, setModalIncidencia] = useState(null)
+  const [modalResolverInc, setModalResolverInc] = useState(null)
 
   // Modal para crear nueva actividad (Coordinador / Gerencia)
   const [modalNuevaActividad, setModalNuevaActividad] = useState(false)
@@ -34,9 +35,12 @@ export default function Tasks({ data, actions, irA, role }) {
   const [fechaNuevaAct, setFechaNuevaAct] = useState('12/10/2026')
   const [errNuevaAct, setErrNuevaAct] = useState('')
 
-  const usuarioActual = ROLES[role]?.usuario?.nombre || 'Carlos Gómez'
+  // Persona autenticada; el nombre de ejemplo del rol solo aplica sin sesión
+  const usuarioActual = sesion?.nombre || ROLES[role]?.usuario?.nombre || 'Usuario'
+  const esMia = (t) => (t.owner_id && sesion?.dbId ? t.owner_id === sesion.dbId : t.responsable === usuarioActual)
   const orden = (ordenId) => data.orders.find((o) => o.id === ordenId)
-  const puedeReasignar = ['coordinador', 'gerencia'].includes(role)
+  const puedeReasignar = role === 'coordinador'
+  const puedeEjecutar = role === 'operario'
   const listaResponsables = [
     ...new Set([
       'Pedro Morales',
@@ -48,11 +52,12 @@ export default function Tasks({ data, actions, irA, role }) {
   ]
 
   const ordenesActivas = data.orders.filter(estaActiva)
-  const contarEstado = (est) => data.tasks.filter((t) => t.estado === est).length
+  const tareasBase = role === 'operario' ? data.tasks.filter(esMia) : data.tasks
+  const contarEstado = (est) => tareasBase.filter((t) => t.estado === est).length
 
   // Filtrado por pestaña
-  const filtradas = data.tasks.filter((t) => {
-    if (pestaña === 'mis') return t.responsable === usuarioActual
+  const filtradas = tareasBase.filter((t) => {
+    if (pestaña === 'mis') return esMia(t)
     if (pestaña !== 'todas') return t.estado === pestaña
     return true
   })
@@ -146,25 +151,27 @@ export default function Tasks({ data, actions, irA, role }) {
   const columnas = [
     {
       clave: 'ordenId',
-      titulo: 'Orden',
+      titulo: 'Orden / Cliente',
+      ancho: '150px',
       ordenar: true,
       render: (t) => (
         <div>
-          <button className="link-inline" onClick={() => irA('detalle', t.ordenId)}>
-            <strong>{t.ordenId}</strong>
+          <button className="link-inline" onClick={() => irA('detalle', t.ordenId)} title="Ver detalle de la orden">
+            <strong style={{ fontSize: '13px' }}>{t.ordenId}</strong>
           </button>
-          <small className="cell-sub">{t.cliente}</small>
+          <div style={{ fontWeight: 600, fontSize: '12px', marginTop: '1px' }}>{t.cliente}</div>
         </div>
       ),
     },
     {
       clave: 'actividad',
-      titulo: 'Actividad, descripción e instrucciones',
+      titulo: 'Actividad y Etapa',
+      minAncho: '210px',
       ordenar: true,
       render: (t) => (
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <strong>{t.actividad}</strong>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+            <strong style={{ fontSize: '13px' }}>{t.actividad}</strong>
             {t.incidencias?.length > 0 && (
               <span
                 className="badge badge-rojo"
@@ -175,27 +182,35 @@ export default function Tasks({ data, actions, irA, role }) {
               </span>
             )}
           </div>
-          <small className="cell-sub">
-            {t.producto} · Etapa: {t.etapa}
+          <small className="cell-sub" style={{ display: 'block', marginTop: '2px', fontSize: '11px' }}>
+            {t.producto} · Etapa: <strong>{t.etapa}</strong>
           </small>
-          {t.descripcion && (
-            <small className="cell-sub" style={{ display: 'block', marginTop: '2px' }}>
+          {t.instrucciones ? (
+            <small
+              className="cell-sub cell-truncate"
+              style={{ display: 'block', color: 'var(--blue-600)', maxWidth: '280px', marginTop: '2px', fontSize: '11px' }}
+              title={`Instrucciones: ${t.instrucciones}`}
+            >
+              Inst: {t.instrucciones}
+            </small>
+          ) : t.descripcion ? (
+            <small
+              className="cell-sub cell-truncate"
+              style={{ display: 'block', maxWidth: '280px', marginTop: '2px', fontSize: '11px' }}
+              title={t.descripcion}
+            >
               {t.descripcion}
             </small>
-          )}
-          {t.instrucciones && (
-            <small className="cell-sub" style={{ display: 'block', color: 'var(--blue-600)' }}>
-              Instrucciones: {t.instrucciones}
-            </small>
-          )}
+          ) : null}
         </div>
       ),
     },
     {
       clave: 'responsable',
       titulo: 'Responsable',
+      ancho: '165px',
       render: (t) => (
-        <span className="person">
+        <span className="person" style={{ fontSize: '12px' }}>
           <Avatar nombre={t.responsable} tamano="sm" />
           <select
             className="inline-select"
@@ -214,45 +229,89 @@ export default function Tasks({ data, actions, irA, role }) {
         </span>
       ),
     },
-    { clave: 'prioridad', titulo: 'Prioridad', render: (t) => <StatusBadge estado={t.prioridad} /> },
-    { clave: 'fechaLimite', titulo: 'Fecha límite' },
     {
-      clave: 'pct',
-      titulo: 'Avance',
+      clave: 'prioridad',
+      titulo: 'Prioridad / Límite',
+      ancho: '135px',
+      ordenar: true,
       render: (t) => (
-        <div style={{ width: '130px' }}>
-          <ProgressBar
-            valor={
-              t.pct !== undefined && t.pct > 0
-                ? t.pct
-                : t.estado === 'Finalizada'
-                  ? 100
-                  : t.estado === 'En proceso' || t.estado === 'Pausada'
-                    ? 50
-                    : 0
-            }
-          />
+        <div>
+          <StatusBadge estado={t.prioridad} />
+          <div style={{ fontSize: '11.5px', marginTop: '3px' }}>{t.fechaLimite}</div>
         </div>
       ),
     },
-    { clave: 'estado', titulo: 'Estado', render: (t) => <StatusBadge estado={t.estado} /> },
+    {
+      clave: 'pct',
+      titulo: 'Avance y Estado',
+      ancho: '145px',
+      ordenar: true,
+      render: (t) => (
+        <div style={{ minWidth: '125px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px' }}>
+            <StatusBadge estado={t.estado} />
+            <strong style={{ fontSize: '11px' }}>{t.pct ?? (t.estado === 'Finalizada' ? 100 : 0)}%</strong>
+          </div>
+          <div style={{ marginTop: '5px' }}>
+            <ProgressBar
+              valor={
+                t.pct !== undefined && t.pct > 0
+                  ? t.pct
+                  : t.estado === 'Finalizada'
+                    ? 100
+                    : t.estado === 'En proceso' || t.estado === 'Pausada'
+                      ? 50
+                      : 0
+              }
+            />
+          </div>
+        </div>
+      ),
+    },
     {
       clave: 'acciones',
       titulo: 'Acciones',
-      render: (t) => (
-        <div style={{ display: 'flex', gap: '4px' }}>
-          <button className="btn btn-sm" onClick={() => abrirModalEdicion(t)} title="Gestionar estado y avance">
-            <Icon nombre="edit" tamano={13} /> Gestionar
-          </button>
-          <button
-            className="btn btn-ghost btn-sm danger-text"
-            onClick={() => setModalIncidencia(t)}
-            title="Registrar incidencia técnica"
-          >
-            <Icon nombre="alert-triangle" tamano={13} />
-          </button>
-        </div>
-      ),
+      ancho: '150px',
+      render: (t) => {
+        const incActivaIdx = (t.incidencias || []).findIndex((inc) => !inc?.resuelto && !inc?.resuelta)
+        const tieneIncActiva = incActivaIdx >= 0
+        if (puedeEjecutar) {
+          return (
+            <div className="row-actions" style={{ gap: '4px' }}>
+              <button className="btn btn-primary btn-xs" onClick={() => abrirModalEdicion(t)} title="Gestionar estado y avance">
+                <Icon nombre="edit" tamano={12} /> Gestionar
+              </button>
+              <button
+                className="btn btn-ghost btn-xs danger-text"
+                onClick={() => setModalIncidencia(t)}
+                title="Registrar incidencia técnica"
+              >
+                <Icon nombre="alert-triangle" tamano={12} />
+              </button>
+            </div>
+          )
+        }
+        return (
+          <div className="row-actions" style={{ gap: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
+            {puedeReasignar && tieneIncActiva && (
+              <button
+                className="btn btn-primary btn-xs"
+                onClick={() => setModalResolverInc({ task: t, index: incActivaIdx, inc: t.incidencias[incActivaIdx] })}
+                title="Resolver incidencia técnica reportada por operario"
+              >
+                <Icon nombre="check-circle" tamano={12} /> Resolver
+              </button>
+            )}
+            <button
+              className="btn btn-soft btn-xs"
+              onClick={() => irA('detalle', t.ordenId)}
+              title={`Consultar expediente y trazabilidad de ${t.ordenId}`}
+            >
+              <Icon nombre="eye" tamano={12} /> Orden
+            </button>
+          </div>
+        )
+      },
     },
   ]
 
@@ -271,17 +330,39 @@ export default function Tasks({ data, actions, irA, role }) {
         }
       />
 
-      {/* Indicadores en tiempo real de las actividades de taller */}
+      {/* Indicadores en tiempo real de las actividades de taller con filtrado directo */}
       <div className="kpis" style={{ marginBottom: '16px' }}>
         <StatCard
           titulo="Pendientes"
           valor={contarEstado('Pendiente')}
           icono="clock"
           color={contarEstado('Pendiente') ? 'amarillo' : 'azul'}
+          detalle="En cola de ejecución"
+          onClick={() => setPestaña('Pendiente')}
         />
-        <StatCard titulo="En proceso" valor={contarEstado('En proceso')} icono="play" />
-        <StatCard titulo="Pausadas" valor={contarEstado('Pausada')} icono="pause" />
-        <StatCard titulo="Finalizadas" valor={contarEstado('Finalizada')} icono="check-circle" color="verde" />
+        <StatCard
+          titulo="En proceso"
+          valor={contarEstado('En proceso')}
+          icono="play"
+          detalle="En máquinas y estaciones"
+          onClick={() => setPestaña('En proceso')}
+        />
+        <StatCard
+          titulo="Pausadas"
+          valor={contarEstado('Pausada')}
+          icono="pause"
+          color={contarEstado('Pausada') ? 'amarillo' : 'azul'}
+          detalle="Detenidas temporalmente"
+          onClick={() => setPestaña('Pausada')}
+        />
+        <StatCard
+          titulo="Finalizadas"
+          valor={contarEstado('Finalizada')}
+          icono="check-circle"
+          color="verde"
+          detalle="Actividades completadas"
+          onClick={() => setPestaña('Finalizada')}
+        />
       </div>
 
       {/* Pestañas de estado */}
@@ -290,7 +371,7 @@ export default function Tasks({ data, actions, irA, role }) {
           Todas <span className="pill">{data.tasks.length}</span>
         </button>
         <button className={pestaña === 'mis' ? 'on' : ''} onClick={() => setPestaña('mis')}>
-          Mis tareas <span className="pill">{data.tasks.filter((t) => t.responsable === usuarioActual).length}</span>
+          Mis tareas <span className="pill">{data.tasks.filter(esMia).length}</span>
         </button>
         <button className={pestaña === 'Pendiente' ? 'on' : ''} onClick={() => setPestaña('Pendiente')}>
           Pendientes <span className="pill">{contarEstado('Pendiente')}</span>
@@ -659,6 +740,25 @@ export default function Tasks({ data, actions, irA, role }) {
           onConfirm={(texto) => {
             actions.addTaskNote(modalIncidencia.id, 'incidencias', texto)
             setModalIncidencia(null)
+          }}
+        />
+      )}
+
+      {/* MODAL COORDINACIÓN: Resolución de incidencia técnica en actividad */}
+      {modalResolverInc && (
+        <Modal
+          titulo="Resolver incidencia técnica de taller"
+          subtitulo={`${modalResolverInc.task.ordenId} · ${modalResolverInc.task.actividad} — Reporte: "${modalResolverInc.inc?.texto || ''}"`}
+          icono="check-circle"
+          tipoBoton="primary"
+          etiqueta="Acción correctiva o solución aplicada"
+          ayuda="Al resolver la incidencia, la actividad queda desbloqueada en la estación del operario y se registra en la bitácora."
+          minimo={5}
+          textoBoton="Confirmar solución"
+          onClose={() => setModalResolverInc(null)}
+          onConfirm={(solucion) => {
+            actions.resolveTaskIncident?.(modalResolverInc.task.id, modalResolverInc.index, solucion)
+            setModalResolverInc(null)
           }}
         />
       )}

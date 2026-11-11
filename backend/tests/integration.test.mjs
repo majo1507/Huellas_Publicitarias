@@ -1,3 +1,10 @@
+// ⚠️  SUITE HEREDADA (anterior a la migración 006).
+// Valida el flujo antiguo en el que Coordinación aprobaba diseños directamente y el rol Cliente
+// iniciaba sesión. Ambos comportamientos fueron reemplazados a propósito por el flujo vigente
+// (Diseñador → Comercial → cliente externo con evidencia → Coordinación libera) y por la retirada
+// del rol Cliente. Falla desde el paso 7 por diseño. El flujo vigente está cubierto por:
+//   tests/flujo_integral_presentacion.test.mjs, tests/fase3_3_e2e_integral.test.mjs,
+//   tests/flujo_diseno_comercial.test.mjs
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
@@ -109,11 +116,10 @@ async function runTests() {
       method: 'POST',
       body: { identificador: 'carlos.mendoza@alpina.com', clave: 'cliente123' },
     });
-    assert.equal(loginCliente.status, 200);
-    assert.equal(loginCliente.data.usuario.rol, 'cliente');
-    assert.equal(loginCliente.data.usuario.rolUi, 'cliente');
+    // El perfil Cliente ya no es un usuario interno de ORVEX: su inicio de sesión se rechaza.
+    assert.ok([401, 403].includes(loginCliente.status), 'El rol Cliente no inicia sesión como usuario interno');
 
-    // Verificar compatibilidad de los 7 roles devueltos por el backend con ROLES del frontend y /auth/me
+    // Verificar compatibilidad de los 6 roles internos devueltos por el backend con ROLES del frontend y /auth/me
     const logins = [
       loginCoord,
       loginComercial,
@@ -121,7 +127,6 @@ async function runTests() {
       loginOperario,
       loginPostventa,
       loginGerencia,
-      loginCliente,
     ];
     for (const lg of logins) {
       const rKey = lg.data.usuario.rol;

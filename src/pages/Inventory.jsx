@@ -62,6 +62,9 @@ const FORM_MOVIMIENTO_VACIO = {
 }
 
 export default function Inventory({ data, actions, irA, role }) {
+  // Coordinación opera el inventario; Gerencia lo consulta y descarga el informe.
+  const puedeOperar = role === 'coordinador'
+  const puedeInforme = role === 'coordinador' || role === 'gerencia'
   const [tab, setTab] = useState('materiales') // 'materiales' | 'proveedores' | 'movimientos'
   const [modalMaterial, setModalMaterial] = useState(false)
   const [modalProveedor, setModalProveedor] = useState(false)
@@ -227,49 +230,64 @@ export default function Inventory({ data, actions, irA, role }) {
     {
       clave: 'nombre',
       titulo: 'Material e insumo',
+      minAncho: '200px',
       ordenar: true,
       render: (m) => (
         <div>
-          <strong>{m.nombre}</strong>
-          <small className="cell-sub">{m.id} · {m.descripcion}</small>
+          <strong style={{ fontSize: '13px' }}>{m.nombre}</strong>
+          <small
+            className="cell-sub cell-truncate"
+            style={{ display: 'block', maxWidth: '240px', fontSize: '11px', marginTop: '1px' }}
+            title={`${m.id} · ${m.descripcion}`}
+          >
+            {m.id} · {m.descripcion}
+          </small>
         </div>
       ),
     },
     {
       clave: 'categoria',
       titulo: 'Categoría / Proveedor',
+      ancho: '165px',
       ordenar: true,
       render: (m) => (
         <div>
-          <span>{m.categoria}</span>
-          <small className="cell-sub">{m.proveedor}</small>
+          <span style={{ fontSize: '12px' }}>{m.categoria}</span>
+          <small className="cell-sub" style={{ display: 'block', fontSize: '11px', marginTop: '1px' }}>
+            {m.proveedor}
+          </small>
         </div>
       ),
     },
     {
       clave: 'stockActual',
       titulo: 'Existencias',
+      ancho: '145px',
       ordenar: true,
-      render: (m) => (
-        <div>
-          <strong className={Number(m.stockActual) <= Number(m.stockMinimo) ? 'text-rojo' : ''}>
-            {m.stockActual} {m.unidad}
-          </strong>
-          <small className="cell-sub">
-            Mín: {m.stockMinimo} {m.unidad} · Usado: {m.cantidadUtilizada} {m.unidad}
-          </small>
-        </div>
-      ),
+      render: (m) => {
+        const esBajo = Number(m.stockActual) <= Number(m.stockMinimo)
+        return (
+          <div>
+            <strong className={esBajo ? 'text-rojo' : ''} style={{ fontSize: '12.5px' }}>
+              {m.stockActual} {m.unidad}
+            </strong>
+            <small className="cell-sub" style={{ display: 'block', fontSize: '11px', marginTop: '1px' }}>
+              Mín: {m.stockMinimo} {m.unidad} · Usado: {m.cantidadUtilizada} {m.unidad}
+            </small>
+          </div>
+        )
+      },
     },
     {
       clave: 'costoUnitario',
       titulo: 'Costo y presupuesto',
+      ancho: '150px',
       ordenar: true,
       render: (m) => (
         <div>
-          <strong>{formatoCOP(m.valorDisponible)}</strong>
-          <small className="cell-sub">
-            Unit: {formatoCOP(m.costoUnitario)}/{m.unidad} · Usado: {formatoCOP(m.valorUtilizado)}
+          <strong style={{ fontSize: '12.5px' }}>{formatoCOP(m.valorDisponible)}</strong>
+          <small className="cell-sub" style={{ display: 'block', fontSize: '11px', marginTop: '1px' }}>
+            Unit: {formatoCOP(m.costoUnitario)}/{m.unidad}
           </small>
         </div>
       ),
@@ -277,6 +295,7 @@ export default function Inventory({ data, actions, irA, role }) {
     {
       clave: 'estadoStock',
       titulo: 'Estado',
+      ancho: '130px',
       render: (m) => (
         <StatusBadge
           estado={m.estadoStock === 'Pocas existencias' ? 'Retrasada' : 'Aprobado'}
@@ -287,21 +306,22 @@ export default function Inventory({ data, actions, irA, role }) {
     {
       clave: 'acciones',
       titulo: 'Movimientos',
+      ancho: '140px',
       render: (m) => (
         <div className="row-actions" style={{ gap: '4px' }}>
           <button
-            className="btn btn-soft btn-sm"
+            className="btn btn-soft btn-xs"
             onClick={() => abrirMovimientoRapido(m, 'Entrada')}
             title="Registrar entrada de material"
           >
-            <Icon nombre="plus" tamano={13} /> Entrada
+            <Icon nombre="plus" tamano={11} /> Entrada
           </button>
           <button
-            className="btn btn-sm"
+            className="btn btn-sm btn-xs"
             onClick={() => abrirMovimientoRapido(m, 'Salida')}
             title="Registrar consumo o salida a taller"
           >
-            <Icon nombre="arrow-right" tamano={13} /> Salida
+            <Icon nombre="arrow-right" tamano={11} /> Salida
           </button>
         </div>
       ),
@@ -312,12 +332,17 @@ export default function Inventory({ data, actions, irA, role }) {
     {
       clave: 'nombre',
       titulo: 'Proveedor / Documento',
+      ancho: '220px',
       ordenar: true,
       render: (p) => (
         <div>
-          <strong>{p.nombre}</strong>
-          <small className="cell-sub">
-            {p.id} · {p.tipoDocumento || 'NIT'}: {p.nit || '—'} · {p.municipio || p.ciudad || 'Bogotá'}{p.departamento ? `, ${p.departamento}` : ''}
+          <strong style={{ fontSize: '13px' }}>{p.nombre}</strong>
+          <small
+            className="cell-sub cell-truncate"
+            style={{ display: 'block', maxWidth: '210px', fontSize: '11px', marginTop: '1px' }}
+          >
+            {p.id} · {p.tipoDocumento || 'NIT'}: {p.nit || '—'} · {p.municipio || p.ciudad || 'Medellín'}
+            {p.departamento ? `, ${p.departamento}` : ''}
           </small>
         </div>
       ),
@@ -325,18 +350,21 @@ export default function Inventory({ data, actions, irA, role }) {
     {
       clave: 'contacto',
       titulo: 'Contacto comercial',
+      ancho: '180px',
       render: (p) => (
         <div>
-          <strong>{p.contacto}</strong>
-          <small className="cell-sub">{p.correo}</small>
+          <strong style={{ fontSize: '12px' }}>{p.contacto}</strong>
+          <small className="cell-sub" style={{ display: 'block', fontSize: '11px', marginTop: '1px' }}>
+            {p.correo}
+          </small>
         </div>
       ),
     },
-    { clave: 'telefono', titulo: 'Teléfono' },
+    { clave: 'telefono', titulo: 'Teléfono', ancho: '130px' },
     {
       clave: 'productos',
-      titulo: 'Productos y materiales que suministra',
-      render: (p) => <span className="sm">{p.productos}</span>,
+      titulo: 'Insumos y materiales que suministra',
+      render: (p) => <span className="sm" style={{ fontSize: '12px' }}>{p.productos}</span>,
     },
   ]
 
@@ -344,16 +372,18 @@ export default function Inventory({ data, actions, irA, role }) {
     {
       clave: 'fecha',
       titulo: 'Fecha y hora',
+      ancho: '130px',
       render: (mv) => (
         <div>
-          <strong>{mv.fecha}</strong>
-          <small className="cell-sub">{mv.hora || '09:00'}</small>
+          <strong style={{ fontSize: '12px' }}>{mv.fecha}</strong>
+          <small className="cell-sub" style={{ display: 'block', fontSize: '11px' }}>{mv.hora || '09:00'}</small>
         </div>
       ),
     },
     {
       clave: 'tipo',
       titulo: 'Tipo',
+      ancho: '95px',
       render: (mv) => (
         <StatusBadge
           estado={mv.tipo === 'Entrada' ? 'Aprobado' : 'En proceso'}
@@ -363,19 +393,27 @@ export default function Inventory({ data, actions, irA, role }) {
     },
     {
       clave: 'material',
-      titulo: 'Material',
+      titulo: 'Material y observación',
+      minAncho: '180px',
       render: (mv) => (
         <div>
-          <strong>{mv.material}</strong>
-          <small className="cell-sub">{mv.observacion}</small>
+          <strong style={{ fontSize: '12.5px' }}>{mv.material}</strong>
+          <small
+            className="cell-sub cell-truncate"
+            style={{ display: 'block', maxWidth: '260px', fontSize: '11px', marginTop: '1px' }}
+            title={mv.observacion}
+          >
+            {mv.observacion}
+          </small>
         </div>
       ),
     },
     {
       clave: 'cantidad',
       titulo: 'Cantidad',
+      ancho: '110px',
       render: (mv) => (
-        <strong>
+        <strong style={{ fontSize: '12px' }}>
           {mv.tipo === 'Entrada' ? '+' : '-'}{mv.cantidad} {mv.unidad || ''}
         </strong>
       ),
@@ -383,21 +421,23 @@ export default function Inventory({ data, actions, irA, role }) {
     {
       clave: 'costoTotal',
       titulo: 'Valor estimado',
-      render: (mv) => formatoCOP(mv.costoTotal || 0),
+      ancho: '125px',
+      render: (mv) => <strong style={{ fontSize: '12px' }}>{formatoCOP(mv.costoTotal || 0)}</strong>,
     },
     {
       clave: 'ordenId',
       titulo: 'Orden vinculada',
+      ancho: '140px',
       render: (mv) =>
         mv.ordenId ? (
-          <button className="link-inline" onClick={() => irA('detalle', mv.ordenId)}>
+          <button className="link-inline" onClick={() => irA('detalle', mv.ordenId)} title="Ver orden vinculada">
             <strong>{mv.ordenId}</strong>
           </button>
         ) : (
-          <span className="muted">Abastecimiento almacén</span>
+          <span className="muted sm" style={{ fontSize: '11px' }}>Abastecimiento almacén</span>
         ),
     },
-    { clave: 'responsable', titulo: 'Responsable' },
+    { clave: 'responsable', titulo: 'Responsable', ancho: '125px' },
   ]
 
   return (
@@ -407,69 +447,74 @@ export default function Inventory({ data, actions, irA, role }) {
         titulo="Inventario de materiales y proveedores"
         subtitulo="Control de existencias, alertas de stock mínimo, proveedores, costos de materiales y movimientos de planta."
         icono="package"
+        compacto={true}
         acciones={
-          <div className="row" style={{ gap: '8px', flexWrap: 'wrap' }}>
-            {role === 'coordinador' && (
+          <div className="row" style={{ gap: '6px', flexWrap: 'wrap' }}>
+            {puedeInforme && (
               <button
-                className="btn btn-soft"
+                className="btn btn-soft btn-sm"
                 onClick={() => {
                   generarReporteInventarioPDF(data)
                   actions.notify('Informe de inventario y materiales (PDF) descargado.', 'exito')
                 }}
               >
-                <Icon nombre="download" tamano={15} /> Informe de inventario (PDF)
+                <Icon nombre="download" tamano={13} /> Informe PDF
               </button>
             )}
-            <button
-              className="btn"
-              onClick={() => {
-                setErrores({})
-                setFormProveedor(FORM_PROVEEDOR_VACIO)
-                setModalProveedor(true)
-              }}
-            >
-              <Icon nombre="users" tamano={15} /> Nuevo proveedor
-            </button>
-            <button
-              className="btn"
-              onClick={() => {
-                setErrores({})
-                setFormMovimiento({
-                  ...FORM_MOVIMIENTO_VACIO,
-                  materialId: materiales[0]?.id || '',
-                })
-                setModalMovimiento(true)
-              }}
-            >
-              <Icon nombre="refresh" tamano={15} /> Registrar movimiento
-            </button>
-            <button
-              className="btn btn-primary"
-              onClick={() => {
-                setErrores({})
-                setFormMaterial({
-                  ...FORM_MATERIAL_VACIO,
-                  proveedorId: proveedores[0]?.id || '',
-                })
-                setModalMaterial(true)
-              }}
-            >
-              <Icon nombre="plus" tamano={15} /> Nuevo material
-            </button>
+            {puedeOperar && (
+              <>
+                <button
+                  className="btn btn-soft btn-sm"
+                  onClick={() => {
+                    setErrores({})
+                    setFormProveedor(FORM_PROVEEDOR_VACIO)
+                    setModalProveedor(true)
+                  }}
+                >
+                  <Icon nombre="users" tamano={13} /> + Proveedor
+                </button>
+                <button
+                  className="btn btn-soft btn-sm"
+                  onClick={() => {
+                    setErrores({})
+                    setFormMovimiento({
+                      ...FORM_MOVIMIENTO_VACIO,
+                      materialId: materiales[0]?.id || '',
+                    })
+                    setModalMovimiento(true)
+                  }}
+                >
+                  <Icon nombre="refresh" tamano={13} /> Movimiento
+                </button>
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={() => {
+                    setErrores({})
+                    setFormMaterial({
+                      ...FORM_MATERIAL_VACIO,
+                      proveedorId: proveedores[0]?.id || '',
+                    })
+                    setModalMaterial(true)
+                  }}
+                >
+                  <Icon nombre="plus" tamano={13} /> Nuevo material
+                </button>
+              </>
+            )}
           </div>
         }
       />
 
       {/* Alertas de pocas existencias */}
       {enAlerta.length > 0 && (
-        <div style={{ marginBottom: '18px' }}>
+        <div style={{ marginBottom: '14px' }}>
           <Alert
             tipo="aviso"
             titulo={`Alerta de inventario: ${enAlerta.length} ${
               enAlerta.length === 1 ? 'material tiene' : 'materiales tienen'
             } pocas existencias`}
           >
-            Revisa y programa reposición con el proveedor para evitar bloqueos en órdenes de impresión:{' '}
+            Revisa y programa reposición con el proveedor para evitar bloqueos en órdenes de taller:{' '}
             {enAlerta.map((m) => (
               <strong key={m.id} style={{ marginRight: '10px' }}>
                 {m.nombre} ({m.stockActual}/{m.stockMinimo} {m.unidad})
@@ -479,53 +524,62 @@ export default function Inventory({ data, actions, irA, role }) {
         </div>
       )}
 
-      {/* KPIs de Inventario y Presupuesto de Recursos */}
-      <div className="kpis">
-        <StatCard
-          titulo="Materiales en catálogo"
-          valor={materiales.length}
-          icono="package"
-          detalle={`${proveedores.length} proveedores activos`}
-        />
+      {/* 4 Indicadores clave de Inventario con redirección directa */}
+      <div className="kpis" style={{ marginBottom: '16px' }}>
         <StatCard
           titulo="Alertas de bajo stock"
           valor={enAlerta.length}
           icono="alert-triangle"
           color={enAlerta.length > 0 ? 'rojo' : 'verde'}
-          detalle={enAlerta.length > 0 ? 'Requieren reposición inmediata' : 'Niveles óptimos'}
+          detalle={enAlerta.length > 0 ? 'Requieren reposición inmediata' : 'Niveles óptimos en almacén'}
+          compacta={true}
+          onClick={() => setTab('materiales')}
         />
         <StatCard
           titulo="Valor stock disponible"
           valor={formatoCOP(valorDisponibleTotal)}
-          icono="layers"
+          icono="package"
           color="azul"
-          detalle="Presupuesto actual en almacén"
+          detalle={`${materiales.length} materiales · Utilizado: ${formatoCOP(valorUtilizadoTotal)}`}
+          compacta={true}
+          onClick={() => setTab('materiales')}
         />
         <StatCard
-          titulo="Recursos utilizados"
-          valor={formatoCOP(valorUtilizadoTotal)}
-          icono="trending-up"
-          color="amarillo"
-          detalle="Valor estimado consumido en órdenes"
+          titulo="Proveedores registrados"
+          valor={proveedores.length}
+          icono="users"
+          color="azul"
+          detalle="Directorio de abastecimiento"
+          compacta={true}
+          onClick={() => setTab('proveedores')}
+        />
+        <StatCard
+          titulo="Movimientos de planta"
+          valor={movimientos.length}
+          icono="clock"
+          color="verde"
+          detalle="Entradas y consumos en órdenes"
+          compacta={true}
+          onClick={() => setTab('movimientos')}
         />
       </div>
 
       {/* Pestañas del módulo */}
-      <div className="tabs" role="tablist">
+      <div className="tabs" role="tablist" style={{ marginBottom: '14px' }}>
         <button className={tab === 'materiales' ? 'on' : ''} onClick={() => setTab('materiales')}>
-          <Icon nombre="package" tamano={15} /> Materiales y existencias <span className="pill">{materiales.length}</span>
+          <Icon nombre="package" tamano={14} /> Materiales y existencias <span className="pill">{materiales.length}</span>
         </button>
         <button className={tab === 'proveedores' ? 'on' : ''} onClick={() => setTab('proveedores')}>
-          <Icon nombre="users" tamano={15} /> Proveedores <span className="pill">{proveedores.length}</span>
+          <Icon nombre="users" tamano={14} /> Proveedores <span className="pill">{proveedores.length}</span>
         </button>
         <button className={tab === 'movimientos' ? 'on' : ''} onClick={() => setTab('movimientos')}>
-          <Icon nombre="clock" tamano={15} /> Entradas y salidas <span className="pill">{movimientos.length}</span>
+          <Icon nombre="clock" tamano={14} /> Entradas y salidas <span className="pill">{movimientos.length}</span>
         </button>
       </div>
 
       {tab === 'materiales' && (
         <DataTable
-          columnas={columnasMateriales}
+          columnas={puedeOperar ? columnasMateriales : columnasMateriales.filter((c) => c.clave !== 'acciones')}
           filas={filasMateriales}
           porPagina={8}
           buscar={(m) => `${m.id} ${m.nombre} ${m.descripcion} ${m.categoria} ${m.proveedor}`}

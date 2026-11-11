@@ -216,7 +216,7 @@ async function runEtapa2Tests() {
     assert.equal(resSoporteV2.data.data.soporte_validado, true);
 
     const ordenVerCheckV2 = (await pool.query('SELECT diseno_estado FROM ordenes WHERE id = $1', [ordenCandado.dbId])).rows[0];
-    assert.equal(ordenVerCheckV2.diseno_estado, 'Aprobado', 'Versión vigente validada pone orden en Aprobado');
+    assert.ok(['Aprobado', 'Aprobado por el cliente'].includes(ordenVerCheckV2.diseno_estado), 'Versión vigente validada pone orden en estado aprobado');
 
     // 1.8 Con la versión vigente aprobada físicamente, avanzar a Impresión (etapa 4) procede
     const resAvanceLiberado = await req(`/ordenes/${ordenCandado.id}/etapa`, {

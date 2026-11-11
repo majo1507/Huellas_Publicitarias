@@ -39,9 +39,16 @@ const PESTANAS = [
 const STAMPS = {
   Aprobado: { cls: 'stamp-apr', txt: 'APROBADO' },
   Aprobada: { cls: 'stamp-apr', txt: 'APROBADO' },
+  'Aprobado por el cliente': { cls: 'stamp-apr', txt: 'APROBADO' },
+  'Listo para impresión': { cls: 'stamp-apr', txt: 'LISTO IMPRESIÓN' },
+  'Revisión técnica de archivo': { cls: 'stamp-pen', txt: 'PRE-PRENSA' },
+  'Aprobado técnicamente': { cls: 'stamp-apr', txt: 'TÉCNICO OK' },
   Enviado: { cls: 'stamp-pen', txt: 'PENDIENTE' },
+  'Pendiente de gestión comercial': { cls: 'stamp-pen', txt: 'EN COMERCIAL' },
+  'Esperando respuesta del cliente': { cls: 'stamp-pen', txt: 'EN REVISIÓN' },
   'En proceso': { cls: 'stamp-bor', txt: 'EN PROCESO' },
   'Requiere cambios': { cls: 'stamp-rec', txt: 'RECHAZADO' },
+  'Cambios solicitados': { cls: 'stamp-rec', txt: 'CAMBIOS' },
   Rechazada: { cls: 'stamp-rec', txt: 'RECHAZADO' },
   Pendiente: { cls: 'stamp-pen', txt: 'PENDIENTE' },
 }
@@ -60,6 +67,8 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
   const [modalCoordinar, setModalCoordinar] = useState(false)
   const [disenadorSel, setDisenadorSel] = useState('')
   const [responsableSel, setResponsableSel] = useState('')
+  const [prioridadEdit, setPrioridadEdit] = useState('Media')
+  const [fechaEntregaEdit, setFechaEntregaEdit] = useState('')
   const [presupuestoEdit, setPresupuestoEdit] = useState(0)
   const [costoEdit, setCostoEdit] = useState(0)
 
@@ -79,8 +88,13 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
   const esUltima = order.estado === ETAPAS[ETAPAS.length - 1]
   const casos = data.cases.filter((c) => c.ordenId === order.id)
   const tareasDeOrden = (data.tasks || []).filter((t) => t.ordenId === order.id)
-  const commsDeOrden = (data.comms || []).filter((c) => c.ordenId === order.id)
-  const regla = puedeAvanzar(order)
+  // Historial único unificado por contexto (Cliente -> Solicitud -> Orden)
+  const commsDeOrden = (data.comms || []).filter((c) =>
+    c.ordenId === order.id ||
+    (order.solicitudId && c.solicitudId === order.solicitudId) ||
+    (!c.ordenId && ((order.clienteId && c.clienteId === order.clienteId) || (order.cliente && c.cliente === order.cliente)))
+  )
+  const regla = puedeAvanzar(order, data.tasks)
   const volverA = ['postventa', 'comercial', 'coordinador'].includes(role) ? 'pedidos' : 'inicio'
   const ultima = ultimaVersion(order)
   const stamp = STAMPS[order.disenoEstado] || STAMPS.Pendiente
@@ -259,10 +273,11 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
 
   function getSiguientePaso() {
     if (estaCerrada) return 'Expediente archivado (Orden cerrada formalmente)'
+    const disenoOk = ['Aprobado', 'Aprobado por el cliente', 'Listo para impresión'].includes(order.disenoEstado)
     switch (order.estado) {
       case 'Solicitud': return 'Preparar cotización y validar especificaciones'
-      case 'Diseño': return ultima?.estado === 'En proceso' ? 'Finalizar propuesta y enviar a aprobación' : 'Asignar requerimientos a diseñador'
-      case 'Aprobación': return order.disenoEstado === 'Aprobado' ? 'Avanzar orden a impresión' : 'Esperar decisión formal del cliente'
+      case 'Diseño': return ['En proceso', 'Cambios solicitados', 'Requiere cambios'].includes(ultima?.estado) ? 'Finalizar propuesta y enviar a Comercial' : 'Asignar requerimientos a diseñador'
+      case 'Aprobación': return disenoOk ? 'Verificar aprobación y liberar a impresión' : 'Registrar decisión formal del cliente en Comercial'
       case 'Impresión': return 'Ejecutar tiraje de impresión en taller'
       case 'Acabados': return 'Aplicar corte, laminado y ojales'
       case 'Despacho': return 'Despachar orden con mensajería'
@@ -272,7 +287,7 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
   }
 
   const tareasPendientes = tareasDeOrden.filter((t) => t.estado !== 'Finalizada')
-  const puedeVerMesaDiseno = ['disenador', 'coordinador', 'gerencia'].includes(role)
+  const puedeVerMesaDiseno = role === 'disenador'
   const puedeGestionarEtapas = role === 'coordinador'
 
   function handleConfirmarCierre(e) {
@@ -291,6 +306,8 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
   function abrirModalCoordinar() {
     setDisenadorSel(order.disenador || 'María López')
     setResponsableSel(order.responsable || 'Pedro Morales')
+    setPrioridadEdit(order.prioridad || prioridadOrden(order) || 'Media')
+    setFechaEntregaEdit(order.fechaEntrega || '')
     setPresupuestoEdit(Number(order.presupuesto || 0))
     setCostoEdit(Number(order.costoInterno || 0))
     setModalCoordinar(true)
@@ -301,6 +318,8 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
     actions.assignOrderTeam?.(order.id, {
       disenador: disenadorSel,
       responsable: responsableSel,
+      prioridad: prioridadEdit,
+      fechaEntrega: fechaEntregaEdit.trim() || order.fechaEntrega,
       presupuesto: Number(presupuestoEdit) || 0,
       costoInterno: Number(costoEdit) || 0,
     })
@@ -327,23 +346,13 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
         </button>
       )}
       {puedeGestionarEtapas && (
-        <button className="btn btn-soft" onClick={abrirModalCoordinar} title="Asignar diseñador, operario y presupuesto">
-          <Icon nombre="users" tamano={15} /> Coordinar equipo
+        <button className="btn btn-primary" onClick={abrirModalCoordinar} title="Programar prioridad, fecha comprometida, diseñador, operario y costos">
+          <Icon nombre="sliders" tamano={15} /> Planificar y asignar
         </button>
       )}
       {puedeVerMesaDiseno && (
         <button className="btn btn-soft" onClick={() => irA('aprobacion', order.id)}>
           <Icon nombre="pen" tamano={15} /> Mesa de diseño
-        </button>
-      )}
-      {puedeGestionarEtapas && !estaCerrada && (
-        <button
-          className={regla.bloqueada ? 'btn lock' : 'btn btn-primary'}
-          onClick={() => actions.advanceStage(order.id)}
-          disabled={esUltima}
-          title={regla.bloqueada ? regla.motivo : `Avanzar orden a ${regla.siguiente}`}
-        >
-          {regla.bloqueada ? <><Icon nombre="lock" tamano={15} /> Producción bloqueada</> : <>Avanzar etapa <Icon nombre="arrow-right" tamano={15} /></>}
         </button>
       )}
       {puedeGestionarEtapas && !estaCerrada && (
@@ -364,7 +373,7 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
           <Icon nombre="clock" tamano={15} /> Reabrir orden
         </button>
       )}
-      {['coordinador', 'gerencia', 'comercial'].includes(role) && (
+      {role === 'coordinador' && (
         <button
           className="btn btn-soft"
           onClick={() => actions.cloneOrder(order.id)}
@@ -609,9 +618,11 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
                 <strong>Estado del diseño: </strong>
                 <StatusBadge estado={esCliente ? etiquetaDiseno(order.disenoEstado) : order.disenoEstado} />
               </div>
-              <button className="btn btn-primary btn-sm" onClick={() => irA('aprobacion', order.id)}>
-                <Icon nombre="check-circle" tamano={14} /> Abrir mesa de aprobación
-              </button>
+              {['comercial', 'cliente', 'disenador'].includes(role) && (
+                <button className="btn btn-primary btn-sm" onClick={() => irA('aprobacion', order.id)}>
+                  <Icon nombre="check-circle" tamano={14} /> Abrir mesa de aprobación
+                </button>
+              )}
             </div>
           </Panel>
 
@@ -627,6 +638,22 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
                       <StatusBadge estado={v.estado} />
                     </div>
                     <div className="sm mut">{v.fecha} · {v.disenador}</div>
+                    {v.fechaEnvioTexto && (
+                      <div
+                        className="sm"
+                        style={{
+                          marginTop: '3px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          color: 'var(--blue-700, #1d4ed8)',
+                          fontWeight: 500,
+                        }}
+                      >
+                        <Icon nombre="send" tamano={13} />
+                        <span>Enviado al cliente: {v.fechaEnvioTexto} a las {v.horaEnvioTexto}</span>
+                      </div>
+                    )}
                     {v.archivoNombre && (
                       <div className="sm" style={{ marginTop: '3px', color: 'var(--blue-600)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <Icon nombre="file-text" tamano={13} /> {v.archivoNombre}
@@ -774,7 +801,7 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
                       </td>
                       <td><StatusBadge estado={t.estado} /></td>
                       <td>
-                        {!estaCerrada ? (
+                        {!estaCerrada && ['operario', 'coordinador'].includes(role) ? (
                           <button
                             className="btn btn-ghost btn-sm danger-text"
                             onClick={() => setModalIncidenciaTarea(t)}
@@ -783,7 +810,7 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
                             <Icon nombre="alert-triangle" tamano={13} /> Incidencia
                           </button>
                         ) : (
-                          <span className="sm mut">Bloqueada</span>
+                          <span className="sm mut">{estaCerrada ? 'Bloqueada' : 'Solo lectura'}</span>
                         )}
                       </td>
                     </tr>
@@ -795,17 +822,30 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
         </Panel>
       )}
 
-      {/* 5. COMUNICACIONES (Oculto para rol Coordinador) */}
-      {tab === 'comunicaciones' && role !== 'coordinador' && (
-        <Panel titulo="Comunicaciones vinculadas a esta orden" icono="message">
+      {/* 5. COMUNICACIONES (Consultable por Comercial, Coordinación, Postventa y Gerencia) */}
+      {tab === 'comunicaciones' && (
+        <Panel
+          titulo="Comunicaciones y acuerdos vinculados al contexto"
+          icono="message"
+          accion={
+            ['comercial', 'postventa'].includes(role) && (
+              <button className="btn btn-soft btn-sm" onClick={() => irA('comunicaciones')}>
+                <Icon nombre="message" tamano={14} /> Ir a Bandeja de Comunicaciones
+              </button>
+            )
+          }
+        >
           {commsDeOrden.length === 0 ? (
-            <EmptyState icono="message" titulo="Sin mensajes registrados" texto="Las conversaciones asociadas a esta orden aparecerán aquí." />
+            <EmptyState icono="message" titulo="Sin mensajes registrados" texto="Las conversaciones y acuerdos asociados a este cliente, solicitud u orden aparecerán aquí." />
           ) : (
             <div className="stack" style={{ gap: '14px' }}>
               {commsDeOrden.map((c) => (
                 <div key={c.id} className="card p" style={{ background: 'var(--bg-subtle)' }}>
-                  <div className="row" style={{ justifyContent: 'space-between', marginBottom: '8px' }}>
-                    <strong>{c.asunto || `Canal ${c.canal.toUpperCase()}`}</strong>
+                  <div className="row" style={{ justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                    <div className="row" style={{ gap: '8px', flexWrap: 'wrap' }}>
+                      <strong>{c.asunto || `Canal ${c.canal.toUpperCase()}`}</strong>
+                      <span className="badge badge-gris">Contexto: {c.cliente}{c.solicitudId ? ` → ${c.solicitudId}` : ''} → {c.ordenId || order.id}</span>
+                    </div>
                     <StatusBadge estado={c.estado} />
                   </div>
                   <div className="stack" style={{ gap: '6px' }}>
@@ -927,6 +967,23 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
             <form onSubmit={handleGuardarCoordinacion} className="modal-body">
               <div className="form-grid">
                 <div className="field">
+                  <label className="field-label" htmlFor="detPrioridad">Prioridad operativa</label>
+                  <select id="detPrioridad" value={prioridadEdit} onChange={(e) => setPrioridadEdit(e.target.value)}>
+                    <option value="Alta">Alta (Urgente)</option>
+                    <option value="Media">Media (Estándar)</option>
+                    <option value="Baja">Baja (Flexible)</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label className="field-label" htmlFor="detFechaEntrega">Fecha comprometida de entrega</label>
+                  <input
+                    id="detFechaEntrega"
+                    value={fechaEntregaEdit}
+                    onChange={(e) => setFechaEntregaEdit(e.target.value)}
+                    placeholder="DD/MM/AAAA"
+                  />
+                </div>
+                <div className="field">
                   <label className="field-label" htmlFor="detDisenador">Diseñador(a) gráfico(a)</label>
                   <select id="detDisenador" value={disenadorSel} onChange={(e) => setDisenadorSel(e.target.value)}>
                     {[...new Set(['María López', 'Carlos Gómez', disenadorSel])].map((n) => (
@@ -953,7 +1010,7 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
               </div>
               <div className="modal-foot" style={{ marginTop: '20px', padding: 0, background: 'none', border: 'none' }}>
                 <button type="button" className="btn" onClick={() => setModalCoordinar(false)}>Cancelar</button>
-                <button type="submit" className="btn btn-primary"><Icon nombre="check" tamano={15} /> Guardar asignación</button>
+                <button type="submit" className="btn btn-primary"><Icon nombre="check" tamano={15} /> Guardar planificación</button>
               </div>
             </form>
           </div>
@@ -1055,7 +1112,7 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
                   <h4 style={{ fontSize: '13px', margin: '0 0 8px' }}>Condiciones pendientes por cumplir:</h4>
                   <ul style={{ margin: '0 0 16px 20px', padding: 0, fontSize: '13px' }}>
                     {validacionCierre.impedimentos.map((imp, i) => (
-                      <li key={i} style={{ marginBottom: '6px', color: '#b91c1c' }}>
+                      <li key={i} style={{ marginBottom: '6px', color: 'var(--state-red-text)' }}>
                         {imp}
                       </li>
                     ))}

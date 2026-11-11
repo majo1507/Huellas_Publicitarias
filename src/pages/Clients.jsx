@@ -26,8 +26,9 @@ const FORM_INICIAL = {
   direccion: '',
 }
 
-// Lista de clientes (la usa Comercial / Recepción)
-export default function Clients({ data, actions, irA }) {
+// Lista de clientes (la administra Comercial / Recepción; Gerencia supervisa)
+export default function Clients({ data, actions, irA, role }) {
+  const puedeAdministrarClientes = role === 'comercial'
   const [modalAbierto, setModalAbierto] = useState(false)
   const [form, setForm] = useState(FORM_INICIAL)
   const [errores, setErrores] = useState({})
@@ -92,9 +93,13 @@ export default function Clients({ data, actions, irA }) {
       clave: 'acciones',
       titulo: 'Acciones',
       render: (c) => (
-        <button className="btn btn-soft btn-sm" onClick={() => irA('nuevo', c.id)}>
-          <Icon nombre="file-plus" tamano={14} /> Nueva solicitud
-        </button>
+        puedeAdministrarClientes ? (
+          <button className="btn btn-soft btn-sm" onClick={() => irA('nuevo', c.id)}>
+            <Icon nombre="file-plus" tamano={14} /> Nueva solicitud
+          </button>
+        ) : (
+          <span className="sm mut">Supervisión</span>
+        )
       ),
     },
   ]
@@ -244,9 +249,11 @@ export default function Clients({ data, actions, irA }) {
         subtitulo={`${data.clients.length} clientes registrados con ubicación geográfica y clasificación comercial.`}
         icono="users"
         acciones={
-          <button className="btn btn-primary" onClick={abrirModalNuevo}>
-            <Icon nombre="plus" tamano={15} /> Registrar nuevo cliente
-          </button>
+          puedeAdministrarClientes && (
+            <button className="btn btn-primary" onClick={abrirModalNuevo}>
+              <Icon nombre="plus" tamano={15} /> Registrar nuevo cliente
+            </button>
+          )
         }
       />
       <DataTable

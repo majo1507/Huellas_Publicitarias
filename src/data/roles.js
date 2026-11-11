@@ -34,9 +34,9 @@ export const ROLES = {
       { grupo: 'Comercial', page: 'clientes', label: 'Clientes', icono: 'users' },
       { grupo: 'Comercial', page: 'nuevo', label: 'Registrar solicitud', icono: 'file-plus' },
       { grupo: 'Comercial', page: 'solicitudes', label: 'Solicitudes', icono: 'inbox' },
+      { grupo: 'Comercial', page: 'aprobacion_disenos', label: 'Gestión de diseños', icono: 'check-circle' },
       { grupo: 'Comercial', page: 'comunicaciones', label: 'Comunicaciones', icono: 'message' },
-      { grupo: 'Operación', page: 'pedidos', label: 'Órdenes generadas', icono: 'clipboard' },
-      { grupo: 'Operación', page: 'entregas', label: 'Entregas', icono: 'truck' },
+      { grupo: 'Seguimiento', page: 'pedidos', label: 'Órdenes en curso', icono: 'clipboard' },
     ],
     notificaciones: [
       { texto: '2 solicitudes están pendientes de enviar a validación.', page: 'solicitudes', tipo: 'aviso' },
@@ -46,22 +46,18 @@ export const ROLES = {
   coordinador: {
     id: 'coordinador',
     nombre: 'Coordinador de producción',
-    usuario: { nombre: 'Carlos Gómez', cargo: 'Coordinador de producción' },
+    usuario: { nombre: 'Carlos Ruiz', cargo: 'Coordinador de producción' },
     ordenPage: 'detalle',
     buscador: true,
     menu: [
-      { grupo: 'General', page: 'inicio', label: 'Panel de producción', icono: 'home' },
-      { grupo: 'Gestión', page: 'solicitudes', label: 'Validar solicitudes', icono: 'inbox' },
-      { grupo: 'Gestión', page: 'pedidos', label: 'Órdenes', icono: 'clipboard' },
-      { grupo: 'Gestión', page: 'comunicaciones', label: 'Comunicaciones', icono: 'message' },
-      { grupo: 'Producción', page: 'produccion', label: 'Tablero de producción', icono: 'columns' },
-      { grupo: 'Producción', page: 'tareas', label: 'Actividades', icono: 'list' },
-      { grupo: 'Producción', page: 'inventario', label: 'Inventario e insumos', icono: 'package' },
-      { grupo: 'Producción', page: 'entregas', label: 'Entregas', icono: 'truck' },
+      { grupo: 'Planificación', page: 'inicio', label: 'Panel de producción', icono: 'home' },
+      { grupo: 'Planificación', page: 'pedidos', label: 'Programación de órdenes', icono: 'clipboard' },
+      { grupo: 'Ejecución', page: 'tareas', label: 'Asignación de actividades', icono: 'list' },
+      { grupo: 'Recursos', page: 'inventario', label: 'Inventario y materiales', icono: 'package' },
     ],
     notificaciones: [
-      { texto: '2 órdenes están retrasadas.', page: 'pedidos', tipo: 'error' },
-      { texto: '2 solicitudes esperan validación.', page: 'solicitudes', tipo: 'aviso' },
+      { texto: '2 órdenes requieren atención por fecha comprometida.', page: 'pedidos', tipo: 'error' },
+      { texto: 'Supervisa las actividades en curso y la carga de taller.', page: 'tareas', tipo: 'info' },
     ],
   },
   disenador: {
@@ -71,8 +67,7 @@ export const ROLES = {
     ordenPage: 'disenos',
     buscador: true,
     menu: [
-      { grupo: 'General', page: 'inicio', label: 'Mis tareas', icono: 'home' },
-      { grupo: 'Diseño', page: 'disenos', label: 'Diseños y aprobaciones', icono: 'pen' },
+      { grupo: 'Diseño', page: 'inicio', label: 'Mesa de diseño', icono: 'pen' },
     ],
     notificaciones: [
       { texto: 'El cliente solicitó cambios en OP-2026-0004.', page: 'disenos', orderId: 'OP-2026-0004', tipo: 'error' },
@@ -82,11 +77,11 @@ export const ROLES = {
   operario: {
     id: 'operario',
     nombre: 'Operario',
-    usuario: { nombre: 'Pedro Morales', cargo: 'Operario de taller' },
+    usuario: { nombre: 'Juan Pérez', cargo: 'Operario de impresión' },
     ordenPage: null,
     buscador: false,
-    menu: [{ grupo: 'General', page: 'inicio', label: 'Mis tareas', icono: 'list' }],
-    notificaciones: [{ texto: 'Tienes 2 tareas de prioridad alta.', page: 'inicio', tipo: 'aviso' }],
+    menu: [{ grupo: 'Taller', page: 'inicio', label: 'Mis actividades', icono: 'list' }],
+    notificaciones: [{ texto: 'Tienes actividades asignadas en estación de trabajo.', page: 'inicio', tipo: 'aviso' }],
   },
   postventa: {
     id: 'postventa',
@@ -95,7 +90,7 @@ export const ROLES = {
     ordenPage: 'detalle',
     buscador: true,
     menu: [
-      { grupo: 'General', page: 'inicio', label: 'Casos', icono: 'life-buoy' },
+      { grupo: 'General', page: 'inicio', label: 'Casos y garantías', icono: 'life-buoy' },
       { grupo: 'Atención', page: 'comunicaciones', label: 'Comunicaciones', icono: 'message' },
       { grupo: 'Consulta', page: 'pedidos', label: 'Órdenes entregadas', icono: 'package' },
     ],
@@ -108,14 +103,24 @@ export const ROLES = {
     ordenPage: 'detalle',
     buscador: true,
     menu: [
-      { grupo: 'General', page: 'inicio', label: 'Resumen general', icono: 'home' },
-      { grupo: 'Análisis', page: 'comunicaciones', label: 'Comunicaciones', icono: 'message' },
-      { grupo: 'Análisis', page: 'inventario', label: 'Inventario e insumos', icono: 'package' },
-      { grupo: 'Análisis', page: 'reportes', label: 'Reportes', icono: 'bar-chart' },
-      { grupo: 'Administración', page: 'usuarios', label: 'Usuarios', icono: 'shield' },
+      { grupo: 'Supervisión', page: 'inicio', label: 'Resumen general', icono: 'home' },
+      { grupo: 'Auditoría', page: 'pedidos', label: 'Expediente de órdenes', icono: 'clipboard' },
+      { grupo: 'Análisis', page: 'inventario', label: 'Inventario y costos', icono: 'package' },
+      { grupo: 'Análisis', page: 'reportes', label: 'Reportes e indicadores', icono: 'bar-chart' },
     ],
     notificaciones: [{ texto: 'Diseño es la etapa que concentra más órdenes.', page: 'reportes', tipo: 'info' }],
   },
+}
+
+// Lista blanca estricta de páginas autorizadas por rol para control de rutas y URL directa (Regla 5)
+export const PAGINAS_AUTORIZADAS_POR_ROL = {
+  comercial: ['inicio', 'clientes', 'nuevo', 'solicitudes', 'aprobacion', 'aprobacion_disenos', 'comunicaciones', 'pedidos', 'entregas', 'detalle', 'historial'],
+  coordinador: ['inicio', 'pedidos', 'tareas', 'inventario', 'detalle', 'historial'],
+  disenador: ['inicio', 'disenos', 'aprobacion'],
+  operario: ['inicio'],
+  postventa: ['inicio', 'comunicaciones', 'pedidos', 'detalle', 'historial'],
+  gerencia: ['inicio', 'pedidos', 'inventario', 'reportes', 'detalle', 'historial'],
+  cliente: ['inicio', 'postventa', 'detalle', 'historial', 'aprobacion'],
 }
 
 // Mapa de compatibilidad entre el ENUM de PostgreSQL (rol_usuario), etiquetas de interfaz y claves de ROLES
@@ -175,9 +180,8 @@ Object.entries({
   }
 })
 
-// Orden en que aparecen en el selector del header
+// Orden en que aparecen en el selector del header (exclusivo equipo interno Huellas Publicidad)
 export const LISTA_ROLES = [
-  ROLES.cliente,
   ROLES.comercial,
   ROLES.coordinador,
   ROLES.disenador,

@@ -35,30 +35,30 @@ router.patch(
   solicitudesController.corregirSolicitud
 );
 
-// Devolución para corrección con observaciones (exclusivo Coordinación)
+// Devolución para corrección con observaciones (exclusivo Comercial / Recepción)
 router.patch(
   '/:id/devolver',
   verificarToken,
   asociarCapacidad('solicitudes.devolver'),
-  verificarRol('coord'),
+  verificarRol('ejecutiva'),
   solicitudesController.devolverSolicitud
 );
 
-// Rechazo definitivo de solicitud inviable (exclusivo Coordinación)
+// Rechazo definitivo de solicitud inviable (exclusivo Comercial / Recepción)
 router.patch(
   '/:id/rechazar',
   verificarToken,
   asociarCapacidad('solicitudes.rechazar'),
-  verificarRol('coord'),
+  verificarRol('ejecutiva'),
   solicitudesController.rechazarSolicitud
 );
 
-// Validación y conversión transaccional a Orden de Producción (exclusivo Coordinación)
+// Validación y conversión transaccional a Orden de Producción (exclusivo Comercial / Recepción; retirado de Coordinación)
 router.post(
   '/:id/validar',
   verificarToken,
   asociarCapacidad('solicitudes.validar'),
-  verificarRol('coord'),
+  verificarRol('ejecutiva'),
   solicitudesController.validarSolicitud
 );
 

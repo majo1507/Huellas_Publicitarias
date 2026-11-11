@@ -181,7 +181,7 @@ export default function Deliveries({ data, actions, irA, role }) {
           <button className="btn btn-sm btn-soft" onClick={() => irA('detalle', o.id)}>
             Ver detalle
           </button>
-          {o.estado === 'Despacho' && (
+          {o.estado === 'Despacho' && ['comercial', 'postventa'].includes(role) && (
             <button className="btn btn-sm btn-primary" onClick={() => abrirRegistrarEntrega(o)}>
               <Icon nombre="check" tamano={13} /> Registrar entrega
             </button>
@@ -289,11 +289,32 @@ export default function Deliveries({ data, actions, irA, role }) {
         icono="truck"
       />
 
+      {/* 3 Indicadores clave de Despachos con redirección directa a sus pestañas */}
       <div className="kpis">
-        <StatCard titulo="Próximas en 7 días" valor={proximas.length} icono="calendar" />
-        <StatCard titulo="En despacho hoy" valor={data.orders.filter((o) => o.estado === 'Despacho').length} icono="truck" color="amarillo" />
-        <StatCard titulo="Órdenes entregadas" valor={entregadas.length} icono="package" color="verde" />
-        <StatCard titulo="Casos en postventa" valor={data.cases.filter((c) => c.estado !== 'Resuelto').length} icono="life-buoy" color="rojo" />
+        <StatCard
+          titulo="Próximas en 7 días"
+          valor={proximas.length}
+          icono="calendar"
+          color={proximas.length > 0 ? 'amarillo' : 'azul'}
+          detalle="Compromisos en calendario semanal"
+          onClick={() => setPestaña('proximas')}
+        />
+        <StatCard
+          titulo="En despacho activo"
+          valor={data.orders.filter((o) => o.estado === 'Despacho').length}
+          icono="truck"
+          color="azul"
+          detalle="Listas para registrar acta de entrega"
+          onClick={() => setPestaña('proximas')}
+        />
+        <StatCard
+          titulo="Entregadas y recibidas"
+          valor={entregadas.length}
+          icono="check-circle"
+          color="verde"
+          detalle="Historial y actas de conformidad"
+          onClick={() => setPestaña('historial')}
+        />
       </div>
 
       {/* Pestañas de entregas */}

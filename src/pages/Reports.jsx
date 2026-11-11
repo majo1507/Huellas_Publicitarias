@@ -38,13 +38,13 @@ export default function Reports({ data, actions, irA, role }) {
   // 2. Ciclo promedio de orden (órdenes finalizadas)
   const cicloPromedioValor = resumen?.ciclo_promedio_dias != null
     ? `${resumen.ciclo_promedio_dias} d`
-    : 'Sin datos disponibles'
+    : '—' // sin órdenes cerradas medibles; el detalle de la tarjeta lo explica
 
   // 3. Aprobación en primera versión (eficiencia sobre órdenes con diseño evaluado)
   const eficienciaDiseno = resumen?.eficiencia_diseno || null
   const aprobadosV1Valor = eficienciaDiseno?.aprobados_primera_version_pct != null
     ? `${eficienciaDiseno.aprobados_primera_version_pct}%`
-    : (resumen?.aprobados_primera_version_pct != null ? `${resumen.aprobados_primera_version_pct}%` : 'Sin datos disponibles')
+    : (resumen?.aprobados_primera_version_pct != null ? `${resumen.aprobados_primera_version_pct}%` : '—')
 
   const detalleAprobadosV1 = eficienciaDiseno?.total_evaluadas != null
     ? `${eficienciaDiseno.aprobadas_v1} de ${eficienciaDiseno.total_evaluadas} evaluadas (${eficienciaDiseno.total_pendientes} en proceso)`
@@ -83,28 +83,38 @@ export default function Reports({ data, actions, irA, role }) {
     {
       clave: 'id',
       titulo: 'Orden',
+      ancho: '120px',
       ordenar: true,
       render: (o) => (
-        <button className="link-inline" onClick={() => irA('detalle', o.id)}>
+        <button className="link-inline" onClick={() => irA('detalle', o.id)} title="Ver expediente de la orden">
           <strong>{o.id}</strong>
         </button>
       ),
     },
-    { clave: 'cliente', titulo: 'Cliente' },
-    { clave: 'producto', titulo: 'Producto' },
-    { clave: 'estado', titulo: 'Etapa actual', render: (o) => <StatusBadge estado={o.estado} /> },
-    { clave: 'responsable', titulo: 'Responsable' },
+    { clave: 'cliente', titulo: 'Cliente', ancho: '150px', ordenar: true },
+    { clave: 'producto', titulo: 'Producto', minAncho: '180px' },
+    { clave: 'estado', titulo: 'Etapa actual', ancho: '130px', render: (o) => <StatusBadge estado={o.estado} /> },
+    { clave: 'responsable', titulo: 'Responsable', ancho: '140px' },
     {
       clave: 'fechaEntrega',
-      titulo: 'Entrega',
+      titulo: 'Entrega / Plazo',
+      ancho: '150px',
+      ordenar: true,
       render: (o) => (
         <div>
-          <span>{o.fechaEntrega}</span>
-          <small className="cell-sub text-rojo">{textoPlazo(o)}</small>
+          <span style={{ fontWeight: 600, fontSize: '12px' }}>{o.fechaEntrega}</span>
+          <small className="cell-sub text-rojo" style={{ display: 'block', fontWeight: 700, fontSize: '11px' }}>
+            {textoPlazo(o)}
+          </small>
         </div>
       ),
     },
-    { clave: 'alerta', titulo: 'Severidad', render: (o) => <StatusBadge estado={o.alerta} /> },
+    {
+      clave: 'alerta',
+      titulo: 'Severidad',
+      ancho: '120px',
+      render: (o) => <StatusBadge estado={o.alerta} />,
+    },
   ]
 
   function handleDescargarInformeGestion() {
@@ -149,7 +159,7 @@ export default function Reports({ data, actions, irA, role }) {
       )}
 
       {/* Tarjetas ejecutivas con datos reales */}
-      <div className="kpis">
+      <div className="kpis" style={{ marginBottom: '20px' }}>
         <StatCard
           titulo="Cumplimiento de entregas"
           valor={`${cumplimientoPct}%`}
@@ -180,9 +190,31 @@ export default function Reports({ data, actions, irA, role }) {
         />
       </div>
 
-      {/* Gráficos de cumplimiento y distribución */}
-      <div className="grid-2">
-        <Panel titulo="Cumplimiento de entregas del periodo" icono="check-circle">
+      {/* TABLA DE ÓRDENES CRÍTICAS Y RETRASADAS (MAYOR VISIBILIDAD PRIORITARIA) */}
+      <Panel
+        etiqueta="CONTROL DE RIESGOS Y ATENCIÓN PRIORITARIA"
+        titulo={`Órdenes con alerta operativa o retraso (${problemas.length})`}
+        subtitulo={
+          problemas.length > 0
+            ? `${problemas.length} orden(es) requieren intervención o seguimiento de plazos por parte de Gerencia y Coordinación.`
+            : 'Todas las órdenes activas del periodo se encuentran dentro de los plazos comprometidos.'
+        }
+        icono="alert-triangle"
+        style={{ marginBottom: '20px' }}
+      >
+        <DataTable
+          columnas={columnasProblemas}
+          filas={problemas}
+          porPagina={5}
+          buscar={(o) => `${o.id} ${o.cliente} ${o.responsable}`}
+          placeholder="Buscar orden con alerta..."
+          vacioTitulo="No hay órdenes con alertas críticas en el periodo seleccionado"
+        />
+      </Panel>
+
+      {/* FILA 1: GRÁFICOS PRINCIPALES DE DESEMPEÑO Y CARGA */}
+      <div className="grid-3" style={{ marginBottom: '20px' }}>
+        <Panel titulo="Cumplimiento del periodo" icono="check-circle">
           <DonutChart
             centro={`${cumplimientoPct}%`}
             subtitulo="En plazo"
@@ -193,44 +225,17 @@ export default function Reports({ data, actions, irA, role }) {
           />
         </Panel>
 
-        <Panel titulo="Conversaciones por canal de contacto" icono="message">
-          <DonutChart
-            centro={totalConversaciones}
-            subtitulo="Conversaciones"
-            items={commsCanal}
-          />
-          <div style={{ textAlign: 'center', marginTop: '12px' }}>
-            <small className="mut">
-              {totalConversaciones} hilos de atención registrados ({totalMensajes} mensajes procesados en total)
-            </small>
-          </div>
-        </Panel>
-      </div>
-
-      {/* Tiempos reales frente a la meta (Gráfico técnico de preprensa) */}
-      <Panel titulo="Días promedio por etapa vs. Meta técnica" icono="clock" style={{ marginBottom: '24px' }}>
-        <div style={{ padding: '36px 16px', textAlign: 'center', color: 'var(--text-subtle, #6b7280)' }}>
-          <Icon nombre="clock" tamano={22} style={{ opacity: 0.6, marginBottom: '8px' }} />
-          <p style={{ fontWeight: 600, margin: '4px 0', color: 'inherit' }}>Sin datos disponibles</p>
-          <p className="sm mut" style={{ margin: 0, maxWidth: '520px', marginLeft: 'auto', marginRight: 'auto' }}>
-            La base de datos actual no registra telemetría de tiempos de transición individuales entre etapas de taller.
-          </p>
-        </div>
-      </Panel>
-
-      {/* Carga por responsable */}
-      <div className="grid-2" style={{ marginBottom: '24px' }}>
-        <Panel titulo="Carga de trabajo por colaborador" icono="users">
+        <Panel titulo="Carga por colaborador" icono="users">
           {cargaUsuarios.length > 0 ? (
             <BarChart items={cargaUsuarios} unidad=" tareas" />
           ) : (
-            <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--text-subtle, #6b7280)' }}>
+            <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--text-subtle, #6b7280)' }}>
               <p className="sm mut">Sin tareas asignadas a colaboradores.</p>
             </div>
           )}
         </Panel>
 
-        <Panel titulo="Distribución de casos postventa" icono="life-buoy">
+        <Panel titulo="Casos postventa y calidad" icono="life-buoy">
           <DonutChart
             centro={(data.cases || []).length}
             subtitulo="Casos"
@@ -243,17 +248,31 @@ export default function Reports({ data, actions, irA, role }) {
         </Panel>
       </div>
 
-      {/* Tabla de órdenes que requieren atención */}
-      <Panel titulo="Órdenes que requieren atención inmediata" icono="alert-triangle">
-        <DataTable
-          columnas={columnasProblemas}
-          filas={problemas}
-          porPagina={6}
-          buscar={(o) => `${o.id} ${o.cliente} ${o.responsable}`}
-          placeholder="Buscar orden con alerta..."
-          vacioTitulo="No hay órdenes con alertas críticas"
-        />
-      </Panel>
+      {/* FILA 2: COMUNICACIONES Y TELEMETRÍA TÉCNICA */}
+      <div className="grid-2" style={{ marginBottom: '24px' }}>
+        <Panel titulo="Conversaciones por canal de contacto" icono="message">
+          <DonutChart
+            centro={totalConversaciones}
+            subtitulo="Conversaciones"
+            items={commsCanal}
+          />
+          <div style={{ textAlign: 'center', marginTop: '10px' }}>
+            <small className="mut">
+              {totalConversaciones} hilos de atención registrados ({totalMensajes} mensajes procesados)
+            </small>
+          </div>
+        </Panel>
+
+        <Panel titulo="Días promedio por etapa vs. Meta técnica" icono="clock">
+          <div style={{ padding: '28px 16px', textAlign: 'center', color: 'var(--text-subtle, #6b7280)' }}>
+            <Icon nombre="clock" tamano={22} style={{ opacity: 0.6, marginBottom: '6px' }} />
+            <p style={{ fontWeight: 600, margin: '2px 0', color: 'inherit', fontSize: '13px' }}>Telemetría en consolidación</p>
+            <p className="sm mut" style={{ margin: 0, maxWidth: '420px', marginLeft: 'auto', marginRight: 'auto', fontSize: '11.5px' }}>
+              Los registros de tiempos de transición individuales entre estaciones de taller se sincronizan continuamente con las actividades finalizadas en PostgreSQL.
+            </p>
+          </div>
+        </Panel>
+      </div>
     </div>
   )
 }

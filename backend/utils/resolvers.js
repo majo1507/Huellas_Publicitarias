@@ -11,16 +11,33 @@ function esUuid(val) {
 }
 
 function formatearFechaHoy(fecha = new Date()) {
-  const dd = String(fecha.getDate()).padStart(2, '0');
-  const mm = String(fecha.getMonth() + 1).padStart(2, '0');
-  const yyyy = fecha.getFullYear();
-  return `${dd}/${mm}/${yyyy}`;
+  return formatearFechaBogota(fecha);
 }
 
 function formatearHoraAhora(fecha = new Date()) {
-  const hh = String(fecha.getHours()).padStart(2, '0');
-  const mi = String(fecha.getMinutes()).padStart(2, '0');
-  return `${hh}:${mi}`;
+  return formatearHoraBogota(fecha);
+}
+
+function formatearFechaBogota(fecha = new Date()) {
+  const d = fecha instanceof Date ? fecha : new Date(fecha);
+  if (isNaN(d.getTime())) return null;
+  return new Intl.DateTimeFormat('es-CO', {
+    timeZone: 'America/Bogota',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(d);
+}
+
+function formatearHoraBogota(fecha = new Date()) {
+  const d = fecha instanceof Date ? fecha : new Date(fecha);
+  if (isNaN(d.getTime())) return null;
+  return new Intl.DateTimeFormat('es-CO', {
+    timeZone: 'America/Bogota',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(d);
 }
 
 // Mapeo de roles entre base de datos y frontend
@@ -122,6 +139,13 @@ async function resolverUsuario(dbOrClient, idOrCodigoOrNombre) {
   return res.rowCount > 0 ? res.rows[0] : null;
 }
 
+// Estados de diseño de una orden que cuentan como aprobación válida (RF-07).
+// 'Aprobado' es el estado heredado; 'Aprobado por el cliente' es el del flujo comercial vigente.
+const ESTADOS_DISENO_APROBADO = ['Aprobado', 'Aprobado por el cliente', 'Listo para impresión'];
+function esDisenoAprobado(estado) {
+  return ESTADOS_DISENO_APROBADO.includes(String(estado || '').trim());
+}
+
 async function obtenerUsuarioPorDefecto(dbOrClient, rolDb = 'ejecutiva') {
   const res = await dbOrClient.query(
     'SELECT * FROM usuarios WHERE rol = $1 AND esta_activo = true ORDER BY created_at ASC LIMIT 1',
@@ -134,8 +158,12 @@ async function obtenerUsuarioPorDefecto(dbOrClient, rolDb = 'ejecutiva') {
 
 module.exports = {
   esUuid,
+  ESTADOS_DISENO_APROBADO,
+  esDisenoAprobado,
   formatearFechaHoy,
   formatearHoraAhora,
+  formatearFechaBogota,
+  formatearHoraBogota,
   ROL_DB_TO_UI,
   normalizarRolDb,
   ETAPA_NUM_TO_NOMBRE_UI,

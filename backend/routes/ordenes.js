@@ -20,12 +20,12 @@ router.post(
   ordenesController.crearOrden
 );
 
-// Transición de etapa global de la orden en planta (exclusivo Coordinador)
+// Transición de etapa global de la orden en planta (controlada automáticamente por ORVEX según avance de actividades y aprobaciones; bloqueada para avance manual)
 router.patch(
   '/:id/etapa',
   verificarToken,
   asociarCapacidad('ordenes.etapa'),
-  verificarRol('coord'),
+  verificarRol('sistema_automatico'),
   ordenesController.actualizarEtapa
 );
 
@@ -38,12 +38,12 @@ router.patch(
   ordenesController.actualizarAsignacionOrden
 );
 
-// Registro formal de entrega y remisión (exclusivo Coordinador)
+// Registro formal de entrega y remisión (Comercial/Recepción y Postventa; retirado de Coordinación)
 router.post(
   '/:id/entrega',
   verificarToken,
   asociarCapacidad('ordenes.entrega'),
-  verificarRol('coord'),
+  verificarRol('ejecutiva', 'postventa'),
   upload.single('evidencia'),
   ordenesController.registrarEntrega
 );

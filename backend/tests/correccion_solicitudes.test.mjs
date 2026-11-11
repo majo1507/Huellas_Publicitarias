@@ -60,8 +60,32 @@ async function runTests() {
     assert.ok(clienteRes.rowCount > 0, 'Debe existir al menos un cliente');
     const cliente = clienteRes.rows[0];
 
-    // 2. Crear una solicitud de prueba en estado pendiente
-    console.log('1️⃣ Registrando solicitud inicial por Comercial...');
+    // 2. Intentos de creación con dimensiones inválidas (deben fallar con HTTP 400)
+    console.log('1️⃣ Verificando rechazo de dimensiones inválidas al crear solicitud...');
+    const dimInvalidasCreacion = ['juju', 'juju...', '-1.20 x 2.00 m', '0 x 0 m', '1.20 x', 'Medida personalizada'];
+    for (const dimInv of dimInvalidasCreacion) {
+      const intentoFallido = await req('/solicitudes', {
+        method: 'POST',
+        token: tokenComercial,
+        body: {
+          clienteId: cliente.id,
+          producto: 'Pendón publicitario de prueba',
+          cantidad: 1,
+          dimensiones: dimInv,
+          material: 'Lona banner 13 oz',
+          fechaEntrega: '25/11/2026',
+          presupuesto: 100000,
+        },
+      });
+      assert.equal(
+        intentoFallido.status,
+        400,
+        `La creación con dimensión inválida '${dimInv}' debió responder 400, se obtuvo ${intentoFallido.status}`
+      );
+    }
+    console.log('   ✅ Creación rechaza correctamente dimensiones inválidas (letras, ceros, negativos, incompletas).');
+
+    console.log('2️⃣ Registrando solicitud inicial válida por Comercial...');
     const creacionRes = await req('/solicitudes', {
       method: 'POST',
       token: tokenComercial,
@@ -87,7 +111,7 @@ async function runTests() {
     console.log(`   ✅ Solicitud creada: ${solId} (${solCodigoOriginal}), estado: ${solicitudCreada.estado}`);
 
     // 3. Enviar a validación
-    console.log('2️⃣ Enviando solicitud a validación técnica...');
+    console.log('3️⃣ Enviando solicitud a validación técnica...');
     const envioRes = await req(`/solicitudes/${solId}/enviar`, {
       method: 'PATCH',
       token: tokenComercial,
@@ -164,7 +188,7 @@ async function runTests() {
       body: {
         producto: 'Pendón',
         cantidad: 0, // Invalido
-        dimensiones: '1 x 1',
+        dimensiones: '1.00 x 1.50 m',
         material: 'Lona',
         fechaEntrega: '26/11/2026',
         presupuesto: 100000,
@@ -178,14 +202,58 @@ async function runTests() {
       body: {
         producto: 'Pendón',
         cantidad: 2,
-        dimensiones: '1 x 1',
+        dimensiones: '1.00 x 1.50 m',
         material: 'Lona',
         fechaEntrega: '26/11/2026',
         presupuesto: -500, // Invalido
       },
     });
     assert.equal(valErrPresupuesto.status, 400, 'Presupuesto negativo debe responder 400');
-    console.log('   ✅ Validaciones numéricas y de obligatoriedad verificadas (HTTP 400).');
+
+    // Validación específica de dimensiones inválidas en solicitudes devueltas (Requisito 7)
+    console.log('   🔍 Probando rechazo de dimensiones inválidas en solicitud devuelta (juju, ceros, negativos, incompletas)...');
+    const dimCasosInvalidos = [
+      'juju',
+      'juju...',
+      'grande',
+      '-1.20 x 2.00 m',
+      '9 x -5 cm',
+      '0 x 0 m',
+      '0 x 5 cm',
+      '1.20 x 0 m',
+      '0.00 x 2.00 m',
+      '1.20 x',
+      'x 2.00 m',
+      '5 cm',
+      'Medida personalizada',
+      'abc x def',
+      '1.20 x abc',
+    ];
+
+    for (const dimInv of dimCasosInvalidos) {
+      const intentoDim = await req(`/solicitudes/${solId}/corregir`, {
+        method: 'PATCH',
+        token: tokenComercial,
+        body: {
+          producto: 'Pendón publicitario corregido',
+          cantidad: 2,
+          dimensiones: dimInv,
+          material: 'Lona',
+          fechaEntrega: '26/11/2026',
+          presupuesto: 100000,
+        },
+      });
+      assert.equal(
+        intentoDim.status,
+        400,
+        `La dimensión inválida '${dimInv}' debió responder 400 pero respondió ${intentoDim.status}`
+      );
+      assert.ok(
+        intentoDim.data.error.includes('dimensiones'),
+        `El mensaje de error para '${dimInv}' debe indicar que las dimensiones son inválidas: ${intentoDim.data.error}`
+      );
+    }
+    console.log('   ✅ Validaciones numéricas, de obligatoriedad y de dimensiones verificadas (HTTP 400).');
 
     // 8. Corrección legítima por Comercial
     console.log('7️⃣ Ejecutando corrección legítima y reenvío por Comercial...');

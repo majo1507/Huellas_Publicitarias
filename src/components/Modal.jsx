@@ -3,11 +3,12 @@ import Icon from './Icon.jsx'
 
 // Ventana modal reutilizable.
 // - Con "etiqueta": muestra un cuadro de texto obligatorio (motivo, observación, solución...).
-// - Sin "etiqueta": es un diálogo de confirmación con "mensaje".
+// - Con "children": muestra un formulario o contenido personalizado dentro de .modal-body.
+// - Sin "etiqueta" ni "children": es un diálogo de confirmación con "mensaje".
 // - tipoBoton: 'primary' | 'success' | 'danger'
 export default function Modal({
   titulo, subtitulo, icono = 'edit', etiqueta, ayuda, mensaje, minimo = 5,
-  textoBoton = 'Guardar', tipoBoton = 'primary', onConfirm, onClose,
+  textoBoton = 'Guardar', tipoBoton = 'primary', onConfirm, onClose, children,
 }) {
   const [texto, setTexto] = useState('')
   const [error, setError] = useState('')
@@ -25,7 +26,11 @@ export default function Modal({
       setError(`Escribe al menos ${minimo} caracteres para continuar.`)
       return
     }
-    onConfirm(texto.trim())
+    if (children && !etiqueta) {
+      onConfirm(e)
+    } else {
+      onConfirm(texto.trim(), e)
+    }
   }
 
   return (
@@ -54,11 +59,12 @@ export default function Modal({
               {error ? <span className="field-error">{error}</span> : ayuda && <span className="field-hint">{ayuda}</span>}
             </label>
           )}
+          {children}
         </div>
 
         <footer className="modal-foot">
           <button type="button" className="btn" onClick={onClose}>Cancelar</button>
-          <button type="submit" className={`btn btn-${tipoBoton}`} autoFocus={!etiqueta}>{textoBoton}</button>
+          <button type="submit" className={`btn btn-${tipoBoton}`} autoFocus={!etiqueta && !children}>{textoBoton}</button>
         </footer>
       </form>
     </div>

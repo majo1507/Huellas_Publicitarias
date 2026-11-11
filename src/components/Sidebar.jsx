@@ -1,4 +1,4 @@
-import { LISTA_ROLES, ROLES, normalizarRol, obtenerConfigRol } from '../data/roles.js'
+import { normalizarRol, obtenerConfigRol } from '../data/roles.js'
 import Icon from './Icon.jsx'
 import Avatar from './Avatar.jsx'
 
@@ -48,10 +48,13 @@ function Marca({ colapsado, onToggleColapso }) {
 }
 
 // Barra lateral: perfil / selector de rol + menú agrupado por módulos (depende del rol)
-export default function Sidebar({ role, current, irA, onChangeRole, abierto, colapsado = false, onClose, onLogout, onToggleColapso }) {
+export default function Sidebar({ role, current, irA, usuarioActual, abierto, colapsado = false, onClose, onLogout, onToggleColapso }) {
   const rolClave = normalizarRol(role)
   const rolConfig = obtenerConfigRol(rolClave)
-  const { menu, usuario } = rolConfig
+  const { menu, usuario: usuarioRol } = rolConfig
+  const usuario = usuarioActual?.nombre
+    ? { nombre: usuarioActual.nombre, cargo: usuarioActual.cargo || rolConfig.etiqueta }
+    : usuarioRol
   const tienePedidos = menu.some((m) => m.page === 'pedidos')
   const paginaActiva = pantallasDeOrden.includes(current) ? (tienePedidos ? 'pedidos' : 'inicio') : current
   const grupos = [...new Set(menu.map((m) => m.grupo))]

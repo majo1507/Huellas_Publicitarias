@@ -37,7 +37,14 @@ app.use(
     credentials: true,
   })
 );
-app.use(express.json({ limit: '10mb' }));
+app.use(
+  express.json({
+    limit: '10mb',
+    verify: (req, _res, buf) => {
+      req.rawBody = buf;
+    },
+  })
+);
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Documentación Swagger / OpenAPI

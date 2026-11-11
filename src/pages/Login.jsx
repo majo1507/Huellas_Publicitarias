@@ -6,13 +6,12 @@ import './Login.css'
 
 // Credenciales oficiales de prueba para el prototipo
 const CUENTAS_DEMO = [
-  { rol: 'coordinador', usuario: 'carlos.gomez@huellas.co', clave: 'coord123', nombre: 'Carlos Gómez', cargo: 'Coordinador de producción', color: 'linear-gradient(135deg, #3b82f6, #1d4ed8)' },
-  { rol: 'comercial', usuario: 'ana.martinez@huellas.co', clave: 'comercial123', nombre: 'Ana Martínez', cargo: 'Ejecutiva comercial', color: 'linear-gradient(135deg, #10b981, #059669)' },
+  { rol: 'coordinador', usuario: 'carlos.gomez@huellas.co', clave: 'coord123', nombre: 'Carlos Ruiz', cargo: 'Coordinador de producción', color: 'linear-gradient(135deg, #3b82f6, #1d4ed8)' },
+  { rol: 'comercial', usuario: 'ana.martinez@huellas.co', clave: 'comercial123', nombre: 'Ana Martínez', cargo: 'Comercial / Recepción', color: 'linear-gradient(135deg, #10b981, #059669)' },
   { rol: 'disenador', usuario: 'maria.lopez@huellas.co', clave: 'diseno123', nombre: 'María López', cargo: 'Diseñadora gráfica', color: 'linear-gradient(135deg, #8b5cf6, #6d28d9)' },
-  { rol: 'operario', usuario: 'pedro.morales@huellas.co', clave: 'taller123', nombre: 'Pedro Morales', cargo: 'Operario de taller', color: 'linear-gradient(135deg, #f59e0b, #d97706)' },
+  { rol: 'operario', usuario: 'pedro.morales@huellas.co', clave: 'taller123', nombre: 'Juan Pérez', cargo: 'Operario de impresión', color: 'linear-gradient(135deg, #f59e0b, #d97706)' },
   { rol: 'postventa', usuario: 'sofia.herrera@huellas.co', clave: 'post123', nombre: 'Sofía Herrera', cargo: 'Atención postventa', color: 'linear-gradient(135deg, #ec4899, #db2777)' },
-  { rol: 'gerencia', usuario: 'laura.sanchez@huellas.co', clave: 'gerencia123', nombre: 'Laura Sánchez', cargo: 'Gerente general', color: 'linear-gradient(135deg, #06b6d4, #0284c7)' },
-  { rol: 'cliente', usuario: 'carlos.mendoza@alpina.com', clave: 'cliente123', nombre: 'Carlos Mendoza', cargo: 'Cliente (Alpina S.A.)', color: 'linear-gradient(135deg, #64748b, #334155)' },
+  { rol: 'gerencia', usuario: 'laura.sanchez@huellas.co', clave: 'gerencia123', nombre: 'Andrés Torres', cargo: 'Gerente general', color: 'linear-gradient(135deg, #06b6d4, #0284c7)' },
 ]
 
 // Las 5 etapas del flujo integral de ORVEX
@@ -158,7 +157,7 @@ export default function Login({ onLogin }) {
       onLogin(
         {
           id: usr.id,
-          dbId: usr.dbId,
+          dbId: usr.uuid || usr.dbId,
           nombre: usr.nombre || ROLES[rolUi]?.usuario?.nombre || 'Usuario',
           correo: usr.correo || usr.email || identificador.trim(),
           cargo: usr.cargo || ROLES[rolUi]?.usuario?.cargo || rolUi,
@@ -395,12 +394,11 @@ export default function Login({ onLogin }) {
                 <span className="orvex-demo-title">
                   <Icon nombre="users" tamano={14} /> Accesos de demostración (1 clic)
                 </span>
-                <span className="orvex-demo-pill">7 Roles</span>
+                <span className="orvex-demo-pill">6 Roles internos</span>
               </div>
 
               <div className="orvex-demo-grid">
                 {CUENTAS_DEMO.map((cuenta) => {
-                  const esCliente = cuenta.rol === 'cliente'
                   const inicial = cuenta.nombre.charAt(0)
                   const nombreRol = cuenta.rol.charAt(0).toUpperCase() + cuenta.rol.slice(1)
 
@@ -408,7 +406,7 @@ export default function Login({ onLogin }) {
                     <button
                       key={cuenta.rol}
                       type="button"
-                      className={`orvex-demo-btn ${esCliente ? 'orvex-demo-btn-full' : ''}`}
+                      className="orvex-demo-btn"
                       onClick={() => handleAccesoRapido(cuenta)}
                       title={`Ingresar como ${cuenta.nombre} (${cuenta.cargo})`}
                       style={rolActivo === cuenta.rol ? { borderColor: '#38bdf8', background: 'rgba(56, 189, 248, 0.18)' } : {}}

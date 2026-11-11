@@ -23,14 +23,40 @@ export function parseFecha(texto) {
   return new Date(texto)
 }
 
+// Date -> "dd/MM/yyyy" en zona horaria America/Bogota
+export function formatearFechaBogota(fecha = new Date()) {
+  if (!fecha) return ''
+  const d = fecha instanceof Date ? fecha : new Date(fecha)
+  if (isNaN(d.getTime())) return typeof fecha === 'string' ? fecha : ''
+  return new Intl.DateTimeFormat('es-CO', {
+    timeZone: 'America/Bogota',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(d)
+}
+
+// Date -> "HH:mm" en zona horaria America/Bogota
+export function formatearHoraBogota(fecha = new Date()) {
+  if (!fecha) return ''
+  const d = fecha instanceof Date ? fecha : new Date(fecha)
+  if (isNaN(d.getTime())) return ''
+  return new Intl.DateTimeFormat('es-CO', {
+    timeZone: 'America/Bogota',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(d)
+}
+
 // Date -> "dd/MM/yyyy"
 export function formatearFecha(fecha = new Date()) {
-  return `${dos(fecha.getDate())}/${dos(fecha.getMonth() + 1)}/${fecha.getFullYear()}`
+  return formatearFechaBogota(fecha)
 }
 
 // Date -> "HH:mm"
 export function formatearHora(fecha = new Date()) {
-  return `${dos(fecha.getHours())}:${dos(fecha.getMinutes())}`
+  return formatearHoraBogota(fecha)
 }
 
 // 350000 -> "$ 350.000"
@@ -93,24 +119,78 @@ export function etiquetaDiseno(estado) {
 // Última versión de diseño de una orden (o undefined si aún no hay)
 export const ultimaVersion = (orden) => orden.versiones?.[orden.versiones.length - 1]
 
-// REGLA DE NEGOCIO (HU-13): una orden no puede pasar a Impresión (ni a etapas posteriores)
-// si la última versión vigente de diseño no está explícitamente aprobada.
-export function puedeAvanzar(orden) {
+// REGLA DE NEGOCIO (HU-13, RF-07): una orden no puede pasar a Impresión (ni a etapas posteriores)
+// si la última versión vigente de diseño no está explícitamente aprobada por el cliente con evidencia.
+export function puedeAvanzar(orden, tareas = []) {
   if (orden.estado === 'Cerrada') {
     return { ok: false, bloqueada: true, siguiente: null, motivo: 'La orden está cerrada formalmente y no admite más avances.' }
   }
   const siguiente = ETAPAS[ETAPAS.indexOf(orden.estado) + 1]
   if (!siguiente) return { ok: false, bloqueada: false, siguiente: null, motivo: 'La orden ya completó todo el flujo.' }
   const ultima = ultimaVersion(orden)
-  const aprobado = orden.disenoEstado === 'Aprobado' && Boolean(ultima && ultima.estado === 'Aprobada')
-  if (ETAPAS.indexOf(siguiente) >= ETAPAS.indexOf('Impresión') && !aprobado) {
-    return {
-      ok: false,
-      bloqueada: true,
-      siguiente,
-      motivo: 'El pedido no puede pasar a impresión porque el diseño vigente aún no ha sido aprobado.',
+  const aprobado = (
+    orden.disenoEstado === 'Aprobado' ||
+    orden.disenoEstado === 'Aprobado por el cliente' ||
+    orden.disenoEstado === 'Listo para impresión'
+  ) && Boolean(
+    ultima && (
+      ultima.estado === 'Aprobada' ||
+      ultima.estado === 'Aprobado por el cliente' ||
+      ultima.estado_aprobacion === 'aprobado'
+    )
+  )
+
+  const estadosBloqueantes = [
+    'En diseño',
+    'Revisión técnica de archivo',
+    'Pendiente de gestión comercial',
+    'Esperando respuesta del cliente',
+    'Cambios solicitados',
+  ]
+
+  if (ETAPAS.indexOf(siguiente) >= ETAPAS.indexOf('Impresión')) {
+    if (estadosBloqueantes.includes(orden.disenoEstado) || !aprobado) {
+      let motivo = 'El pedido no puede pasar a impresión porque el diseño vigente aún no ha sido aprobado formalmente.'
+      if (orden.disenoEstado === 'Revisión técnica de archivo') {
+        motivo = 'Paso a impresión bloqueado: el archivo suministrado está pendiente de revisión técnica de pre-prensa y VoBo del cliente.'
+      } else if (orden.disenoEstado === 'Esperando respuesta del cliente') {
+        motivo = 'Paso a impresión bloqueado: el diseño está esperando respuesta del cliente.'
+      } else if (orden.disenoEstado === 'Pendiente de gestión comercial') {
+        motivo = 'Paso a impresión bloqueado: el diseño está pendiente de gestión comercial con el cliente.'
+      } else if (orden.disenoEstado === 'Cambios solicitados') {
+        motivo = 'Paso a impresión bloqueado: el cliente solicitó modificaciones para el diseño.'
+      } else if (orden.disenoEstado === 'En diseño') {
+        motivo = 'Paso a impresión bloqueado: el diseño se encuentra en preparación.'
+      }
+      return {
+        ok: false,
+        bloqueada: true,
+        siguiente,
+        motivo,
+      }
     }
   }
+
+  // Verificación de actividades obligatorias de la etapa actual (solo si existen actividades asignadas)
+  if (Array.isArray(tareas) && tareas.length > 0) {
+    const tareasEtapaActual = tareas.filter(
+      (t) => (t.ordenId === orden.id || String(t.orden_id) === String(orden.id)) && t.etapa === orden.estado
+    )
+    if (tareasEtapaActual.length > 0) {
+      const tareasIncompletas = tareasEtapaActual.filter(
+        (t) => t.estado !== 'Finalizada' || (t.pct !== undefined && Number(t.pct) < 100)
+      )
+      if (tareasIncompletas.length > 0) {
+        return {
+          ok: false,
+          bloqueada: true,
+          siguiente,
+          motivo: `Etapa en ejecución: aún hay ${tareasIncompletas.length} actividad(es) obligatoria(s) sin finalizar en ${orden.estado}.`,
+        }
+      }
+    }
+  }
+
   return { ok: true, bloqueada: false, siguiente, motivo: '' }
 }
 
@@ -127,7 +207,14 @@ export function validarCierreOrden(orden, tareas = [], casos = []) {
 
   // 2. Diseño vigente debe estar aprobado
   const ultima = ultimaVersion(orden)
-  if (orden.disenoEstado !== 'Aprobado' || !ultima || ultima.estado !== 'Aprobada') {
+  const disenoOrdenAprobado = ['Aprobado', 'Aprobado por el cliente', 'Listo para impresión'].includes(orden.disenoEstado)
+  const versionVigenteAprobada = Boolean(
+    ultima &&
+      (ultima.estado === 'Aprobada' ||
+        ultima.estado === 'Aprobado por el cliente' ||
+        ultima.estado_aprobacion === 'aprobado')
+  )
+  if (!disenoOrdenAprobado || !versionVigenteAprobada) {
     impedimentos.push('El diseño de la orden no cuenta con versión vigente aprobada.')
   }
 

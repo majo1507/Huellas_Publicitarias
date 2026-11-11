@@ -41,37 +41,13 @@ const login = async (req, res) => {
   const identificador = rawIdent.trim().toLowerCase();
 
   try {
-    // Soporte para el acceso de demostración del portal de cliente (solo lectura / seguimiento de sus pedidos)
+    // El acceso de cliente como usuario interno de ORVEX ha sido retirado
     if (
-      (identificador === 'carlos.mendoza@alpina.com' || identificador === 'carlos mendoza' || identificador === 'laura@empresaabc.test') &&
+      (identificador === 'carlos.mendoza@alpina.com' || identificador === 'carlos mendoza' || identificador === 'laura@empresaabc.test') ||
       rawPass === 'cliente123'
     ) {
-      const tokenPayload = {
-        id: 'C1',
-        nombre_completo: 'Laura Gómez',
-        email: 'carlos.mendoza@alpina.com',
-        rol: 'cliente',
-        rolUi: 'cliente',
-        clienteId: 'C1',
-      };
-      const token = jwt.sign(tokenPayload, getJwtSecret(), { expiresIn: JWT_EXPIRES_IN });
-      return res.json({
-        message: 'Inicio de sesión exitoso.',
-        token,
-        expira_en: JWT_EXPIRES_IN,
-        usuario: {
-          id: 'C1',
-          nombre_completo: 'Laura Gómez',
-          nombre: 'Laura Gómez',
-          email: 'carlos.mendoza@alpina.com',
-          correo: 'carlos.mendoza@alpina.com',
-          cargo: 'Empresa ABC',
-          rol: 'cliente',
-          rolUi: 'cliente',
-          clienteId: 'C1',
-          esta_activo: true,
-          estado: 'Activo',
-        },
+      return res.status(401).json({
+        error: 'El perfil de Cliente como usuario interno ha sido retirado de ORVEX. La atención y seguimiento a clientes es gestionada exclusivamente por Comercial / Recepción.',
       });
     }
 

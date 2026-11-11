@@ -112,17 +112,17 @@
 :root[data-theme='dark'] {
   color-scheme: dark;
 
-  --bg-app: #090c12;
-  --bg-surface: #10151f;
-  --bg-subtle: #161d2a;
-  --bg-elevated: #1b2333;
-  --sky-50: #161d2a;
-  --sky-100: #1e2738;
-  --sky-200: #2a364d;
+  --bg-app: #0f182a;
+  --bg-surface: #182844;
+  --bg-subtle: #142138;
+  --bg-elevated: #1f3356;
+  --sky-50: #142138;
+  --sky-100: #1d2f4f;
+  --sky-200: #2c456e;
 
   --text-main: #f8fafc;
-  --text-muted: #94a3b8;
-  --text-light: #64748b;
+  --text-muted: #b0c2d9;
+  --text-light: #7e95b2;
   --navy-950: #ffffff;
   --navy-900: #f8fafc;
   --navy-800: #e2e8f0;
@@ -137,13 +137,13 @@
   --accent-grad: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
   --accent-glow: rgba(59, 130, 246, 0.28);
 
-  /* Bordes sutiles neutros (sin tinte azul recargado) */
-  --border-light: rgba(255, 255, 255, 0.055);
-  --border-subtle: rgba(255, 255, 255, 0.09);
+  /* Bordes sutiles luminosos sobre pizarra marina */
+  --border-light: rgba(148, 184, 232, 0.12);
+  --border-subtle: rgba(148, 184, 232, 0.18);
   --border-focus: #3b82f6;
 
-  --sb-a: #0b0f17;
-  --sb-b: #070a10;
+  --sb-a: #0d1628;
+  --sb-b: #09101e;
 
   --state-green: #34d399;
   --state-green-bg: rgba(16, 185, 129, 0.12);
@@ -3317,31 +3317,31 @@ article.dc:hover {
 
 :root,
 [data-theme="dark"] {
-  --bg: #070D18;
-  --bg-secondary: #0B1424;
-  --bg-elevated: #101E32;
-  --surface: #101E32;
-  --surface-solid: #101E32;
-  --surface-subtle: #0B1424;
-  --surface-elevated: #152943;
-  --surface-muted: #162B46;
-  --surface-hover: #152943;
-  --ink: #F0F6FF;
-  --ink-deep: #070D18;
-  --ink-blue: #142338;
-  --ink-mid: #203A55;
-  --text: #F0F6FF;
-  --text-soft: #C8D7EA;
-  --muted: #A7B9D0;
-  --line: #263B55;
-  --line-strong: #324F70;
+  --bg: #0F182A;
+  --bg-secondary: #142138;
+  --bg-elevated: #192A47;
+  --surface: #172742;
+  --surface-solid: #172742;
+  --surface-subtle: #132037;
+  --surface-elevated: #1E3254;
+  --surface-muted: #203558;
+  --surface-hover: #1E3254;
+  --ink: #F2F7FF;
+  --ink-deep: #0B1322;
+  --ink-blue: #182946;
+  --ink-mid: #264266;
+  --text: #F2F7FF;
+  --text-soft: #D0DEEF;
+  --muted: #B0C3DB;
+  --line: #2C4669;
+  --line-strong: #3B5C87;
   --primary: #247BFF;
-  --primary-2: #203A55;
+  --primary-2: #264266;
   --electric: #247BFF;
   --cyan: #19C6E5;
   --cyan-soft-line: #65E4F2;
   --cyan-deep: #19C6E5;
-  --cyan-soft: rgba(25, 198, 229, 0.14);
+  --cyan-soft: rgba(25, 198, 229, 0.15);
   --cyan-glow: rgba(25, 198, 229, 0.34);
   --teal: #10B981;
   --amber: #F59E0B;
@@ -3351,10 +3351,10 @@ article.dc:hover {
   --cmyk-m: #EC008C;
   --cmyk-y: #FACC15;
   --cmyk-k: #E2E8F0;
-  --shadow-xs: 0 2px 6px rgba(3, 7, 15, 0.38);
-  --shadow-sm: 0 6px 18px -4px rgba(3, 7, 15, 0.52), 0 2px 6px rgba(3, 7, 15, 0.35);
-  --shadow-md: 0 14px 32px -6px rgba(3, 7, 15, 0.65), 0 4px 12px rgba(3, 7, 15, 0.42);
-  --shadow-lg: 0 22px 48px -10px rgba(2, 6, 13, 0.78), 0 0 24px rgba(25, 198, 229, 0.12);
+  --shadow-xs: 0 2px 6px rgba(5, 11, 22, 0.34);
+  --shadow-sm: 0 6px 18px -4px rgba(5, 11, 22, 0.46), 0 2px 6px rgba(5, 11, 22, 0.30);
+  --shadow-md: 0 14px 32px -6px rgba(5, 11, 22, 0.58), 0 4px 12px rgba(5, 11, 22, 0.36);
+  --shadow-lg: 0 22px 48px -10px rgba(4, 9, 18, 0.70), 0 0 24px rgba(25, 198, 229, 0.14);
   --sidebar-w: 262px;
   --sidebar-w-collapsed: 76px;
   --ease-out-expo: cubic-bezier(0.22, 1, 0.36, 1);
@@ -3409,16 +3409,32 @@ body {
 }
 
 .app {
+  position: relative;
   background-color: var(--bg) !important;
   background-image:
-    radial-gradient(circle at 1px 1px, rgba(101, 228, 242, 0.055) 1px, transparent 0),
-    radial-gradient(ellipse 65% 45% at 88% 4%, rgba(36, 123, 255, 0.13), transparent 70%),
-    radial-gradient(ellipse 55% 40% at 18% 95%, rgba(25, 198, 229, 0.08), transparent 70%) !important;
-  background-size: 26px 26px, 100% 100%, 100% 100% !important;
+    radial-gradient(circle at 1px 1px, rgba(101, 228, 242, 0.06) 1px, transparent 0),
+    radial-gradient(ellipse 68% 48% at 86% 6%, rgba(36, 123, 255, 0.16), transparent 72%),
+    radial-gradient(ellipse 58% 44% at 16% 92%, rgba(25, 198, 229, 0.11), transparent 72%),
+    radial-gradient(ellipse 50% 38% at 52% 48%, rgba(56, 189, 248, 0.06), transparent 75%) !important;
+  background-size: 26px 26px, 125% 125%, 125% 125%, 130% 130% !important;
+  background-position: 0 0, 0% 0%, 100% 100%, 50% 50%;
+  animation: orvexAmbientDrift 26s ease-in-out infinite alternate;
   grid-template-columns: var(--sidebar-w) minmax(0, 1fr) !important;
   transition: grid-template-columns 200ms var(--ease-out-expo), background-color 200ms ease !important;
   max-width: 100vw;
   overflow-x: clip;
+}
+
+@keyframes orvexAmbientDrift {
+  0% {
+    background-position: 0 0, 0% 0%, 100% 100%, 45% 45%;
+  }
+  50% {
+    background-position: 0 0, 14% 8%, 86% 90%, 55% 48%;
+  }
+  100% {
+    background-position: 0 0, 6% 16%, 92% 82%, 48% 56%;
+  }
 }
 
 [data-theme="light"] .app {
@@ -3426,6 +3442,8 @@ body {
     radial-gradient(circle at 1px 1px, rgba(20, 35, 56, 0.055) 1px, transparent 0),
     radial-gradient(ellipse 75% 45% at 92% 0%, rgba(36, 123, 255, 0.06), transparent 70%),
     radial-gradient(ellipse 55% 40% at 15% 100%, rgba(25, 198, 229, 0.06), transparent 70%) !important;
+  background-size: 26px 26px, 100% 100%, 100% 100% !important;
+  animation: none;
 }
 
 .app.sidebar-collapsed {
@@ -3564,9 +3582,9 @@ body {
    2. SIDEBAR — FUTURISTIC COMMAND RAIL & ELECTRIC-CYAN ACTIVE PILL
    -------------------------------------------------------------------------- */
 .sidebar {
-  background: linear-gradient(180deg, #0B1424 0%, #070D18 100%) !important;
-  border-right: 1px solid #1E324A !important;
-  box-shadow: 6px 0 28px rgba(2, 6, 14, 0.45) !important;
+  background: linear-gradient(180deg, #101E36 0%, #0B1528 100%) !important;
+  border-right: 1px solid #243C5A !important;
+  box-shadow: 6px 0 28px rgba(4, 9, 20, 0.42) !important;
   padding: 16px 12px 12px !important;
   width: var(--sidebar-w) !important;
   min-width: var(--sidebar-w) !important;
@@ -3892,7 +3910,7 @@ body {
    3. TOPBAR / HEADER — FUTURISTIC CONTROL BAR
    -------------------------------------------------------------------------- */
 .topbar {
-  background: rgba(11, 20, 36, 0.86) !important;
+  background: rgba(16, 29, 50, 0.86) !important;
   backdrop-filter: blur(14px) !important;
   -webkit-backdrop-filter: blur(14px) !important;
   border-bottom: 1px solid var(--line) !important;
@@ -3900,7 +3918,7 @@ body {
   position: sticky !important;
   top: 0 !important;
   z-index: 35 !important;
-  box-shadow: 0 4px 20px rgba(3, 7, 15, 0.35) !important;
+  box-shadow: 0 4px 20px rgba(4, 9, 20, 0.30) !important;
   display: flex !important;
   align-items: center !important;
   justify-content: space-between !important;
@@ -3955,8 +3973,8 @@ body {
    4. PAGE HEADER — CREATIVE ADVERTISING & FUTURISTIC INK-IN-MOTION BANNER
    -------------------------------------------------------------------------- */
 .page-head {
-  background: linear-gradient(125deg, #101E32 0%, #142640 58%, #0E1B2E 100%) !important;
-  border: 1px solid #263B55 !important;
+  background: linear-gradient(125deg, #162844 0%, #1C3254 58%, #14243D 100%) !important;
+  border: 1px solid #2E496E !important;
   border-radius: 16px !important;
   padding: 20px 24px !important;
   margin-bottom: 20px !important;
@@ -4239,11 +4257,11 @@ body {
    -------------------------------------------------------------------------- */
 .kpi,
 .kpi-card {
-  background: linear-gradient(145deg, #13253E 0%, #101E32 100%) !important;
-  border: 1px solid #263B55 !important;
+  background: linear-gradient(145deg, #1A2F4F 0%, #152640 100%) !important;
+  border: 1px solid #2D476B !important;
   border-radius: 14px !important;
   padding: 16px 18px !important;
-  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
   position: relative !important;
   overflow: hidden !important;
   display: flex !important;
@@ -4259,26 +4277,26 @@ body {
 
 /* Tonal differentiated surfaces in Dark Mode (inspired by reference dashboard) */
 [data-theme="dark"] .kpi.kpi-azul {
-  background: linear-gradient(140deg, rgba(36, 123, 255, 0.2) 0%, rgba(16, 30, 50, 0.96) 72%) !important;
-  border-color: rgba(36, 123, 255, 0.38) !important;
+  background: linear-gradient(140deg, rgba(36, 123, 255, 0.22) 0%, rgba(21, 38, 64, 0.96) 72%) !important;
+  border-color: rgba(56, 139, 255, 0.42) !important;
   color: #247BFF;
 }
 
 [data-theme="dark"] .kpi.kpi-verde {
-  background: linear-gradient(140deg, rgba(16, 185, 129, 0.2) 0%, rgba(16, 30, 50, 0.96) 72%) !important;
-  border-color: rgba(16, 185, 129, 0.38) !important;
+  background: linear-gradient(140deg, rgba(16, 185, 129, 0.22) 0%, rgba(21, 38, 64, 0.96) 72%) !important;
+  border-color: rgba(16, 185, 129, 0.42) !important;
   color: #10B981;
 }
 
 [data-theme="dark"] .kpi.kpi-amarillo {
-  background: linear-gradient(140deg, rgba(245, 158, 11, 0.2) 0%, rgba(16, 30, 50, 0.96) 72%) !important;
-  border-color: rgba(245, 158, 11, 0.38) !important;
+  background: linear-gradient(140deg, rgba(245, 158, 11, 0.22) 0%, rgba(21, 38, 64, 0.96) 72%) !important;
+  border-color: rgba(245, 158, 11, 0.42) !important;
   color: #F59E0B;
 }
 
 [data-theme="dark"] .kpi.kpi-rojo {
-  background: linear-gradient(140deg, rgba(239, 68, 68, 0.22) 0%, rgba(16, 30, 50, 0.96) 72%) !important;
-  border-color: rgba(239, 68, 68, 0.42) !important;
+  background: linear-gradient(140deg, rgba(239, 68, 68, 0.24) 0%, rgba(21, 38, 64, 0.96) 72%) !important;
+  border-color: rgba(239, 68, 68, 0.44) !important;
   color: #EF4444;
 }
 
@@ -4559,7 +4577,7 @@ body {
    -------------------------------------------------------------------------- */
 .card,
 .card.panel {
-  background: linear-gradient(180deg, #112137 0%, #0E1B2D 100%) !important;
+  background: linear-gradient(180deg, #172B47 0%, #13233B 100%) !important;
   border: 1px solid var(--line) !important;
   border-radius: 15px !important;
   padding: 20px 22px !important;
@@ -7170,5 +7188,331 @@ textarea:user-invalid {
     translate: 0px 0px !important;
     rotate: 0deg !important;
     scale: 1 !important;
+  }
+}
+
+
+/* ==========================================================================
+   ORVEX — REFINAMIENTO FINAL (capa 2026-11)
+   Capa aditiva y acotada sobre "Futuristic Enterprise": no cambia la paleta,
+   solo corrige defectos medidos en el navegador y unifica jerarquía, tablas,
+   superficies del navegador y microinteracciones. Va al final para ganar la
+   cascada sin tocar las capas anteriores.
+   ========================================================================== */
+
+:root {
+  --orvex-gradient: linear-gradient(135deg, #247BFF 0%, #19C6E5 100%);
+  --ease-out-ui: cubic-bezier(0.23, 1, 0.32, 1);
+  --row-pad-y: 12px;
+  --row-pad-x: 16px;
+}
+
+/* Tokens que el JSX consumía con fallback claro (#fff, #f0fdf4...) sin estar
+   definidos: en tema oscuro caían a superficies blancas. Se definen por tema. */
+:root,
+[data-theme="dark"] {
+  --bg-card: var(--surface);
+  --bg-soft: var(--surface-subtle);
+  --text-subtle: var(--muted);
+  --green-50: rgba(16, 185, 129, 0.12);
+  --green-200: rgba(16, 185, 129, 0.34);
+  --green-800: #A7F3D0;
+  --green-900: #D1FAE5;
+}
+[data-theme="light"] {
+  --bg-card: #FFFFFF;
+  --bg-soft: #EDF2F7;
+  --text-subtle: #586E86;
+  --green-50: #ECFDF5;
+  --green-200: #A7F3D0;
+  --green-800: #166534;
+  --green-900: #14532D;
+}
+
+/* --- 1. Identidad: avatar legible ------------------------------------------ */
+.avatar {
+  background: linear-gradient(135deg, #1B5FD0 0%, #0F8FAE 100%) !important;
+  color: #FFFFFF !important;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-weight: 700 !important;
+  letter-spacing: 0.02em;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+.avatar-vacio {
+  background: var(--surface-muted) !important;
+  color: var(--muted) !important;
+}
+
+/* --- 2. Encabezado de página: distribución amplia conservando píldora CMYK --- */
+.page-head {
+  padding: 18px 22px !important;
+  align-items: flex-end !important;
+  row-gap: 14px !important;
+}
+.page-head-main {
+  flex: 1 1 460px !important;
+}
+.page-head-actions {
+  flex: 0 1 auto;
+  justify-content: flex-end;
+}
+.page-head h1 {
+  text-wrap: balance;
+}
+.page-head .subtitle {
+  text-wrap: pretty;
+}
+.page-heading-line {
+  gap: 8px 12px;
+}
+.page-telemetry-label {
+  white-space: nowrap;
+}
+
+/* Tras un clic, el elemento de menú anterior conservaba el anillo de foco y
+   parecía un segundo elemento activo. El anillo queda solo para teclado. */
+.nav-item:focus:not(:focus-visible) {
+  outline: none !important;
+  box-shadow: none !important;
+}
+.nav-item:not(.active):focus:not(:focus-visible) {
+  border-color: transparent !important;
+}
+
+/* --- 3. Barra superior: modo demostración ----------------------------------- */
+.demo-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #FBBF24;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  white-space: nowrap;
+}
+[data-theme="light"] .demo-tag {
+  color: #92400E;
+  background: #FEF3C7;
+  border-color: #F59E0B;
+}
+
+/* --- 4. Tablas: densidad, cifras y acciones siempre visibles ---------------- */
+.table th {
+  padding: 11px var(--row-pad-x) !important;
+  white-space: nowrap;
+}
+.table td {
+  padding: var(--row-pad-y) var(--row-pad-x) !important;
+  vertical-align: middle;
+  font-variant-numeric: tabular-nums;
+}
+/* La columna de acciones queda fija a la derecha cuando la tabla desborda:
+   antes los botones quedaban recortados y había que desplazar para verlos. */
+.table-wrap {
+  overscroll-behavior-x: contain;
+}
+.table-wrap .table tr > td:last-child:has(.row-actions, .btn) {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  background: var(--surface) !important;
+  box-shadow: -10px 0 14px -12px rgba(3, 7, 15, 0.7);
+}
+[data-theme="light"] .table-wrap .table tr > td:last-child:has(.row-actions, .btn) {
+  box-shadow: -10px 0 14px -12px rgba(20, 35, 56, 0.25);
+}
+.table-wrap .table:has(td:last-child .row-actions, td:last-child .btn) thead tr > th:last-child {
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  background: var(--surface) !important;
+}
+.table-wrap .table tr:hover > td:last-child:has(.row-actions, .btn) {
+  background: var(--surface-elevated) !important;
+}
+.table .row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px !important;
+  min-width: 112px;
+}
+
+/* --- 5. Formularios: alturas y foco consistentes ---------------------------- */
+.field input:not([type='checkbox']):not([type='radio']):not([type='file']),
+.field select {
+  min-height: 38px;
+}
+.field textarea {
+  line-height: 1.5;
+}
+:is(input, select, textarea):focus-visible {
+  outline: 2px solid var(--cyan) !important;
+  outline-offset: 1px;
+}
+
+/* Casillas y radios: una regla global de ancho 100% los estiraba a ~160px
+   y desalineaba las etiquetas de acabados, filtros y permisos. */
+input[type='checkbox'],
+input[type='radio'] {
+  width: 16px !important;
+  height: 16px !important;
+  min-width: 16px;
+  min-height: 0 !important;
+  flex: none !important;
+  margin: 0;
+  padding: 0 !important;
+  accent-color: var(--electric);
+  cursor: pointer;
+}
+
+/* En la galería de diseños el estado ocupa la esquina y la tarjeta ya indica
+   las versiones: se oculta el sello del arte para que no se superpongan. */
+.dc-th .design-vtag {
+  display: none;
+}
+
+/* Selector de archivos nativo con el estilo de botón de ORVEX. */
+input[type='file']::file-selector-button {
+  margin-right: 10px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-elevated);
+  color: var(--text);
+  font: 600 0.8rem 'Inter', system-ui, sans-serif;
+  cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+input[type='file']::file-selector-button:hover {
+  border-color: var(--cyan);
+}
+
+/* Nota fiscal de la cotización: texto gris sobre gris claro, ilegible en oscuro;
+   además usaba un borde lateral grueso. */
+.quote-fiscal-note {
+  color: var(--muted) !important;
+  background: var(--surface-subtle) !important;
+  border: 1px solid var(--line) !important;
+  border-left-width: 1px !important;
+  border-radius: var(--radius-sm, 8px) !important;
+  padding: 10px 12px !important;
+  line-height: 1.45 !important;
+}
+.quote-fiscal-note strong {
+  color: var(--text) !important;
+}
+
+/* --- 6. Superficies del navegador ------------------------------------------- */
+::selection {
+  background: rgba(36, 123, 255, 0.38);
+  color: #FFFFFF;
+}
+[data-theme="light"] ::selection {
+  background: rgba(36, 123, 255, 0.22);
+  color: #0B1424;
+}
+input,
+textarea {
+  caret-color: var(--cyan);
+}
+a {
+  text-underline-offset: 3px;
+}
+.mono,
+.order-code,
+code,
+kbd {
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- 7. Microinteracciones (Animate) ---------------------------------------- */
+/* Botones: la respuesta al pulsar (scale 0.97) ya existe; aquí se fija una
+   transición corta y explícita, nunca "transition: all". */
+.btn,
+.icon-btn,
+.chip {
+  transition-property: background-color, border-color, color, box-shadow, scale, translate, opacity;
+  transition-duration: 160ms;
+  transition-timing-function: var(--ease-out-ui);
+}
+
+/* Tarjetas enlazadas: elevación de 2px solo con puntero fino. */
+@media (hover: hover) and (pointer: fine) {
+  .kpi.kpi-click,
+  .order-card,
+  .quick {
+    transition: translate 180ms var(--ease-out-ui), box-shadow 180ms var(--ease-out-ui), border-color 180ms ease;
+  }
+  .kpi.kpi-click:hover,
+  .order-card:hover,
+  .quick:hover {
+    translate: 0 -2px;
+  }
+}
+
+/* Entrada de pantalla: opacidad y 6px; con movimiento reducido solo opacidad. */
+/* fill-mode backwards: al terminar no queda ningún transform, que convertiría
+   este contenedor en referencia de los modales con position: fixed. */
+.page-transition {
+  animation: orvexPageIn 220ms var(--ease-out-ui) backwards;
+}
+@keyframes orvexPageIn {
+  from { opacity: 0; translate: 0 6px; }
+  to { opacity: 1; translate: 0 0; }
+}
+@keyframes orvexPageFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-transition {
+    animation: orvexPageFade 160ms ease backwards !important;
+  }
+  .kpi.kpi-click:hover,
+  .order-card:hover,
+  .quick:hover,
+  .btn:active:not(:disabled),
+  .chip:active:not(:disabled),
+  .icon-btn:active:not(:disabled) {
+    translate: 0 0 !important;
+    scale: 1 !important;
+  }
+  .ink-ripple {
+    animation: none !important;
+    opacity: 0 !important;
+  }
+}
+
+/* --- 8. Responsive: encabezado y barra superior ----------------------------- */
+@media (max-width: 900px) {
+  .page-head {
+    align-items: flex-start !important;
+  }
+  .page-head-actions {
+    justify-content: flex-start;
+    width: 100%;
+  }
+  .demo-tag {
+    padding: 0 8px;
+    font-size: 0.7rem;
+  }
+}
+@media (max-width: 600px) {
+  .page-head {
+    padding: 16px !important;
+  }
+  .page-head-actions .btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+  .table-wrap .table tr > td:last-child:has(.row-actions, .btn),
+  .table-wrap .table thead tr > th:last-child {
+    position: static;
+    box-shadow: none;
   }
 }

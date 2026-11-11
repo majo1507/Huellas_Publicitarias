@@ -39,17 +39,27 @@ function normalizarRol(rol) {
  */
 function verificarToken(req, res, next) {
   const authHeader = req.headers.authorization;
+  let token = null;
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.split(' ')[1];
+  } else if (req.query && req.query.token) {
+    token = String(req.query.token).trim();
+  }
+
+  if (!token) {
     return res.status(401).json({
-      error: 'Acceso no autorizado. Se requiere un token Bearer válido en la cabecera Authorization.',
+      error: 'Acceso no autorizado. Se requiere un token Bearer válido en la cabecera Authorization o parámetro token.',
     });
   }
 
-  const token = authHeader.split(' ')[1];
-
   try {
     const payload = jwt.verify(token, getJwtSecret());
+    if (payload.rol === 'cliente' || normalizarRol(payload.rol) === 'cliente') {
+      return res.status(403).json({
+        error: 'El perfil de cliente como usuario interno ha sido retirado de ORVEX. La gestión de pedidos y aprobaciones se realiza a través de Comercial / Recepción.',
+      });
+    }
     req.usuario = payload;
     req.usuario.rol_normalizado = normalizarRol(payload.rol);
     next();

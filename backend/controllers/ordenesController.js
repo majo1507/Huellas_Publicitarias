@@ -5,12 +5,15 @@ const { pool } = require('../db');
 const {
   formatearFechaHoy,
   formatearHoraAhora,
+  formatearFechaBogota,
+  formatearHoraBogota,
   ETAPA_NUM_TO_NOMBRE_UI,
   ESTADO_UI_TO_ETAPA_NUM,
   resolverOrden,
   resolverCliente,
   resolverUsuario,
   obtenerUsuarioPorDefecto,
+  esDisenoAprobado,
 } = require('../utils/resolvers');
 const { validarArchivoEvidencia } = require('../utils/validacionesArchivo');
 
@@ -32,6 +35,10 @@ function formatearVersionArte(a) {
     aprobado: 'Aprobada',
     rechazado: 'Rechazada',
   };
+  const fechaEnvioIso = a.fecha_envio ? new Date(a.fecha_envio).toISOString() : null;
+  const fechaEnvioTexto = a.fecha_envio_texto || (a.fecha_envio ? formatearFechaBogota(new Date(a.fecha_envio)) : null);
+  const horaEnvioTexto = a.hora_envio_texto || (a.fecha_envio ? formatearHoraBogota(new Date(a.fecha_envio)) : null);
+
   return {
     id: a.id,
     numero: a.numero_version,
@@ -42,6 +49,21 @@ function formatearVersionArte(a) {
     comentario: a.comentario || '',
     archivoNombre: a.archivo_nombre || (a.ruta_archivo ? a.ruta_archivo.split('/').pop() : null),
     ruta_archivo: a.ruta_archivo,
+    fechaEnvio: fechaEnvioIso,
+    fechaEnvioTexto,
+    horaEnvioTexto,
+    fechaHoraEnvio: fechaEnvioTexto && horaEnvioTexto ? `${fechaEnvioTexto} ${horaEnvioTexto}` : null,
+    fechaEnvioComercialTexto: a.fecha_envio_comercial_texto || null,
+    horaEnvioComercialTexto: a.hora_envio_comercial_texto || null,
+    enviadoAComercialNombre: a.enviado_a_comercial_nombre || null,
+    gestionComercialEstado: a.gestion_comercial_estado || null,
+    contactoClienteNombre: a.contacto_cliente_nombre || null,
+    contactoClienteCanal: a.contacto_cliente_canal || null,
+    contactoClienteFechaTexto: a.contacto_cliente_fecha_texto || null,
+    contactoClienteHoraTexto: a.contacto_cliente_hora_texto || null,
+    contactoClienteEvidencia: a.contacto_cliente_evidencia || null,
+    contactoClienteObservaciones: a.contacto_cliente_observaciones || null,
+    contactoClienteRegistradoPorNombre: a.contacto_cliente_registrado_por_nombre || null,
   };
 }
 
@@ -72,7 +94,7 @@ function construirOrdenCompleta(o, versionesRows = [], historialRows = [], rolUs
   let disenoEstado = o.diseno_estado;
   if (!disenoEstado) {
     if (!ultimaVer) disenoEstado = 'Pendiente';
-    else if (ultimaVer.estado === 'Aprobada') disenoEstado = 'Aprobado';
+    else if (ultimaVer.estado === 'Aprobada' || ultimaVer.estado === 'Aprobado por el cliente') disenoEstado = 'Aprobado por el cliente';
     else if (ultimaVer.estado === 'Enviada') disenoEstado = 'Enviado';
     else if (ultimaVer.estado === 'Rechazada') disenoEstado = 'Requiere cambios';
     else disenoEstado = 'En proceso';
@@ -128,6 +150,12 @@ function construirOrdenCompleta(o, versionesRows = [], historialRows = [], rolUs
     disenador_nombre: o.disenador_nombre,
     produccion_nombre: o.produccion_nombre,
     presupuesto: presupuestoNum,
+    cotizacionTotal: Number(o.cotizacion_total || presupuestoNum),
+    estadoPago: o.estado_pago || (Number(o.total_abonado) > 0 ? (Number(o.saldo_pendiente) === 0 ? 'Pagado' : 'Abono parcial') : 'Pendiente de pago'),
+    totalAbonado: Number(o.total_abonado || 0),
+    saldoPendiente: Number(o.saldo_pendiente != null ? o.saldo_pendiente : Math.max(0, Number(o.cotizacion_total || presupuestoNum) - Number(o.total_abonado || 0))),
+    tipoPago: o.tipo_pago || 'sin_pago',
+    pagos: Array.isArray(o.pagos) ? o.pagos : [],
     costoInterno: sinAccesoFinanciero ? undefined : costoInternoNum,
     metodoEntrega: o.metodo_entrega || 'Domicilio',
     requerimientos: o.requerimientos || '',
@@ -613,24 +641,51 @@ const actualizarEtapa = async (req, res) => {
       const esAprobadoGeneral = arteExiste && (
         arteRow.estado_aprobacion === 'aprobado' ||
         arteRow.estado_ui === 'Aprobada' ||
-        arteRow.estado_ui === 'Aprobada (Externa)'
+        arteRow.estado_ui === 'Aprobada (Externa)' ||
+        arteRow.estado_ui === 'Aprobado por el cliente' ||
+        orden.diseno_estado === 'Aprobado por el cliente' ||
+        orden.diseno_estado === 'Listo para impresión' ||
+        orden.diseno_estado === 'Aprobado'
       );
+
+      const soporteValido = arteExiste && (
+        arteRow.soporte_validado === true ||
+        Boolean(arteRow.soporte_evidencia)
+      );
+
+      const estadosBloqueantes = [
+        'En diseño',
+        'Pendiente de gestión comercial',
+        'Esperando respuesta del cliente',
+        'Cambios solicitados',
+        'En proceso',
+      ];
+      const estaEnEstadoBloqueante = estadosBloqueantes.includes(orden.diseno_estado);
 
       const pendienteSoporte = arteExiste && (
         arteRow.tipo_aprobacion === 'externa' &&
-        (!arteRow.soporte_validado || !arteRow.soporte_evidencia || arteRow.estado_ui === 'Pendiente de soporte')
+        (!soporteValido || arteRow.estado_ui === 'Pendiente de soporte')
       );
 
-      if (!arteExiste || !esAprobadoGeneral || pendienteSoporte) {
+      if (!arteExiste || !esAprobadoGeneral || pendienteSoporte || estaEnEstadoBloqueante) {
         let motivoBloqueo;
         let mensajeError;
 
         if (!arteExiste) {
           motivoBloqueo = 'El pedido no cuenta con ninguna propuesta gráfica registrada.';
           mensajeError = 'CANDADO DE CALIDAD: No se puede avanzar a la etapa de impresión sin un diseño registrado.';
+        } else if (orden.diseno_estado === 'Esperando respuesta del cliente') {
+          motivoBloqueo = `El diseño v${arteRow.numero_version} está esperando respuesta del cliente.`;
+          mensajeError = 'CANDADO DE CALIDAD: No se puede avanzar a impresión: el cliente aún no ha respondido con su aprobación.';
+        } else if (orden.diseno_estado === 'Pendiente de gestión comercial') {
+          motivoBloqueo = `El diseño v${arteRow.numero_version} está pendiente de gestión comercial con el cliente.`;
+          mensajeError = 'CANDADO DE CALIDAD: No se puede avanzar a impresión: Comercial aún no ha gestionado la aprobación con el cliente.';
+        } else if (orden.diseno_estado === 'Cambios solicitados') {
+          motivoBloqueo = `El cliente solicitó modificaciones para la versión v${arteRow.numero_version}.`;
+          mensajeError = 'CANDADO DE CALIDAD: El cliente solicitó modificaciones. Debe crearse y aprobarse una nueva versión antes de pasar a impresión.';
         } else if (pendienteSoporte) {
           motivoBloqueo = `La versión vigente (v${arteRow.numero_version}) cuenta con visto bueno preliminar pero tiene soporte documental pendiente de verificación.`;
-          mensajeError = 'CANDADO DE CALIDAD: La aprobación externa de diseño permanece como registro preliminar pendiente. Debe adjuntar y verificar la evidencia documental de la versión exacta antes de pasar a impresión.';
+          mensajeError = 'CANDADO DE CALIDAD: La aprobación de diseño requiere evidencia o soporte documental verificable para habilitar el paso a impresión.';
         } else {
           motivoBloqueo = `El pedido no puede pasar a impresión porque el diseño vigente (v${arteRow.numero_version}) aún no ha sido aprobado formalmente.`;
           mensajeError = 'CANDADO DE CALIDAD: No se puede avanzar a la etapa de impresión/producción sin un diseño en estado "aprobado".';
@@ -784,6 +839,48 @@ const actualizarEtapa = async (req, res) => {
        WHERE id = $4`,
       [nuevaEtapa, porcentaje, nuevoEstadoUi, orden.id]
     );
+
+    // Al ingresar a Impresión (etapa 4), asegurar que exista la actividad operativa para la estación de trabajo
+    if (nuevaEtapa === 4) {
+      const tareasImpRes = await client.query(
+        "SELECT id FROM tareas WHERE orden_id = $1 AND etapa = 'Impresión' LIMIT 1",
+        [orden.id]
+      );
+      if (tareasImpRes.rowCount === 0) {
+        const countRes = await client.query('SELECT COUNT(*)::int AS total FROM tareas');
+        const codigoNueva = `T-${countRes.rows[0].total + 1}`;
+        const opUser = await resolverUsuario(client, 'juan@huellaspublicidad.com');
+        const opNombre = opUser ? opUser.nombre_completo : 'Juan Pérez';
+        await client.query(
+          `INSERT INTO tareas (
+            codigo, orden_id, owner_id, titulo, etapa, responsable_nombre, prioridad, fecha_limite, estado, porcentaje
+          ) VALUES ($1, $2, $3, $4, 'Impresión', $5, $6, $7, 'Pendiente', 0)`,
+          [
+            codigoNueva,
+            orden.id,
+            opUser ? opUser.id : null,
+            `Impresión ${orden.producto}`,
+            opNombre,
+            orden.prioridad || 'Media',
+            orden.fecha_entrega || formatearFechaHoy(),
+          ]
+        );
+        await client.query(
+          `INSERT INTO registro_sesion (
+            orden_id, usuario_responsable_id, accion_texto,
+            fecha_texto, hora_texto, responsable_nombre, estado_evento, interno
+          ) VALUES ($1, $2, $3, $4, $5, $6, 'Completado', true)`,
+          [
+            orden.id,
+            responsableId,
+            `Actividad de taller programada: "Impresión ${orden.producto}" asignada a ${opNombre}`,
+            formatearFechaHoy(),
+            formatearHoraAhora(),
+            responsableNombre,
+          ]
+        );
+      }
+    }
 
     let textoAuditoria = `Etapa cambiada a ${nuevoEstadoUi}`;
     if (descuentoRealizado) {
@@ -1159,7 +1256,7 @@ const clonarOrden = async (req, res) => {
       `SELECT a.*, COALESCE(u.nombre_completo, a.disenador_nombre) AS aprobador_nombre
        FROM archivos_arte a
        LEFT JOIN usuarios u ON a.decision_por = u.id
-       WHERE a.orden_id = $1 AND (a.estado_aprobacion = 'aprobado' OR a.estado_ui = 'Aprobada' OR a.estado_ui = 'Aprobada (Externa)')
+       WHERE a.orden_id = $1 AND (a.estado_aprobacion = 'aprobado' OR a.estado_ui = 'Aprobada' OR a.estado_ui = 'Aprobada (Externa)' OR a.estado_ui = 'Aprobado por el cliente')
        ORDER BY a.numero_version DESC
        LIMIT 1`,
       [original.id]
@@ -1174,7 +1271,7 @@ const clonarOrden = async (req, res) => {
     );
 
     const tieneAprobacionValida =
-      original.diseno_estado === 'Aprobado' &&
+      esDisenoAprobado(original.diseno_estado) &&
       (arteAprobadoRes.rowCount > 0 || eventoAprobadoRes.rowCount > 0);
 
     const arteAprobado = arteAprobadoRes.rows[0] || null;
@@ -1187,7 +1284,7 @@ const clonarOrden = async (req, res) => {
     // Etapa inicial condicionada por RF-07
     const etapaInicial = tieneAprobacionValida ? 4 : (original.etapa === 2 || original.diseno_estado === 'Enviado') ? 2 : 1;
     const estadoNombreInicial = tieneAprobacionValida ? 'Impresión' : (etapaInicial === 2 ? 'Aprobación' : 'Diseño');
-    const disenoEstadoInicial = tieneAprobacionValida ? 'Aprobado' : (original.diseno_estado === 'Enviado' ? 'Enviado' : 'Pendiente');
+    const disenoEstadoInicial = tieneAprobacionValida ? 'Aprobado por el cliente' : (original.diseno_estado === 'Enviado' ? 'Enviado' : 'Pendiente');
     const avanceInicial = tieneAprobacionValida ? 50.00 : (etapaInicial === 2 ? 30.00 : 15.00);
 
     const presupuestoFinal = casoOrigenId ? 0.00 : original.presupuesto;
@@ -1390,7 +1487,7 @@ const clonarOrden = async (req, res) => {
  * PATCH /api/ordenes/:id/asignacion
  */
 const actualizarAsignacionOrden = async (req, res) => {
-  const { disenador, responsable, presupuesto, costoInterno, fechaEntrega } = req.body || {};
+  const { disenador, responsable, presupuesto, costoInterno, fechaEntrega, prioridad } = req.body || {};
 
   const client = await pool.connect();
   try {
@@ -1406,6 +1503,8 @@ const actualizarAsignacionOrden = async (req, res) => {
     const nuevoPresupuesto = presupuesto !== undefined ? Number(presupuesto) : Number(orden.presupuesto || 0);
     const nuevoCosto = costoInterno !== undefined ? Number(costoInterno) : Number(orden.costo_interno || 0);
     const nuevaFechaEntrega = fechaEntrega || orden.fecha_entrega;
+    const prioridadesValidas = ['Alta', 'Media', 'Baja'];
+    const nuevaPrioridad = prioridadesValidas.includes(prioridad) ? prioridad : (orden.prioridad || 'Media');
 
     const usrDis = await resolverUsuario(client, nuevoDisenador);
     const usrProd = await resolverUsuario(client, nuevoResponsable);
@@ -1418,8 +1517,9 @@ const actualizarAsignacionOrden = async (req, res) => {
            produccion_id = COALESCE($4, produccion_id),
            presupuesto = $5,
            costo_interno = $6,
-           fecha_entrega = $7
-       WHERE id = $8`,
+           fecha_entrega = $7,
+           prioridad = $8
+       WHERE id = $9`,
       [
         nuevoDisenador,
         nuevoResponsable,
@@ -1428,6 +1528,7 @@ const actualizarAsignacionOrden = async (req, res) => {
         nuevoPresupuesto,
         nuevoCosto,
         nuevaFechaEntrega,
+        nuevaPrioridad,
         orden.id,
       ]
     );
@@ -1445,7 +1546,7 @@ const actualizarAsignacionOrden = async (req, res) => {
       [
         orden.id,
         respUser.id,
-        `Coordinación de orden actualizada: Diseño (${nuevoDisenador}), Responsable operativo (${nuevoResponsable})`,
+        `Planificación y coordinación actualizada: Prioridad (${nuevaPrioridad}), Entrega (${nuevaFechaEntrega}), Diseño (${nuevoDisenador}), Responsable taller (${nuevoResponsable})`,
         formatearFechaHoy(),
         formatearHoraAhora(),
         respNombre,

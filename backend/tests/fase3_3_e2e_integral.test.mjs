@@ -260,17 +260,31 @@ async function runFase33Tests() {
     assert.equal(resEnviarDiseno.status, 200, 'Diseñador envía propuesta a revisión');
     console.log('    ✓ Propuesta enviada formalmente al cliente/coordinación.');
 
-    // Cliente rechaza versión 1 solicitando ajustes tipográficos
-    const resRechazarV1 = await req(`/disenos/orden/${ordenGenerada.id}/aprobacion`, {
+    // Intento de aprobación directa con token cliente es rechazado con 403
+    const resBloqueoCliente = await req(`/disenos/orden/${ordenGenerada.id}/aprobacion`, {
       method: 'PATCH',
       token: tokenCliente,
       body: {
         estado_aprobacion: 'rechazado',
-        comentario: 'Aumentar tamaño del imagotipo y ajustar contraste de texto legal',
+        comentario: 'Intento directo de cliente',
       },
     });
-    assert.equal(resRechazarV1.status, 200, 'Cliente rechaza versión 1 con observaciones');
-    console.log('    ✓ Rechazo formal de versión 1 registrado con observaciones.');
+    assert.equal(resBloqueoCliente.status, 403, 'Rol cliente no tiene acceso directo para aprobar/rechazar diseños (HTTP 403)');
+    console.log('    ✓ Bloqueo de acceso a rol cliente en aprobación verificado (HTTP 403).');
+
+    // Comercial registra que el cliente solicita modificaciones
+    const resRechazarV1 = await req(`/disenos/orden/${ordenGenerada.id}/gestion-comercial`, {
+      method: 'PATCH',
+      token: tokenComercial,
+      body: {
+        accion: 'cambios',
+        canal: 'WhatsApp',
+        contacto: 'Carlos Mendoza',
+        observaciones: 'Aumentar tamaño del imagotipo y ajustar contraste de texto legal',
+      },
+    });
+    assert.equal(resRechazarV1.status, 200, 'Comercial registra que cliente solicita modificaciones');
+    console.log('    ✓ Modificaciones solicitadas por el cliente registradas formalmente por Comercial.');
 
     // Diseñador registra versión 2 con los ajustes requeridos
     const fileArteV2 = `arte_v2_${Date.now()}.pdf`;
@@ -309,19 +323,43 @@ async function runFase33Tests() {
     crearArchivoPdfValido(fileSoporteAprob);
     archivosLimpieza.push(path.join(uploadDir, fileSoporteAprob));
 
-    const resAprobarV2 = await req(`/disenos/orden/${ordenGenerada.id}/aprobacion`, {
+    // RF-06: Comercial no puede aprobar una versión que el diseñador todavía no le envió
+    const resAprobarV2SinEnviar = await req(`/disenos/orden/${ordenGenerada.id}/gestion-comercial`, {
       method: 'PATCH',
-      token: tokenCliente,
+      token: tokenComercial,
+      body: { accion: 'aprobar', canal: 'WhatsApp', nombreAutoriza: 'Carlos Mendoza', evidencia: fileSoporteAprob },
+    });
+    assert.equal(resAprobarV2SinEnviar.status, 409, 'No se aprueba una versión que no fue enviada a Comercial');
+
+    // El diseñador envía la versión 2 a Comercial
+    const resEnviarV2 = await req(`/disenos/orden/${ordenGenerada.id}/enviar-comercial`, {
+      method: 'PATCH',
+      token: tokenDisenador,
+    });
+    assert.equal(resEnviarV2.status, 200, 'Diseñador envía la versión 2 a Comercial');
+
+    // Comercial registra aprobación formal del cliente con evidencia auténtica
+    const resAprobarV2 = await req(`/disenos/orden/${ordenGenerada.id}/gestion-comercial`, {
+      method: 'PATCH',
+      token: tokenComercial,
       body: {
-        estado_aprobacion: 'aprobado',
-        tipo_aprobacion: 'externa',
-        soporte_evidencia: fileSoporteAprob,
-        soporte_tipo: 'aprobacion_diseno',
-        comentario: 'Aprobación formal con acta física firmada por el cliente',
+        accion: 'aprobar',
+        canal: 'WhatsApp',
+        nombreAutoriza: 'Carlos Mendoza',
+        evidencia: fileSoporteAprob,
+        observaciones: 'Aprobación formal con acta física firmada por el cliente',
       },
     });
-    assert.equal(resAprobarV2.status, 200, 'Aprobación formal de versión 2 exitosa');
-    console.log('    ✓ Aprobación formal de diseño v2 registrada con soporte físico verificado.');
+    assert.equal(resAprobarV2.status, 200, 'Gestión comercial de aprobación de versión 2 exitosa');
+    console.log('    ✓ Aprobación formal de diseño v2 registrada por Comercial con soporte físico verificado.');
+
+    // Coordinación libera formalmente para impresión
+    const resLiberarV2 = await req(`/disenos/orden/${ordenGenerada.id}/liberar-impresion`, {
+      method: 'PATCH',
+      token: tokenCoord,
+    });
+    assert.equal(resLiberarV2.status, 200, 'Coordinación libera diseño para impresión');
+    console.log('    ✓ Diseño liberado para impresión por Coordinación.');
 
     // Con diseño aprobado: Coordinador avanza exitosamente a Impresión (etapa 4 en BD / etapa 3 UI)
     const resAvanceExitoso = await req(`/ordenes/${ordenGenerada.id}/etapa`, {
@@ -644,8 +682,8 @@ async function runFase33Tests() {
     assert.equal(resDetalleOperario.data.data.costoInterno, undefined, 'costoInterno debe omitirse para Operario');
 
     const resDetalleCliente = await req(`/ordenes/${ordenGenerada.id}`, { token: tokenCliente });
-    assert.equal(resDetalleCliente.status, 200);
-    assert.equal(resDetalleCliente.data.data.costoInterno, undefined, 'costoInterno debe omitirse para Cliente');
+    assert.equal(resDetalleCliente.status, 403, 'Perfil cliente no tiene acceso directo interno (HTTP 403)');
+    console.log('    ✓ Bloqueo de acceso interno al rol cliente confirmado (HTTP 403).');
     console.log('    ✓ Segregación financiera estricta confirmada: Costos internos ocultos a roles no autorizados.');
 
     console.log('\n════════════════════════════════════════════════════════════════════');

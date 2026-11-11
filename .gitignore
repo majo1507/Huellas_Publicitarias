@@ -15,4 +15,9 @@ ORVEX_RESPALDO_VERSION_ACTUAL/
 
 # Metadatos locales de agentes
 .agents/
+.claude/
+.impeccable/
 skills-lock.json
+
+# Tokens y archivos de configuración sensibles de integraciones
+backend/config/

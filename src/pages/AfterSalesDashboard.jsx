@@ -3,6 +3,7 @@ import StatusBadge from '../components/StatusBadge.jsx'
 import StatCard from '../components/StatCard.jsx'
 import Alert from '../components/Alert.jsx'
 import Icon from '../components/Icon.jsx'
+import PageHeader from '../components/PageHeader.jsx'
 import { validarCierreOrden } from '../utils/format.js'
 import {
   SECCIONES_POSTVENTA,
@@ -41,8 +42,9 @@ function colorDictamen(dictamen = '') {
   return 'Pendiente'
 }
 
-export default function AfterSalesDashboard({ data, actions, irA }) {
+export default function AfterSalesDashboard({ data, actions, irA, role }) {
   const { orders, cases, tasks = [], users = [] } = data
+  const puedeGestionarPostventa = ['postventa', 'coordinador', 'comercial'].includes(role)
 
   // Pestaña principal: 'Satisfacción' | 'PQRSF' | 'Garantía' | 'Cierre'
   const [seccionActiva, setSeccionActiva] = useState('PQRSF')
@@ -52,6 +54,14 @@ export default function AfterSalesDashboard({ data, actions, irA }) {
   const [filtroEstado, setFiltroEstado] = useState('Todos')
   const [filtroSubtipoPqrsf, setFiltroSubtipoPqrsf] = useState('Todos')
   const [filtroDictamen, setFiltroDictamen] = useState('Todos')
+
+  // Paginación por sección para aligerar la interfaz
+  const [paginaSat, setPaginaSat] = useState(1)
+  const [paginaPqrsf, setPaginaPqrsf] = useState(1)
+  const [paginaGar, setPaginaGar] = useState(1)
+  const [paginaCierre, setPaginaCierre] = useState(1)
+  const [filtroSoloPendientesCierre, setFiltroSoloPendientesCierre] = useState(true)
+  const POR_PAGINA_POSTVENTA = 6
 
   // Modales de registro y gestión detallada
   const [modalRegistro, setModalRegistro] = useState(null) // 'Satisfacción' | 'PQRSF' | 'Garantía' | null
@@ -316,64 +326,103 @@ export default function AfterSalesDashboard({ data, actions, irA }) {
     return true
   })
 
+  // Cálculos de paginación para las tablas de Postventa
+  const totalPaginasSat = Math.max(1, Math.ceil(satisfaccionFiltrada.length / POR_PAGINA_POSTVENTA))
+  const pagActualSat = Math.min(paginaSat, totalPaginasSat)
+  const satisfaccionVisibles = satisfaccionFiltrada.slice(
+    (pagActualSat - 1) * POR_PAGINA_POSTVENTA,
+    pagActualSat * POR_PAGINA_POSTVENTA
+  )
+
+  const totalPaginasPqrsf = Math.max(1, Math.ceil(pqrsfFiltrados.length / POR_PAGINA_POSTVENTA))
+  const pagActualPqrsf = Math.min(paginaPqrsf, totalPaginasPqrsf)
+  const pqrsfVisibles = pqrsfFiltrados.slice(
+    (pagActualPqrsf - 1) * POR_PAGINA_POSTVENTA,
+    pagActualPqrsf * POR_PAGINA_POSTVENTA
+  )
+
+  const totalPaginasGar = Math.max(1, Math.ceil(garantiasFiltradas.length / POR_PAGINA_POSTVENTA))
+  const pagActualGar = Math.min(paginaGar, totalPaginasGar)
+  const garantiasVisibles = garantiasFiltradas.slice(
+    (pagActualGar - 1) * POR_PAGINA_POSTVENTA,
+    pagActualGar * POR_PAGINA_POSTVENTA
+  )
+
+  // Cierre de órdenes: cola priorizada
+  const ordenesCierreFiltradas = ordenesEntregadas.filter((o) => {
+    if (filtroSoloPendientesCierre) return o.estado !== 'Cerrada'
+    return true
+  })
+  const totalPaginasCierre = Math.max(1, Math.ceil(ordenesCierreFiltradas.length / POR_PAGINA_POSTVENTA))
+  const pagActualCierre = Math.min(paginaCierre, totalPaginasCierre)
+  const ordenesCierreVisibles = ordenesCierreFiltradas.slice(
+    (pagActualCierre - 1) * POR_PAGINA_POSTVENTA,
+    pagActualCierre * POR_PAGINA_POSTVENTA
+  )
+
   return (
     <div>
-      <div className="page-header">
-        <div>
-          <h1>Módulo de Postventa, PQRSF y Garantías</h1>
-          <p>
-            Gestión separada de calificaciones post-entrega, solicitudes PQRSF y evaluación técnica de garantías con trazabilidad hasta el cierre
-          </p>
-        </div>
-        <div className="btn-row">
-          <button className="btn btn-secondary" onClick={() => abrirModalNuevo('Satisfacción')}>
-            ★ Registrar calificación
-          </button>
-          <button className="btn btn-secondary" onClick={() => abrirModalNuevo('PQRSF')}>
-            + Radicar PQRSF
-          </button>
-          <button className="btn btn-primary" onClick={() => abrirModalNuevo('Garantía')}>
-            + Solicitud de garantía
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        titulo="Postventa, PQRSF y garantías"
+        subtitulo="Calificaciones post-entrega, casos PQRSF y evaluación técnica de garantías, con trazabilidad hasta el cierre."
+        icono="life-buoy"
+        acciones={
+          puedeGestionarPostventa && (
+            <>
+              <button className="btn" onClick={() => abrirModalNuevo('Satisfacción')}>
+                <Icon nombre="star" tamano={15} /> Registrar calificación
+              </button>
+              <button className="btn" onClick={() => abrirModalNuevo('PQRSF')}>
+                <Icon nombre="plus" tamano={15} /> Radicar PQRSF
+              </button>
+              <button className="btn btn-primary" onClick={() => abrirModalNuevo('Garantía')}>
+                <Icon nombre="shield" tamano={15} /> Solicitud de garantía
+              </button>
+            </>
+          )
+        }
+      />
 
-      {/* KPIs principales separados por naturaleza */}
-      <div className="stats-grid">
+      {/* 4 Indicadores clave de Postventa (uno por pilar, con redirección directa) */}
+      <div className="kpis" style={{ marginBottom: '16px' }}>
         <StatCard
           icono="star"
           titulo="Satisfacción post-entrega"
           valor={promedioSatisfaccion === '—' ? '—' : `${promedioSatisfaccion} / 5`}
-          detalle={`${calificacionesSatisfaccion.length} evaluaciones de clientes`}
-          color="amarillo"
+          detalle={`${calificacionesSatisfaccion.length} evaluaciones registradas`}
+          color="azul"
+          onClick={() => setSeccionActiva('Satisfacción')}
         />
         <StatCard
           icono="alert-triangle"
-          titulo="PQRSF activas"
+          titulo="PQRSF pendientes"
           valor={pqrsfPendientes.length}
-          detalle={`${casosPqrsf.length} radicadas (Peticiones, Quejas, Reclamos, Sug., Fel.)`}
-          color="azul"
+          detalle={`${casosPqrsf.length} casos PQRSF en total`}
+          color={pqrsfPendientes.length > 0 ? 'amarillo' : 'verde'}
+          onClick={() => setSeccionActiva('PQRSF')}
         />
         <StatCard
-          icono="clock"
-          titulo="Garantías en evaluación / trámite"
+          icono="shield"
+          titulo="Garantías en evaluación"
           valor={garantiasEnEvaluacion.length}
-          detalle={`${garantiasProcedentes.length} procedentes · ${garantiasNoProcedentes.length} no procedentes`}
-          color="amarillo"
+          detalle={`${garantiasProcedentes.length} procedentes · ${garantiasNoProcedentes.length} no proc.`}
+          color={garantiasEnEvaluacion.length > 0 ? 'rojo' : 'azul'}
+          onClick={() => setSeccionActiva('Garantía')}
         />
         <StatCard
           icono="check-circle"
-          titulo="Casos cerrados / resueltos"
-          valor={cases.filter((c) => c.estado === 'Resuelto' || c.estado === 'Cerrado').length}
-          detalle={`De ${cases.length} registros totales en postventa`}
+          titulo="Órdenes por cerrar"
+          valor={ordenesEntregadas.filter((o) => o.estado !== 'Cerrada').length}
+          detalle={`${ordenesEntregadas.filter((o) => o.estado === 'Cerrada').length} órdenes ya cerradas`}
           color="verde"
+          onClick={() => setSeccionActiva('Cierre')}
         />
       </div>
 
       {/* Navegación por las 3 secciones independientes + Cierre de órdenes */}
-      <div className="card" style={{ marginBottom: 18, padding: '12px 16px' }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', justifyContent: 'space-between' }}>
-          <div className="filter-bar" style={{ marginBottom: 0 }}>
+      <div className="card" style={{ padding: '12px 16px', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <div className="tabs" role="tablist" aria-label="Secciones de postventa" style={{ margin: 0 }}>
             {SECCIONES_POSTVENTA.map((sec) => {
               const conteo =
                 sec.id === 'Satisfacción'
@@ -385,22 +434,26 @@ export default function AfterSalesDashboard({ data, actions, irA }) {
                 <button
                   key={sec.id}
                   type="button"
-                  className={`chip ${seccionActiva === sec.id ? 'active' : ''}`}
+                  role="tab"
+                  aria-selected={seccionActiva === sec.id}
+                  className={seccionActiva === sec.id ? 'on' : ''}
                   onClick={() => {
                     setSeccionActiva(sec.id)
                     setFiltroEstado('Todos')
                   }}
                 >
-                  {sec.titulo} ({conteo})
+                  {sec.titulo} <span className="pill">{conteo}</span>
                 </button>
               )
             })}
             <button
               type="button"
-              className={`chip ${seccionActiva === 'Cierre' ? 'active' : ''}`}
+              role="tab"
+              aria-selected={seccionActiva === 'Cierre'}
+              className={seccionActiva === 'Cierre' ? 'on' : ''}
               onClick={() => setSeccionActiva('Cierre')}
             >
-              Cierre y reapertura de órdenes ({ordenesEntregadas.length})
+              Cierre y reapertura de órdenes <span className="pill">{ordenesEntregadas.length}</span>
             </button>
           </div>
 
@@ -439,14 +492,43 @@ export default function AfterSalesDashboard({ data, actions, irA }) {
         <div className="card">
           <div className="card-header">
             <div>
-              <h2>1. Calificación de satisfacción del cliente después de la entrega</h2>
+              <h2>Calificación de satisfacción del cliente después de la entrega</h2>
               <span className="muted">
                 Evaluaciones post-entrega independientes de reclamos o garantías · Promedio global: {promedioSatisfaccion} / 5.0
               </span>
             </div>
-            <button className="btn btn-primary btn-sm" onClick={() => abrirModalNuevo('Satisfacción')}>
-              ★ Registrar nueva calificación
-            </button>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              {satisfaccionFiltrada.length > POR_PAGINA_POSTVENTA && (
+                <div className="row" style={{ gap: '4px', alignItems: 'center', marginRight: '6px' }}>
+                  <button
+                    className="btn btn-ghost btn-xs"
+                    disabled={pagActualSat <= 1}
+                    onClick={() => setPaginaSat((p) => Math.max(1, p - 1))}
+                    style={{ padding: '3px 8px' }}
+                    title="Página anterior"
+                    aria-label="Página anterior"
+                  >
+                    <Icon nombre="chevron-left" tamano={14} />
+                  </button>
+                  <span className="sm mut" style={{ fontSize: '11.5px' }}>
+                    {pagActualSat} / {totalPaginasSat}
+                  </span>
+                  <button
+                    className="btn btn-ghost btn-xs"
+                    disabled={pagActualSat >= totalPaginasSat}
+                    onClick={() => setPaginaSat((p) => Math.min(totalPaginasSat, p + 1))}
+                    style={{ padding: '3px 8px' }}
+                    title="Página siguiente"
+                    aria-label="Página siguiente"
+                  >
+                    <Icon nombre="chevron-right" tamano={14} />
+                  </button>
+                </div>
+              )}
+              <button className="btn btn-primary btn-sm" onClick={() => abrirModalNuevo('Satisfacción')}>
+                <Icon nombre="star" tamano={14} /> Registrar nueva calificación
+              </button>
+            </div>
           </div>
 
           <div className="table-wrap">
@@ -464,7 +546,7 @@ export default function AfterSalesDashboard({ data, actions, irA }) {
                 </tr>
               </thead>
               <tbody>
-                {satisfaccionFiltrada.map((c) => {
+                {satisfaccionVisibles.map((c) => {
                   const ord = orders.find((o) => o.id === c.ordenId)
                   return (
                     <tr key={c.id}>
@@ -485,24 +567,24 @@ export default function AfterSalesDashboard({ data, actions, irA }) {
                       </td>
                       <td>
                         {Array.isArray(c.aspectosEvaluados) && c.aspectosEvaluados.length > 0 ? (
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                            {c.aspectosEvaluados.map((asp, i) => (
-                              <span
-                                key={i}
-                                style={{
-                                  fontSize: 11,
-                                  padding: '2px 7px',
-                                  borderRadius: 4,
-                                  background: 'var(--bg-soft, #f1f5f9)',
-                                  border: '1px solid var(--border)',
-                                }}
-                              >
-                                ✓ {asp}
-                              </span>
-                            ))}
+                          <div
+                            title={c.aspectosEvaluados.join(' · ')}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              padding: '2px 8px',
+                              background: 'var(--bg-soft, #f1f5f9)',
+                              border: '1px solid var(--border)',
+                              borderRadius: '4px',
+                              fontSize: '11.5px',
+                              cursor: 'help',
+                            }}
+                          >
+                            <span>{c.aspectosEvaluados.length} aspecto(s) destacado(s)</span>
                           </div>
                         ) : (
-                          <span className="muted">Evaluación integral</span>
+                          <span className="muted" style={{ fontSize: '11.5px' }}>Evaluación integral</span>
                         )}
                       </td>
                       <td style={{ maxWidth: 280 }}>{c.descripcion}</td>
@@ -534,15 +616,42 @@ export default function AfterSalesDashboard({ data, actions, irA }) {
         <div className="card">
           <div className="card-header">
             <div>
-              <h2>2. Gestión de PQRSF (Peticiones, Quejas, Reclamos, Sugerencias y Felicitaciones)</h2>
+              <h2>Gestión de PQRSF (Peticiones, Quejas, Reclamos, Sugerencias y Felicitaciones)</h2>
               <span className="muted">
                 Control de atención al cliente, asignación de responsables, evidencias adjuntas, respuesta formal y seguimiento hasta el cierre
               </span>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              {pqrsfFiltrados.length > POR_PAGINA_POSTVENTA && (
+                <div className="row" style={{ gap: '4px', alignItems: 'center', marginRight: '6px' }}>
+                  <button
+                    className="btn btn-ghost btn-xs"
+                    disabled={pagActualPqrsf <= 1}
+                    onClick={() => setPaginaPqrsf((p) => Math.max(1, p - 1))}
+                    style={{ padding: '3px 8px' }}
+                    title="Página anterior"
+                    aria-label="Página anterior"
+                  >
+                    <Icon nombre="chevron-left" tamano={14} />
+                  </button>
+                  <span className="sm mut" style={{ fontSize: '11.5px' }}>
+                    {pagActualPqrsf} / {totalPaginasPqrsf}
+                  </span>
+                  <button
+                    className="btn btn-ghost btn-xs"
+                    disabled={pagActualPqrsf >= totalPaginasPqrsf}
+                    onClick={() => setPaginaPqrsf((p) => Math.min(totalPaginasPqrsf, p + 1))}
+                    style={{ padding: '3px 8px' }}
+                    title="Página siguiente"
+                    aria-label="Página siguiente"
+                  >
+                    <Icon nombre="chevron-right" tamano={14} />
+                  </button>
+                </div>
+              )}
               <select
                 value={filtroSubtipoPqrsf}
-                onChange={(e) => setFiltroSubtipoPqrsf(e.target.value)}
+                onChange={(e) => { setFiltroSubtipoPqrsf(e.target.value); setPaginaPqrsf(1); }}
                 style={{ padding: '6px 10px', fontSize: 12 }}
               >
                 <option value="Todos">Todos los tipos PQRSF</option>
@@ -562,79 +671,98 @@ export default function AfterSalesDashboard({ data, actions, irA }) {
             <table>
               <thead>
                 <tr>
-                  <th>Caso</th>
-                  <th>Tipo PQRSF</th>
-                  <th>Orden / Cliente</th>
-                  <th>Motivo y Descripción</th>
-                  <th>Fecha</th>
-                  <th>Evidencias</th>
-                  <th>Responsable</th>
-                  <th>Estado</th>
-                  <th>Seguimiento y Respuesta</th>
-                  <th>Acción</th>
+                  <th style={{ width: '130px' }}>Caso / Prioridad</th>
+                  <th style={{ width: '165px' }}>Tipo y Orden</th>
+                  <th>Motivo y Resumen</th>
+                  <th style={{ width: '145px' }}>Fecha y Responsable</th>
+                  <th style={{ width: '145px' }}>Estado y Avance</th>
+                  <th style={{ width: '130px' }}>Acción</th>
                 </tr>
               </thead>
               <tbody>
-                {pqrsfFiltrados.map((c) => {
+                {pqrsfVisibles.map((c) => {
                   const ord = orders.find((o) => o.id === c.ordenId)
                   const tipoPqrsf = c.subtipo || c.tipo || 'Reclamo'
                   const numEvidencias = Array.isArray(c.evidencias) ? c.evidencias.length : 0
                   return (
                     <tr key={c.id}>
                       <td className="mono">
-                        <strong>{c.id}</strong>
+                        <button
+                          className="link-inline"
+                          onClick={() => abrirGestionCaso(c)}
+                          title="Abrir ficha completa y gestión"
+                          style={{ fontWeight: 700 }}
+                        >
+                          {c.id}
+                        </button>
                         <div style={{ marginTop: 2 }}>
                           <StatusBadge estado={c.prioridad || 'Media'} />
                         </div>
+                        {numEvidencias > 0 && (
+                          <small className="cell-sub" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px', marginTop: '2px' }}>
+                            <Icon nombre="paperclip" tamano={10} /> {numEvidencias} adjunto(s)
+                          </small>
+                        )}
                       </td>
                       <td>
                         <StatusBadge estado={tipoPqrsf} />
+                        <div style={{ marginTop: '3px' }}>
+                          <a className="link" onClick={() => irA('detalle', c.ordenId)} title={`Ir a orden ${c.ordenId}`}>
+                            {c.ordenId}
+                          </a>
+                          <div style={{ fontWeight: 600, fontSize: 12 }}>{c.cliente || ord?.cliente || '—'}</div>
+                          <div className="muted" style={{ fontSize: 11 }}>{c.producto || ord?.producto || ''}</div>
+                        </div>
                       </td>
                       <td>
-                        <a className="link" onClick={() => irA('detalle', c.ordenId)}>
-                          {c.ordenId}
-                        </a>
-                        <div style={{ fontWeight: 600, fontSize: 12 }}>{c.cliente || ord?.cliente || '—'}</div>
-                        <div className="muted" style={{ fontSize: 11 }}>{c.producto || ord?.producto || ''}</div>
-                      </td>
-                      <td style={{ maxWidth: 260 }}>
                         <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 2 }}>
                           {c.motivo || tipoPqrsf}
                         </div>
-                        <div className="muted" style={{ fontSize: 12 }}>
+                        <div
+                          className="muted cell-truncate"
+                          style={{ fontSize: 12, maxWidth: 280 }}
+                          title={c.descripcion}
+                        >
                           {c.descripcion}
                         </div>
                       </td>
-                      <td className="muted">{c.fecha}</td>
                       <td>
-                        {numEvidencias > 0 ? (
-                          <span className="mono" style={{ fontSize: 11 }}>
-                            📎 {numEvidencias} adjunto(s)
-                          </span>
-                        ) : (
-                          <span className="muted" style={{ fontSize: 11 }}>Sin adjuntos</span>
-                        )}
+                        <div style={{ fontSize: 12 }}>{c.fecha}</div>
+                        <small className="cell-sub" style={{ display: 'block', marginTop: 2 }}>
+                          Resp: <strong>{c.responsable || 'Sin asignar'}</strong>
+                        </small>
                       </td>
-                      <td>{c.responsable || <span className="muted">Sin asignar</span>}</td>
                       <td>
                         <StatusBadge estado={c.estado} />
-                      </td>
-                      <td style={{ maxWidth: 240, fontSize: 12 }}>
                         {c.solucion || c.respuestaCliente ? (
-                          <div>
-                            <strong>Solución:</strong> {c.solucion || c.respuestaCliente}
-                          </div>
+                          <small
+                            className="cell-sub cell-truncate text-verde"
+                            style={{ display: 'block', maxWidth: 140, marginTop: 2, fontWeight: 600 }}
+                            title={c.solucion || c.respuestaCliente}
+                          >
+                            ✓ Respuesta emitida
+                          </small>
                         ) : c.seguimiento ? (
-                          <div className="muted">
-                            <strong>Avance:</strong> {c.seguimiento}
-                          </div>
+                          <small
+                            className="cell-sub cell-truncate"
+                            style={{ display: 'block', maxWidth: 140, marginTop: 2 }}
+                            title={c.seguimiento}
+                          >
+                            {c.seguimiento}
+                          </small>
                         ) : (
-                          <span className="muted">Pendiente de respuesta</span>
+                          <small className="cell-sub muted" style={{ display: 'block', marginTop: 2 }}>
+                            Pendiente respuesta
+                          </small>
                         )}
                       </td>
                       <td>
-                        <button className="btn btn-primary btn-sm" onClick={() => abrirGestionCaso(c)}>
-                          Gestionar / Historial
+                        <button
+                          className="btn btn-primary btn-xs"
+                          onClick={() => abrirGestionCaso(c)}
+                          title="Gestionar caso, ver historial completo y evidencias"
+                        >
+                          <Icon nombre="edit" tamano={12} /> Gestionar
                         </button>
                       </td>
                     </tr>
@@ -642,7 +770,7 @@ export default function AfterSalesDashboard({ data, actions, irA }) {
                 })}
                 {pqrsfFiltrados.length === 0 && (
                   <tr>
-                    <td colSpan={10} className="empty">
+                    <td colSpan={6} className="empty">
                       No hay registros PQRSF para los filtros seleccionados.
                     </td>
                   </tr>
@@ -660,15 +788,42 @@ export default function AfterSalesDashboard({ data, actions, irA }) {
         <div className="card">
           <div className="card-header">
             <div>
-              <h2>3. Gestión de Garantías (Daños, Defectos de Material, Impresión o Especificaciones)</h2>
+              <h2>Gestión de garantías (Daños, Defectos de Material, Impresión o Especificaciones)</h2>
               <span className="muted">
                 Cada solicitud de garantía requiere revisión de evidencias y dictamen técnico antes de definir si es procedente o no procedente
               </span>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              {garantiasFiltradas.length > POR_PAGINA_POSTVENTA && (
+                <div className="row" style={{ gap: '4px', alignItems: 'center', marginRight: '6px' }}>
+                  <button
+                    className="btn btn-ghost btn-xs"
+                    disabled={pagActualGar <= 1}
+                    onClick={() => setPaginaGar((p) => Math.max(1, p - 1))}
+                    style={{ padding: '3px 8px' }}
+                    title="Página anterior"
+                    aria-label="Página anterior"
+                  >
+                    <Icon nombre="chevron-left" tamano={14} />
+                  </button>
+                  <span className="sm mut" style={{ fontSize: '11.5px' }}>
+                    {pagActualGar} / {totalPaginasGar}
+                  </span>
+                  <button
+                    className="btn btn-ghost btn-xs"
+                    disabled={pagActualGar >= totalPaginasGar}
+                    onClick={() => setPaginaGar((p) => Math.min(totalPaginasGar, p + 1))}
+                    style={{ padding: '3px 8px' }}
+                    title="Página siguiente"
+                    aria-label="Página siguiente"
+                  >
+                    <Icon nombre="chevron-right" tamano={14} />
+                  </button>
+                </div>
+              )}
               <select
                 value={filtroDictamen}
-                onChange={(e) => setFiltroDictamen(e.target.value)}
+                onChange={(e) => { setFiltroDictamen(e.target.value); setPaginaGar(1); }}
                 style={{ padding: '6px 10px', fontSize: 12 }}
               >
                 <option value="Todos">Todos los dictámenes</option>
@@ -692,82 +847,91 @@ export default function AfterSalesDashboard({ data, actions, irA }) {
             <table>
               <thead>
                 <tr>
-                  <th>Código</th>
-                  <th>Orden / Cliente</th>
-                  <th>Causal de Garantía y Descripción</th>
-                  <th>Fecha</th>
-                  <th>Evidencias</th>
-                  <th>Dictamen Técnico (Evaluación)</th>
-                  <th>Acción / Decisión</th>
-                  <th>Responsable</th>
-                  <th>Estado</th>
-                  <th>Gestión</th>
+                  <th style={{ width: '130px' }}>Código / Prioridad</th>
+                  <th style={{ width: '165px' }}>Orden / Cliente</th>
+                  <th>Causal y Dictamen</th>
+                  <th style={{ width: '145px' }}>Fecha y Responsable</th>
+                  <th style={{ width: '140px' }}>Estado y Decisión</th>
+                  <th style={{ width: '155px' }}>Gestión</th>
                 </tr>
               </thead>
               <tbody>
-                {garantiasFiltradas.map((c) => {
+                {garantiasVisibles.map((c) => {
                   const ord = orders.find((o) => o.id === c.ordenId)
                   const dictamen = c.dictamenGarantia || 'Pendiente de evaluación'
                   const numEvidencias = Array.isArray(c.evidencias) ? c.evidencias.length : 0
                   return (
                     <tr key={c.id}>
                       <td className="mono">
-                        <strong>{c.id}</strong>
+                        <button
+                          className="link-inline"
+                          onClick={() => abrirGestionCaso(c)}
+                          title="Abrir ficha completa de garantía"
+                          style={{ fontWeight: 700 }}
+                        >
+                          {c.id}
+                        </button>
                         <div style={{ marginTop: 2 }}>
                           <StatusBadge estado={c.prioridad || 'Alta'} />
                         </div>
+                        {numEvidencias > 0 && (
+                          <small className="cell-sub" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px', marginTop: '2px' }}>
+                            📷 {numEvidencias} archivo(s)
+                          </small>
+                        )}
                       </td>
                       <td>
-                        <a className="link" onClick={() => irA('detalle', c.ordenId)}>
+                        <a className="link" onClick={() => irA('detalle', c.ordenId)} title={`Ir a orden ${c.ordenId}`}>
                           {c.ordenId}
                         </a>
                         <div style={{ fontWeight: 600, fontSize: 12 }}>{c.cliente || ord?.cliente || '—'}</div>
                         <div className="muted" style={{ fontSize: 11 }}>{c.producto || ord?.producto || ''}</div>
                       </td>
-                      <td style={{ maxWidth: 250 }}>
+                      <td>
                         <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 2 }}>
                           {c.motivo || 'Revisión de calidad'}
                         </div>
-                        <div className="muted" style={{ fontSize: 12 }}>{c.descripcion}</div>
-                      </td>
-                      <td className="muted">{c.fecha}</td>
-                      <td>
-                        {numEvidencias > 0 ? (
-                          <span className="mono" style={{ fontSize: 11 }}>
-                            📷 {numEvidencias} archivo(s)
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <StatusBadge estado={dictamen} />
+                          <span
+                            className="cell-truncate muted"
+                            style={{ fontSize: 11, maxWidth: 220 }}
+                            title={c.justificacionDictamen || c.descripcion}
+                          >
+                            {c.justificacionDictamen || c.descripcion}
                           </span>
-                        ) : (
-                          <span className="muted" style={{ fontSize: 11 }}>Sin adjuntos</span>
-                        )}
+                        </div>
                       </td>
-                      <td style={{ maxWidth: 220 }}>
-                        <StatusBadge estado={dictamen} />
-                        {c.justificacionDictamen && (
-                          <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
-                            {c.justificacionDictamen}
-                          </div>
-                        )}
+                      <td>
+                        <div style={{ fontSize: 12 }}>{c.fecha}</div>
+                        <small className="cell-sub" style={{ display: 'block', marginTop: 2 }}>
+                          Resp: <strong>{c.responsable || 'Sin asignar'}</strong>
+                        </small>
                       </td>
-                      <td style={{ maxWidth: 200, fontSize: 12 }}>
-                        <div>{c.accionCorrectiva || 'En espera de dictamen'}</div>
-                        {c.solucion && (
-                          <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
-                            <strong>Cierre:</strong> {c.solucion}
-                          </div>
-                        )}
-                      </td>
-                      <td>{c.responsable || <span className="muted">Sin asignar</span>}</td>
                       <td>
                         <StatusBadge estado={c.estado} />
+                        {c.accionCorrectiva && (
+                          <small
+                            className="cell-sub cell-truncate"
+                            style={{ display: 'block', maxWidth: 135, marginTop: 2 }}
+                            title={c.accionCorrectiva}
+                          >
+                            {c.accionCorrectiva}
+                          </small>
+                        )}
                       </td>
                       <td>
-                        <div className="btn-row">
-                          <button className="btn btn-primary btn-sm" onClick={() => abrirGestionCaso(c)}>
-                            Evaluar / Seguimiento
+                        <div className="row-actions" style={{ gap: '4px', flexWrap: 'wrap' }}>
+                          <button
+                            className="btn btn-primary btn-xs"
+                            onClick={() => abrirGestionCaso(c)}
+                            title="Evaluar dictamen, evidencias y seguimiento"
+                          >
+                            <Icon nombre="edit" tamano={12} /> Evaluar
                           </button>
                           {dictamen.startsWith('Procedente') && (
                             <button
-                              className="btn btn-secondary btn-sm"
+                              className="btn btn-secondary btn-xs"
                               title="Generar orden de reimpresión por garantía aprobada"
                               onClick={() =>
                                 actions.cloneOrder(
@@ -776,7 +940,7 @@ export default function AfterSalesDashboard({ data, actions, irA }) {
                                 )
                               }
                             >
-                              Reimprimir
+                              <Icon nombre="copy" tamano={12} /> Reimprimir
                             </button>
                           )}
                         </div>
@@ -786,7 +950,7 @@ export default function AfterSalesDashboard({ data, actions, irA }) {
                 })}
                 {garantiasFiltradas.length === 0 && (
                   <tr>
-                    <td colSpan={10} className="empty">
+                    <td colSpan={6} className="empty">
                       No hay solicitudes de garantía registradas para el filtro actual.
                     </td>
                   </tr>
@@ -809,6 +973,54 @@ export default function AfterSalesDashboard({ data, actions, irA }) {
                 Verifica que no existan PQRSF ni garantías pendientes antes de cerrar definitivamente una orden
               </span>
             </div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <div className="chips" style={{ marginBottom: 0 }}>
+                <button
+                  type="button"
+                  className={filtroSoloPendientesCierre ? 'chip active' : 'chip'}
+                  onClick={() => { setFiltroSoloPendientesCierre(true); setPaginaCierre(1); }}
+                  style={{ fontSize: '12px', padding: '3px 8px' }}
+                >
+                  Pendientes de cierre
+                </button>
+                <button
+                  type="button"
+                  className={!filtroSoloPendientesCierre ? 'chip active' : 'chip'}
+                  onClick={() => { setFiltroSoloPendientesCierre(false); setPaginaCierre(1); }}
+                  style={{ fontSize: '12px', padding: '3px 8px' }}
+                >
+                  Todas ({ordenesEntregadas.length})
+                </button>
+              </div>
+
+              {ordenesCierreFiltradas.length > POR_PAGINA_POSTVENTA && (
+                <div className="row" style={{ gap: '4px', alignItems: 'center', marginLeft: '6px' }}>
+                  <button
+                    className="btn btn-ghost btn-xs"
+                    disabled={pagActualCierre <= 1}
+                    onClick={() => setPaginaCierre((p) => Math.max(1, p - 1))}
+                    style={{ padding: '3px 8px' }}
+                    title="Página anterior"
+                    aria-label="Página anterior"
+                  >
+                    <Icon nombre="chevron-left" tamano={14} />
+                  </button>
+                  <span className="sm mut" style={{ fontSize: '11.5px' }}>
+                    {pagActualCierre} / {totalPaginasCierre}
+                  </span>
+                  <button
+                    className="btn btn-ghost btn-xs"
+                    disabled={pagActualCierre >= totalPaginasCierre}
+                    onClick={() => setPaginaCierre((p) => Math.min(totalPaginasCierre, p + 1))}
+                    style={{ padding: '3px 8px' }}
+                    title="Página siguiente"
+                    aria-label="Página siguiente"
+                  >
+                    <Icon nombre="chevron-right" tamano={14} />
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="table-wrap">
@@ -824,7 +1036,7 @@ export default function AfterSalesDashboard({ data, actions, irA }) {
                 </tr>
               </thead>
               <tbody>
-                {ordenesEntregadas.map((o) => {
+                {ordenesCierreVisibles.map((o) => {
                   const val = validarCierreOrden(o, tasks, cases)
                   const estaCerrada = o.estado === 'Cerrada'
                   return (
@@ -925,8 +1137,8 @@ export default function AfterSalesDashboard({ data, actions, irA }) {
                     : 'Peticiones, quejas, reclamos, sugerencias o felicitaciones asociadas a una orden'}
                 </span>
               </div>
-              <button className="btn btn-ghost btn-sm" onClick={() => setModalRegistro(null)}>
-                ✕
+              <button className="btn btn-ghost btn-sm" onClick={() => setModalRegistro(null)} aria-label="Cerrar">
+                <Icon nombre="x" tamano={16} />
               </button>
             </div>
 
@@ -1249,8 +1461,8 @@ export default function AfterSalesDashboard({ data, actions, irA }) {
                   {casoSeleccionado.fecha}
                 </span>
               </div>
-              <button className="btn btn-ghost btn-sm" onClick={() => setCasoDetalleId(null)}>
-                ✕
+              <button className="btn btn-ghost btn-sm" onClick={() => setCasoDetalleId(null)} aria-label="Cerrar">
+                <Icon nombre="x" tamano={16} />
               </button>
             </div>
 
@@ -1482,11 +1694,13 @@ export default function AfterSalesDashboard({ data, actions, irA }) {
 
                 <div className="form-actions">
                   <button type="button" className="btn btn-secondary" onClick={() => setCasoDetalleId(null)}>
-                    Cancelar
+                    Cerrar
                   </button>
-                  <button type="submit" className="btn btn-primary">
-                    Guardar cambios y registrar en historial
-                  </button>
+                  {puedeGestionarPostventa && (
+                    <button type="submit" className="btn btn-primary">
+                      Guardar cambios y registrar en historial
+                    </button>
+                  )}
                 </div>
               </form>
             )}
