@@ -76,11 +76,12 @@ router.patch(
 );
 
 // Liberación formal para impresión tras verificación de aprobación (automática / Comercial; retirado de Coordinación)
+// Liberar diseño para impresión (Exclusivo Coordinación de Producción)
 router.patch(
   '/orden/:orden_id/liberar-impresion',
   verificarToken,
   asociarCapacidad('disenos.liberar'),
-  verificarRol('ejecutiva'),
+  verificarRol('coord'),
   disenosController.liberarParaImpresion
 );
 
@@ -89,7 +90,7 @@ router.patch(
   '/orden/:orden_id/soporte',
   verificarToken,
   asociarCapacidad('disenos.soporte'),
-  verificarRol('ejecutiva'),
+  verificarRol('ejecutiva', 'coord', 'gerente'),
   upload.single('archivo'),
   disenosController.adjuntarSoporteAprobacion
 );
@@ -98,7 +99,7 @@ router.patch(
   '/:id/soporte',
   verificarToken,
   asociarCapacidad('disenos.soporte'),
-  verificarRol('ejecutiva'),
+  verificarRol('ejecutiva', 'coord', 'gerente'),
   upload.single('archivo'),
   disenosController.adjuntarSoporteAprobacion
 );

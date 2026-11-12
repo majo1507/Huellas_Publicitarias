@@ -173,6 +173,8 @@ function construirOrdenCompleta(o, versionesRows = [], historialRows = [], rolUs
     fechaReapertura: o.fecha_reapertura || null,
     esReimpresion: Boolean(o.es_reimpresion),
     ordenOriginalId: o.orden_original_codigo || null,
+    archivado: Boolean(o.archivado),
+    codigoConsulta: o.codigo_consulta || null,
     archivosReferencia: Array.isArray(o.archivos_referencia) ? o.archivos_referencia : [],
     created_at: o.created_at,
     updated_at: o.updated_at,
@@ -263,6 +265,11 @@ const listarOrdenes = async (req, res) => {
     if (prioridad) {
       params.push(prioridad);
       where += ` AND o.prioridad = $${params.length}`;
+    }
+
+    const incluirArchivados = req.query.incluir_archivados === 'true' || req.query.archivados === 'true';
+    if (!incluirArchivados) {
+      where += ' AND COALESCE(o.archivado, false) = false';
     }
 
     const ordenes = await cargarOrdenesEnriquecidas(pool, where, params, req.usuario?.rol);
@@ -514,6 +521,21 @@ const crearOrden = async (req, res) => {
 
     const autorNombre = req.usuario?.nombre_completo || ejecutiva.nombre_completo;
     const autorId = (req.usuario?.id && req.usuario.rol !== 'cliente') ? req.usuario.id : ejecutiva.id;
+
+    // Registrar etapa inicial en orden_etapa_historial para medición de telemetría de tiempos
+    try {
+      await client.query('SAVEPOINT telemetria_sp');
+      await client.query(
+        `INSERT INTO orden_etapa_historial (
+           orden_id, etapa_anterior, etapa_nueva, etapa_nombre, fecha_entrada, usuario_id, usuario_nombre, observaciones
+         ) VALUES ($1, NULL, $2, $3, CURRENT_TIMESTAMP, $4, $5, 'Creación de orden desde solicitud')`,
+        [nuevaRow.id, etapaInicial, estadoInicial, autorId, autorNombre]
+      );
+      await client.query('RELEASE SAVEPOINT telemetria_sp');
+    } catch (telemetriaErr) {
+      await client.query('ROLLBACK TO SAVEPOINT telemetria_sp').catch(() => {});
+      console.warn('[ordenesController.crearOrden] No se pudo registrar telemetria inicial de etapa:', telemetriaErr.message);
+    }
 
     await client.query(
       `INSERT INTO registro_sesion (
@@ -882,6 +904,49 @@ const actualizarEtapa = async (req, res) => {
       }
     }
 
+    // Actualizar etapa anterior en orden_etapa_historial y registrar nueva etapa
+    try {
+      await client.query('SAVEPOINT telemetria_sp');
+      const ahoraTs = new Date();
+      // Cerrar tiempo en la etapa anterior si existe registro abierto
+      const abiertoRes = await client.query(
+        `SELECT id, fecha_entrada FROM orden_etapa_historial 
+         WHERE orden_id = $1 AND fecha_salida IS NULL 
+         ORDER BY id DESC LIMIT 1`,
+        [orden.id]
+      );
+      if (abiertoRes.rowCount > 0) {
+        const rowAbierta = abiertoRes.rows[0];
+        const segs = Math.max(0, Math.round((ahoraTs - new Date(rowAbierta.fecha_entrada)) / 1000));
+        await client.query(
+          `UPDATE orden_etapa_historial 
+           SET fecha_salida = $1, tiempo_segundos = $2 
+           WHERE id = $3`,
+          [ahoraTs, segs, rowAbierta.id]
+        );
+      }
+      // Insertar nuevo registro para la nueva etapa
+      await client.query(
+        `INSERT INTO orden_etapa_historial (
+           orden_id, etapa_anterior, etapa_nueva, etapa_nombre, fecha_entrada, usuario_id, usuario_nombre, observaciones
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [
+          orden.id,
+          orden.etapa,
+          nuevaEtapa,
+          nuevoEstadoUi,
+          ahoraTs,
+          responsableId,
+          responsableNombre,
+          observaciones || null,
+        ]
+      );
+      await client.query('RELEASE SAVEPOINT telemetria_sp');
+    } catch (telemetriaErr) {
+      await client.query('ROLLBACK TO SAVEPOINT telemetria_sp').catch(() => {});
+      console.warn('[ordenesController.actualizarEtapa] No se pudo registrar telemetria de etapa:', telemetriaErr.message);
+    }
+
     let textoAuditoria = `Etapa cambiada a ${nuevoEstadoUi}`;
     if (descuentoRealizado) {
       textoAuditoria += `. Se descontaron ${descuentoRealizado.cantidad_descontada} unidades de "${descuentoRealizado.material}".`;
@@ -1061,20 +1126,14 @@ const cerrarOrden = async (req, res) => {
       });
     }
 
-    // Verificar que no existan tareas pendientes ni casos abiertos
-    const tareasPend = await client.query(
-      "SELECT COUNT(*)::int AS total FROM tareas WHERE orden_id = $1 AND estado != 'Finalizada'",
+    // Al momento del cierre formal de una orden entregada, finalizar actividades operativas de taller residuales
+    await client.query(
+      "UPDATE tareas SET estado = 'Finalizada', porcentaje = 100 WHERE orden_id = $1 AND estado != 'Finalizada'",
       [orden.id]
     );
-    if (tareasPend.rows[0].total > 0) {
-      await client.query('ROLLBACK');
-      return res.status(409).json({
-        error: `No se puede cerrar la orden: tiene ${tareasPend.rows[0].total} tarea(s) de taller sin finalizar.`,
-      });
-    }
 
     const casosAbiertos = await client.query(
-      "SELECT COUNT(*)::int AS total FROM postventa WHERE orden_id = $1 AND estado != 'Resuelto' AND estado != 'Cerrado'",
+      "SELECT COUNT(*)::int AS total FROM postventa WHERE orden_id = $1 AND estado != 'Resuelto' AND estado != 'Cerrado' AND estado != 'Solucionado'",
       [orden.id]
     );
     if (casosAbiertos.rows[0].total > 0) {
@@ -1569,11 +1628,142 @@ const actualizarAsignacionOrden = async (req, res) => {
   }
 };
 
+// Actualizar metadatos generales de la orden (prioridad, fechaEntrega, observaciones, acabados, metodoEntrega)
+const actualizarOrden = async (req, res) => {
+  try {
+    const orden = await resolverOrden(pool, req.params.id);
+    if (!orden) {
+      return res.status(404).json({ error: `Orden ${req.params.id} no encontrada.` });
+    }
+
+    const prioridad = req.body.prioridad !== undefined ? req.body.prioridad : orden.prioridad;
+    const fechaEntrega = req.body.fechaEntrega !== undefined ? req.body.fechaEntrega : orden.fecha_entrega;
+    const observaciones = req.body.observaciones !== undefined ? req.body.observaciones : orden.observaciones;
+    const acabados = req.body.acabados !== undefined ? req.body.acabados : orden.acabados;
+    const metodoEntrega = req.body.metodoEntrega !== undefined ? req.body.metodoEntrega : orden.metodo_entrega;
+
+    await pool.query(
+      `UPDATE ordenes
+       SET prioridad = $1, fecha_entrega = $2, observaciones = $3, acabados = $4, metodo_entrega = $5, updated_at = NOW()
+       WHERE id = $6`,
+      [prioridad, fechaEntrega, observaciones, acabados, metodoEntrega, orden.id]
+    );
+
+    const [ordenCompleta] = await cargarOrdenesEnriquecidas(pool, 'AND o.id = $1', [orden.id], req.usuario?.rol);
+    res.json({
+      message: 'Orden actualizada exitosamente.',
+      data: ordenCompleta,
+    });
+  } catch (error) {
+    console.error('ordenesController.actualizarOrden error:', error.message);
+    res.status(500).json({ error: 'Error al actualizar los datos de la orden.' });
+  }
+};
+
+// Archivar orden
+const archivarOrden = async (req, res) => {
+  try {
+    const orden = await resolverOrden(pool, req.params.id);
+    if (!orden) {
+      return res.status(404).json({ error: `Orden ${req.params.id} no encontrada.` });
+    }
+
+    await pool.query('UPDATE ordenes SET archivado = true, updated_at = NOW() WHERE id = $1', [orden.id]);
+    const [ordenCompleta] = await cargarOrdenesEnriquecidas(pool, 'AND o.id = $1', [orden.id], req.usuario?.rol);
+    res.json({
+      message: `Orden ${orden.codigo || orden.id} archivada exitosamente.`,
+      data: ordenCompleta,
+    });
+  } catch (error) {
+    console.error('ordenesController.archivarOrden error:', error.message);
+    res.status(500).json({ error: 'Error al archivar la orden.' });
+  }
+};
+
+// Restaurar orden
+const restaurarOrden = async (req, res) => {
+  try {
+    const orden = await resolverOrden(pool, req.params.id);
+    if (!orden) {
+      return res.status(404).json({ error: `Orden ${req.params.id} no encontrada.` });
+    }
+
+    await pool.query('UPDATE ordenes SET archivado = false, updated_at = NOW() WHERE id = $1', [orden.id]);
+    const [ordenCompleta] = await cargarOrdenesEnriquecidas(pool, 'AND o.id = $1', [orden.id], req.usuario?.rol);
+    res.json({
+      message: `Orden ${orden.codigo || orden.id} restaurada exitosamente.`,
+      data: ordenCompleta,
+    });
+  } catch (error) {
+    console.error('ordenesController.restaurarOrden error:', error.message);
+    res.status(500).json({ error: 'Error al restaurar la orden.' });
+  }
+};
+
+// Eliminar orden de forma segura (con validación de integridad referencial)
+const eliminarOrden = async (req, res) => {
+  try {
+    const orden = await resolverOrden(pool, req.params.id);
+    if (!orden) {
+      return res.status(404).json({ error: `Orden ${req.params.id} no encontrada.` });
+    }
+
+    // Comprobar tareas vinculadas
+    const tareasCheck = await pool.query('SELECT COUNT(*)::int AS total FROM tareas WHERE orden_id = $1', [orden.id]);
+    if (tareasCheck.rows[0].total > 0) {
+      return res.status(400).json({
+        error: `No es posible eliminar la orden ${orden.codigo} permanentemente porque tiene ${tareasCheck.rows[0].total} tareas de producción asociadas. Utilice la opción 'Archivar' para retirarla de la vista activa preservando la trazabilidad.`,
+      });
+    }
+
+    // Comprobar pagos registrados
+    const pagosCheck = await pool.query('SELECT COUNT(*)::int AS total FROM pagos WHERE orden_id = $1', [orden.id]);
+    if (pagosCheck.rows[0].total > 0) {
+      return res.status(400).json({
+        error: `No es posible eliminar la orden ${orden.codigo} porque tiene registros contables de pagos vinculados. Le recomendamos archivarla.`,
+      });
+    }
+
+    // Comprobar postventa
+    const pvCheck = await pool.query('SELECT COUNT(*)::int AS total FROM postventa WHERE orden_id = $1', [orden.id]);
+    if (pvCheck.rows[0].total > 0) {
+      return res.status(400).json({
+        error: `No es posible eliminar la orden ${orden.codigo} porque tiene casos o reclamos de postventa registrados. Debe conservarse o archivarse.`,
+      });
+    }
+
+    // Comprobar entregas
+    const entCheck = await pool.query('SELECT COUNT(*)::int AS total FROM entregas WHERE orden_id = $1', [orden.id]);
+    if (entCheck.rows[0].total > 0) {
+      return res.status(400).json({
+        error: `No es posible eliminar la orden ${orden.codigo} porque ya cuenta con actas de entrega/remisión formalizadas. Archívela en su lugar.`,
+      });
+    }
+
+    // Limpiar versiones de arte e historial de etapas huérfanas antes de eliminar
+    await pool.query('DELETE FROM versiones_arte WHERE orden_id = $1', [orden.id]);
+    await pool.query('DELETE FROM orden_etapa_historial WHERE orden_id = $1', [orden.id]);
+    await pool.query('DELETE FROM ordenes WHERE id = $1', [orden.id]);
+
+    res.json({
+      message: `Orden ${orden.codigo || orden.id} eliminada permanentemente de la base de datos.`,
+      id: orden.codigo || orden.id,
+    });
+  } catch (error) {
+    console.error('ordenesController.eliminarOrden error:', error.message);
+    res.status(500).json({ error: 'Error al eliminar la orden de producción.' });
+  }
+};
+
 module.exports = {
   listarOrdenes,
   obtenerOrdenPorId,
   obtenerHistorialOrden,
   crearOrden,
+  actualizarOrden,
+  archivarOrden,
+  restaurarOrden,
+  eliminarOrden,
   actualizarEtapa,
   actualizarAsignacionOrden,
   registrarEntrega,

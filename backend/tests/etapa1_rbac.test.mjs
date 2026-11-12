@@ -499,7 +499,9 @@ async function runEtapa1Tests() {
   }
 }
 
-runEtapa1Tests().catch((err) => {
-  console.error('\n❌ ERROR EN PRUEBAS DE ETAPA 1:', err);
-  process.exit(1);
-});
+runEtapa1Tests()
+  .then(() => process.exit(0))
+  .catch((err) => {
+    console.error('\n❌ ERROR EN PRUEBAS DE ETAPA 1:', err);
+    process.exit(1);
+  });

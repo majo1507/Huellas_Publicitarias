@@ -12,7 +12,7 @@ import Avatar from '../components/Avatar.jsx'
 import EmptyState from '../components/EmptyState.jsx'
 import ProgressBar from '../components/ProgressBar.jsx'
 import Icon from '../components/Icon.jsx'
-import { ETAPAS, OPERARIOS } from '../data/mockData.js'
+import { ETAPAS } from '../data/mockData.js'
 import { ACTIVIDADES_TALLER_POR_ETAPA } from '../data/catalogos.js'
 import {
   diasParaEntrega,
@@ -24,6 +24,7 @@ import {
   textoPlazo,
   formatoCOP,
   progreso,
+  formatearFecha,
 } from '../utils/format.js'
 import { generarReporteOrdenPDF, generarReporteInventarioPDF } from '../utils/pdfReport.js'
 
@@ -53,7 +54,7 @@ export default function CoordinatorDashboard({ data, actions, irA }) {
   const [nuevaActividadDesc, setNuevaActividadDesc] = useState('')
   const [nuevaActividadInst, setNuevaActividadInst] = useState('')
   const [nuevaActividadEtapa, setNuevaActividadEtapa] = useState('Impresión')
-  const [nuevaActividadResp, setNuevaActividadResp] = useState('Pedro Morales')
+  const [nuevaActividadResp, setNuevaActividadResp] = useState('')
   const [nuevaActividadPrioridad, setNuevaActividadPrioridad] = useState('Media')
   const [nuevaActividadFecha, setNuevaActividadFecha] = useState('')
 
@@ -110,19 +111,15 @@ export default function CoordinatorDashboard({ data, actions, irA }) {
 
   const listaDisenadores = usuariosEquipo.some((u) => u.rol === 'Diseñador')
     ? usuariosEquipo.filter((u) => u.rol === 'Diseñador' || u.rol === 'Coordinador').map((u) => u.nombre)
-    : ['María López', 'Carlos Gómez']
+    : []
 
   const listaOperarios = [
     ...new Set([
-      'Pedro Morales',
-      ...OPERARIOS,
       ...usuariosEquipo.map((u) => u.nombre),
-      'María López',
-      'Carlos Gómez',
     ]),
   ]
 
-  const responsables = [...new Set(['Pedro Morales', 'María López', ...OPERARIOS])].map((nombre) => {
+  const responsables = [...new Set(usuariosEquipo.filter((u) => u.rol === 'Operario' || u.rol === 'Diseñador').map((u) => u.nombre))].map((nombre) => {
     const ordAsig = activas.filter((o) => o.responsable === nombre || o.disenador === nombre).length
     const tarAct = tareasAbiertas.filter((t) => t.responsable === nombre).length
     const tarFin = data.tasks.filter((t) => t.responsable === nombre && t.estado === 'Finalizada').length
@@ -151,8 +148,8 @@ export default function CoordinatorDashboard({ data, actions, irA }) {
 
   function abrirModalCoordinar(orden) {
     setOrdenCoordinando(orden)
-    setDisenadorSel(orden.disenador || 'María López')
-    setResponsableSel(orden.responsable || 'Pedro Morales')
+    setDisenadorSel(orden.disenador || '')
+    setResponsableSel(orden.responsable || '')
     setPrioridadEdit(orden.prioridad || (estaRetrasada(orden) ? 'Alta' : 'Media'))
     setPresupuestoEdit(Number(orden.presupuesto || 0))
     setCostoEdit(Number(orden.costoInterno || 0))
@@ -161,22 +158,22 @@ export default function CoordinatorDashboard({ data, actions, irA }) {
     setNuevaActividadDesc('')
     setNuevaActividadInst('')
     setNuevaActividadEtapa(orden.estado === 'Diseño' ? 'Diseño' : 'Impresión')
-    setNuevaActividadResp(orden.responsable || 'Pedro Morales')
+    setNuevaActividadResp(orden.responsable || '')
     setNuevaActividadPrioridad(orden.prioridad || 'Media')
-    setNuevaActividadFecha(orden.fechaEntrega || '10/10/2026')
+    setNuevaActividadFecha(orden.fechaEntrega || formatearFecha(new Date()))
     setErrorActividad('')
   }
 
-  function abrirModalAsignarDirecto(responsablePreseleccionado = 'Pedro Morales') {
+  function abrirModalAsignarDirecto(responsablePreseleccionado = '') {
     const primera = activas[0] || data.orders[0]
     setOrdenDirectaId(primera?.id || '')
     setNuevaActividadNombre('')
     setNuevaActividadDesc('')
     setNuevaActividadInst('')
     setNuevaActividadEtapa('Impresión')
-    setNuevaActividadResp(typeof responsablePreseleccionado === 'string' ? responsablePreseleccionado : 'Pedro Morales')
+    setNuevaActividadResp(typeof responsablePreseleccionado === 'string' ? responsablePreseleccionado : '')
     setNuevaActividadPrioridad('Media')
-    setNuevaActividadFecha(primera?.fechaEntrega || '10/10/2026')
+    setNuevaActividadFecha(primera?.fechaEntrega || formatearFecha(new Date()))
     setErrorActividad('')
     setModalAsignarDirecto(true)
   }
@@ -207,7 +204,7 @@ export default function CoordinatorDashboard({ data, actions, irA }) {
       descripcion: nuevaActividadDesc.trim(),
       instrucciones: nuevaActividadInst.trim(),
       etapa: nuevaActividadEtapa,
-      responsable: nuevaActividadResp || 'Pedro Morales',
+      responsable: nuevaActividadResp,
       prioridad: nuevaActividadPrioridad,
       fechaLimite: nuevaActividadFecha.trim() || ordenCoordinando.fechaEntrega,
     })
@@ -230,9 +227,9 @@ export default function CoordinatorDashboard({ data, actions, irA }) {
       descripcion: nuevaActividadDesc.trim(),
       instrucciones: nuevaActividadInst.trim(),
       etapa: nuevaActividadEtapa,
-      responsable: nuevaActividadResp || 'Pedro Morales',
+      responsable: nuevaActividadResp,
       prioridad: nuevaActividadPrioridad,
-      fechaLimite: nuevaActividadFecha.trim() || ordRef?.fechaEntrega || '10/10/2026',
+      fechaLimite: nuevaActividadFecha.trim() || ordRef?.fechaEntrega || formatearFecha(new Date()),
     })
     setModalAsignarDirecto(false)
   }
@@ -732,7 +729,7 @@ export default function CoordinatorDashboard({ data, actions, irA }) {
 
                         <td>
                           <div style={{ fontSize: '11.5px', lineHeight: '1.4' }}>
-                            <div><span className="mut">D: </span><strong>{o.disenador || 'María López'}</strong></div>
+                            <div><span className="mut">D: </span><strong>{o.disenador || 'Sin asignar'}</strong></div>
                             <div><span className="mut">T: </span><strong>{o.responsable}</strong></div>
                           </div>
                         </td>

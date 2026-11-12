@@ -11,7 +11,7 @@ import EmptyState from '../components/EmptyState.jsx'
 import Icon from '../components/Icon.jsx'
 import Avatar from '../components/Avatar.jsx'
 import DesignPreview from '../components/DesignPreview.jsx'
-import { ETAPAS, OPERARIOS } from '../data/mockData.js'
+import { ETAPAS } from '../data/mockData.js'
 import {
   formatoCOP,
   progreso,
@@ -105,9 +105,7 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
   const usuariosEquipo = data.users?.length
     ? data.users.filter((u) => u.estado === 'Activo' && u.rol !== 'Cliente')
     : []
-  const listaOperarios = usuariosEquipo.length
-    ? usuariosEquipo.map((u) => u.nombre)
-    : ['María López', ...OPERARIOS, 'Carlos Gómez']
+  const listaOperarios = usuariosEquipo.map((u) => u.nombre)
 
   // Pestañas filtradas por permisos de rol (HU-07)
   const pestanasVisibles = PESTANAS.filter(([k]) => {
@@ -143,14 +141,14 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
     }
 
     const responsablesMap = {
-      Solicitud: 'Ana Martínez (Comercial)',
-      Diseño: `${order.disenador || 'María López'} (Diseño)`,
+      Solicitud: 'Comercial',
+      Diseño: `${order.disenador || 'Sin asignar'} (Diseño)`,
       Aprobación: `${order.cliente} (Cliente)`,
-      Impresión: `${order.responsable || 'Pedro Morales'} (Impresión)`,
-      Acabados: 'Jorge Silva (Acabados)',
-      Despacho: 'Luisa Peña (Despacho)',
-      Entrega: 'Luisa Peña (Logística)',
-      Postventa: 'Sofía Herrera (Postventa)',
+      Impresión: `${order.responsable || 'Sin asignar'} (Impresión)`,
+      Acabados: 'Taller (Acabados)',
+      Despacho: 'Logística (Despacho)',
+      Entrega: 'Logística (Entrega)',
+      Postventa: 'Postventa',
     }
 
     return {
@@ -304,8 +302,8 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
   }
 
   function abrirModalCoordinar() {
-    setDisenadorSel(order.disenador || 'María López')
-    setResponsableSel(order.responsable || 'Pedro Morales')
+    setDisenadorSel(order.disenador || '')
+    setResponsableSel(order.responsable || '')
     setPrioridadEdit(order.prioridad || prioridadOrden(order) || 'Media')
     setFechaEntregaEdit(order.fechaEntrega || '')
     setPresupuestoEdit(Number(order.presupuesto || 0))
@@ -986,7 +984,7 @@ export default function OrderDetail({ order, data, actions, irA, role, tabInicia
                 <div className="field">
                   <label className="field-label" htmlFor="detDisenador">Diseñador(a) gráfico(a)</label>
                   <select id="detDisenador" value={disenadorSel} onChange={(e) => setDisenadorSel(e.target.value)}>
-                    {[...new Set(['María López', 'Carlos Gómez', disenadorSel])].map((n) => (
+                    {[...new Set([...listaOperarios, disenadorSel])].filter(Boolean).map((n) => (
                       <option key={n} value={n}>{n}</option>
                     ))}
                   </select>

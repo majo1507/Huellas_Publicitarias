@@ -27,6 +27,7 @@ function formatearMaterialRow(r) {
     costoUnitario: Number(r.costo_unitario || 0),
     proveedorId: r.proveedor_codigo || '',
     proveedor: r.proveedor_nombre || 'Por definir',
+    archivado: !!r.archivado,
     fechaActualizacion: r.fecha_actualizacion || formatearFechaHoy(r.updated_at ? new Date(r.updated_at) : new Date()),
   };
 }
@@ -53,6 +54,7 @@ function formatearProveedorRow(r) {
     ciudad: r.ciudad || 'Bogotá',
     productos,
     estado: r.estado || 'Activo',
+    archivado: !!r.archivado,
   };
 }
 
@@ -75,9 +77,11 @@ function formatearMovimientoRow(r) {
   };
 }
 
-const listarInventario = async (_req, res) => {
+const listarInventario = async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM inventario ORDER BY id ASC');
+    const incluirArchivados = req.query.incluir_archivados === 'true' || req.query.archivados === 'true';
+    const whereClause = incluirArchivados ? '' : 'WHERE COALESCE(archivado, false) = false';
+    const result = await pool.query(`SELECT * FROM inventario ${whereClause} ORDER BY id ASC`);
     res.json({
       total: result.rowCount,
       data: result.rows.map(formatearMaterialRow),
@@ -143,9 +147,11 @@ const crearMaterial = async (req, res) => {
   }
 };
 
-const listarProveedores = async (_req, res) => {
+const listarProveedores = async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM proveedores ORDER BY id ASC');
+    const incluirArchivados = req.query.incluir_archivados === 'true' || req.query.archivados === 'true';
+    const whereClause = incluirArchivados ? '' : 'WHERE COALESCE(archivado, false) = false';
+    const result = await pool.query(`SELECT * FROM proveedores ${whereClause} ORDER BY id ASC`);
     res.json({
       total: result.rowCount,
       data: result.rows.map(formatearProveedorRow),
@@ -495,11 +501,277 @@ const liberarReservas = async (req, res) => {
   }
 };
 
+// Actualizar material
+const actualizarMaterial = async (req, res) => {
+  try {
+    const matId = req.params.id;
+    const findRes = await pool.query(
+      'SELECT * FROM inventario WHERE id::text = $1 OR codigo = $1 LIMIT 1',
+      [String(matId).trim()]
+    );
+    if (findRes.rows.length === 0) {
+      return res.status(404).json({ error: `Material ${matId} no encontrado.` });
+    }
+    const actual = findRes.rows[0];
+
+    const nombre = req.body.nombre !== undefined ? req.body.nombre.trim() : actual.nombre_material;
+    const descripcion = req.body.descripcion !== undefined ? req.body.descripcion.trim() : actual.descripcion;
+    const categoria = req.body.categoria !== undefined ? req.body.categoria.trim() : actual.categoria;
+    const unidad = req.body.unidad !== undefined ? req.body.unidad.trim() : actual.unidad;
+    const stockMinimo = req.body.stockMinimo !== undefined ? Number(req.body.stockMinimo) : actual.stock_minimo;
+    const costoUnitario = req.body.costoUnitario !== undefined ? Number(req.body.costoUnitario) : actual.costo_unitario;
+
+    const upRes = await pool.query(
+      `UPDATE inventario
+       SET nombre_material = $1, descripcion = $2, categoria = $3, unidad = $4,
+           stock_minimo = $5, costo_unitario = $6, updated_at = NOW()
+       WHERE id = $7
+       RETURNING *`,
+      [nombre, descripcion, categoria, unidad, stockMinimo, costoUnitario, actual.id]
+    );
+
+    res.json({
+      message: 'Material actualizado exitosamente.',
+      data: formatearMaterialRow(upRes.rows[0]),
+    });
+  } catch (error) {
+    console.error('inventarioController.actualizarMaterial error:', error.message);
+    res.status(500).json({ error: 'Error al actualizar material.' });
+  }
+};
+
+// Archivar material
+const archivarMaterial = async (req, res) => {
+  try {
+    const matId = req.params.id;
+    const upRes = await pool.query(
+      'UPDATE inventario SET archivado = true, updated_at = NOW() WHERE id::text = $1 OR codigo = $1 RETURNING *',
+      [String(matId).trim()]
+    );
+    if (upRes.rows.length === 0) {
+      return res.status(404).json({ error: `Material ${matId} no encontrado.` });
+    }
+    res.json({
+      message: 'Material archivado exitosamente.',
+      data: formatearMaterialRow(upRes.rows[0]),
+    });
+  } catch (error) {
+    console.error('inventarioController.archivarMaterial error:', error.message);
+    res.status(500).json({ error: 'Error al archivar material.' });
+  }
+};
+
+// Restaurar material
+const restaurarMaterial = async (req, res) => {
+  try {
+    const matId = req.params.id;
+    const upRes = await pool.query(
+      'UPDATE inventario SET archivado = false, updated_at = NOW() WHERE id::text = $1 OR codigo = $1 RETURNING *',
+      [String(matId).trim()]
+    );
+    if (upRes.rows.length === 0) {
+      return res.status(404).json({ error: `Material ${matId} no encontrado.` });
+    }
+    res.json({
+      message: 'Material restaurado exitosamente.',
+      data: formatearMaterialRow(upRes.rows[0]),
+    });
+  } catch (error) {
+    console.error('inventarioController.restaurarMaterial error:', error.message);
+    res.status(500).json({ error: 'Error al restaurar material.' });
+  }
+};
+
+// Eliminar material seguro (verifica stock y movimientos contables)
+const eliminarMaterial = async (req, res) => {
+  try {
+    const matId = req.params.id;
+    const findRes = await pool.query(
+      'SELECT * FROM inventario WHERE id::text = $1 OR codigo = $1 LIMIT 1',
+      [String(matId).trim()]
+    );
+    if (findRes.rows.length === 0) {
+      return res.status(404).json({ error: `Material ${matId} no encontrado.` });
+    }
+    const mat = findRes.rows[0];
+
+    // Verificar si tiene stock actual > 0
+    if (Number(mat.stock_actual || 0) > 0) {
+      return res.status(400).json({
+        error: `No es posible eliminar el material "${mat.nombre_material}" porque cuenta con un saldo de stock físico actual de ${mat.stock_actual} ${mat.unidad}. Archívelo para mantener la consistencia del inventario.`,
+      });
+    }
+
+    // Verificar si tiene movimientos registrados
+    const movsCheck = await pool.query(
+      'SELECT COUNT(*)::int AS total FROM movimientos_inventario WHERE material_id = $1',
+      [mat.id]
+    );
+    if (movsCheck.rows[0].total > 0) {
+      return res.status(400).json({
+        error: `No es posible eliminar el material "${mat.nombre_material}" porque tiene ${movsCheck.rows[0].total} movimientos contables registrados en el historial de almacén. Utilice la opción de archivar.`,
+      });
+    }
+
+    // Verificar si tiene reservas activas
+    const resCheck = await pool.query(
+      'SELECT COUNT(*)::int AS total FROM reservas_materiales WHERE material_id = $1',
+      [mat.id]
+    );
+    if (resCheck.rows[0].total > 0) {
+      return res.status(400).json({
+        error: `No es posible eliminar el material "${mat.nombre_material}" porque tiene reservas vinculadas a órdenes de producción.`,
+      });
+    }
+
+    await pool.query('DELETE FROM inventario WHERE id = $1', [mat.id]);
+    res.json({
+      message: `Material "${mat.nombre_material}" eliminado permanentemente.`,
+      id: mat.codigo || mat.id,
+    });
+  } catch (error) {
+    console.error('inventarioController.eliminarMaterial error:', error.message);
+    res.status(500).json({ error: 'Error al eliminar material.' });
+  }
+};
+
+// Actualizar proveedor
+const actualizarProveedor = async (req, res) => {
+  try {
+    const prvId = req.params.id;
+    const findRes = await pool.query(
+      'SELECT * FROM proveedores WHERE id::text = $1 OR codigo = $1 LIMIT 1',
+      [String(prvId).trim()]
+    );
+    if (findRes.rows.length === 0) {
+      return res.status(404).json({ error: `Proveedor ${prvId} no encontrado.` });
+    }
+    const actual = findRes.rows[0];
+
+    const nombre = req.body.nombre !== undefined ? req.body.nombre.trim() : actual.nombre;
+    const nit = req.body.nit !== undefined ? req.body.nit.trim() : actual.nit;
+    const contacto = req.body.contacto !== undefined ? req.body.contacto.trim() : actual.contacto;
+    const telefono = req.body.telefono !== undefined ? req.body.telefono.trim() : actual.telefono;
+    const correo = req.body.correo !== undefined ? req.body.correo.trim() : actual.correo;
+    const ciudad = req.body.ciudad !== undefined ? req.body.ciudad.trim() : actual.ciudad;
+    const estado = req.body.estado !== undefined ? req.body.estado : actual.estado;
+
+    let prodArray = actual.productos;
+    if (req.body.productos !== undefined) {
+      prodArray = Array.isArray(req.body.productos)
+        ? req.body.productos
+        : String(req.body.productos).split(',').map((s) => s.trim()).filter(Boolean);
+    }
+
+    const upRes = await pool.query(
+      `UPDATE proveedores
+       SET nombre = $1, nit = $2, contacto = $3, telefono = $4, correo = $5,
+           ciudad = $6, productos = $7::jsonb, estado = $8
+       WHERE id = $9
+       RETURNING *`,
+      [nombre, nit, contacto, telefono, correo, ciudad, JSON.stringify(prodArray), estado, actual.id]
+    );
+
+    res.json({
+      message: 'Proveedor actualizado exitosamente.',
+      data: formatearProveedorRow(upRes.rows[0]),
+    });
+  } catch (error) {
+    console.error('inventarioController.actualizarProveedor error:', error.message);
+    res.status(500).json({ error: 'Error al actualizar proveedor.' });
+  }
+};
+
+// Archivar proveedor
+const archivarProveedor = async (req, res) => {
+  try {
+    const prvId = req.params.id;
+    const upRes = await pool.query(
+      'UPDATE proveedores SET archivado = true WHERE id::text = $1 OR codigo = $1 RETURNING *',
+      [String(prvId).trim()]
+    );
+    if (upRes.rows.length === 0) {
+      return res.status(404).json({ error: `Proveedor ${prvId} no encontrado.` });
+    }
+    res.json({
+      message: 'Proveedor archivado exitosamente.',
+      data: formatearProveedorRow(upRes.rows[0]),
+    });
+  } catch (error) {
+    console.error('inventarioController.archivarProveedor error:', error.message);
+    res.status(500).json({ error: 'Error al archivar proveedor.' });
+  }
+};
+
+// Restaurar proveedor
+const restaurarProveedor = async (req, res) => {
+  try {
+    const prvId = req.params.id;
+    const upRes = await pool.query(
+      'UPDATE proveedores SET archivado = false WHERE id::text = $1 OR codigo = $1 RETURNING *',
+      [String(prvId).trim()]
+    );
+    if (upRes.rows.length === 0) {
+      return res.status(404).json({ error: `Proveedor ${prvId} no encontrado.` });
+    }
+    res.json({
+      message: 'Proveedor restaurado exitosamente.',
+      data: formatearProveedorRow(upRes.rows[0]),
+    });
+  } catch (error) {
+    console.error('inventarioController.restaurarProveedor error:', error.message);
+    res.status(500).json({ error: 'Error al restaurar proveedor.' });
+  }
+};
+
+// Eliminar proveedor seguro
+const eliminarProveedor = async (req, res) => {
+  try {
+    const prvId = req.params.id;
+    const findRes = await pool.query(
+      'SELECT * FROM proveedores WHERE id::text = $1 OR codigo = $1 LIMIT 1',
+      [String(prvId).trim()]
+    );
+    if (findRes.rows.length === 0) {
+      return res.status(404).json({ error: `Proveedor ${prvId} no encontrado.` });
+    }
+    const prv = findRes.rows[0];
+
+    // Verificar si algún material en inventario está asignado a este proveedor
+    const matCheck = await pool.query(
+      'SELECT COUNT(*)::int AS total FROM inventario WHERE proveedor_id = $1 OR proveedor_codigo = $2',
+      [prv.id, prv.codigo]
+    );
+    if (matCheck.rows[0].total > 0) {
+      return res.status(400).json({
+        error: `No es posible eliminar el proveedor "${prv.nombre}" porque tiene ${matCheck.rows[0].total} material(es) asignados en el catálogo de inventario. Le recomendamos archivarlo.`,
+      });
+    }
+
+    await pool.query('DELETE FROM proveedores WHERE id = $1', [prv.id]);
+    res.json({
+      message: `Proveedor "${prv.nombre}" eliminado permanentemente.`,
+      id: prv.codigo || prv.id,
+    });
+  } catch (error) {
+    console.error('inventarioController.eliminarProveedor error:', error.message);
+    res.status(500).json({ error: 'Error al eliminar proveedor.' });
+  }
+};
+
 module.exports = {
   listarInventario,
   crearMaterial,
+  actualizarMaterial,
+  archivarMaterial,
+  restaurarMaterial,
+  eliminarMaterial,
   listarProveedores,
   crearProveedor,
+  actualizarProveedor,
+  archivarProveedor,
+  restaurarProveedor,
+  eliminarProveedor,
   listarMovimientos,
   registrarMovimiento,
   reservarMateriales,

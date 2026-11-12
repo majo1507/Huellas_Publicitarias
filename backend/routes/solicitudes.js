@@ -6,14 +6,24 @@ const router = express.Router();
 const solicitudesController = require('../controllers/solicitudesController');
 const { verificarToken, verificarRol, asociarCapacidad } = require('../middleware/auth');
 
-router.get('/', verificarToken, solicitudesController.listarSolicitudes);
+router.get('/', verificarToken, verificarRol('ejecutiva', 'coord', 'gerente'), solicitudesController.listarSolicitudes);
 
-// Registro inicial de solicitudes en borrador (exclusivo Comercial / Recepción)
+// Edición de datos generales de la solicitud (previo a conversión)
+router.patch('/:id', verificarToken, verificarRol('ejecutiva', 'gerente'), solicitudesController.actualizarSolicitud);
+
+// Archivar y restaurar solicitudes
+router.patch('/:id/archivar', verificarToken, verificarRol('ejecutiva', 'gerente'), solicitudesController.archivarSolicitud);
+router.patch('/:id/restaurar', verificarToken, verificarRol('ejecutiva', 'gerente'), solicitudesController.restaurarSolicitud);
+
+// Eliminación permanente segura (solo solicitudes no convertidas)
+router.delete('/:id', verificarToken, verificarRol('ejecutiva', 'gerente'), solicitudesController.eliminarSolicitud);
+
+// Registro inicial de solicitudes en borrador (exclusivo Comercial / Recepción y Gerencia)
 router.post(
   '/',
   verificarToken,
   asociarCapacidad('solicitudes.crear'),
-  verificarRol('ejecutiva'),
+  verificarRol('ejecutiva', 'gerente'),
   solicitudesController.crearSolicitud
 );
 
@@ -35,12 +45,12 @@ router.patch(
   solicitudesController.corregirSolicitud
 );
 
-// Devolución para corrección con observaciones (exclusivo Comercial / Recepción)
+// Devolución para corrección con observaciones técnicas (Coordinación de producción, Comercial o Gerencia)
 router.patch(
   '/:id/devolver',
   verificarToken,
   asociarCapacidad('solicitudes.devolver'),
-  verificarRol('ejecutiva'),
+  verificarRol('coord', 'ejecutiva', 'gerente'),
   solicitudesController.devolverSolicitud
 );
 
@@ -53,12 +63,12 @@ router.patch(
   solicitudesController.rechazarSolicitud
 );
 
-// Validación y conversión transaccional a Orden de Producción (exclusivo Comercial / Recepción; retirado de Coordinación)
+// Validación y conversión transaccional a Orden de Producción (Exclusivo Coordinación de Producción)
 router.post(
   '/:id/validar',
   verificarToken,
   asociarCapacidad('solicitudes.validar'),
-  verificarRol('ejecutiva'),
+  verificarRol('coord'),
   solicitudesController.validarSolicitud
 );
 

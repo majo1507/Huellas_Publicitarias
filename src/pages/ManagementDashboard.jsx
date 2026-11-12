@@ -8,6 +8,7 @@ import ColumnChart from '../components/ColumnChart.jsx'
 import Alert from '../components/Alert.jsx'
 import ActivityFeed from '../components/ActivityFeed.jsx'
 import Icon from '../components/Icon.jsx'
+import EmptyState from '../components/EmptyState.jsx'
 import { ETAPAS } from '../data/mockData.js'
 import { estaActiva, estaRetrasada, serieSemanal } from '../utils/format.js'
 import { generarInformeGestionPDF, PERIODOS_GESTION } from '../utils/pdfReport.js'
@@ -28,7 +29,8 @@ export default function ManagementDashboard({ data, actions, irA }) {
 
   // Cumplimiento global de entregas sobre el total de órdenes del sistema
   const enPlazoGlobal = Math.max(0, totalOrdenes - retrasadasCount)
-  const aTiempoPct = totalOrdenes > 0 ? Math.round((enPlazoGlobal / totalOrdenes) * 100) : 100
+  // Sin órdenes no existe porcentaje de cumplimiento (null → "Sin datos")
+  const aTiempoPct = totalOrdenes > 0 ? Math.round((enPlazoGlobal / totalOrdenes) * 100) : null
 
   // Cantidades reales de solicitudes, actividades y postventa
   const totalSolicitudes = resumen?.solicitudes ? resumen.solicitudes.total : (data.requests?.length ?? 0)
@@ -116,10 +118,10 @@ export default function ManagementDashboard({ data, actions, irA }) {
       <div className="kpis">
         <StatCard
           titulo="Cumplimiento en plazo"
-          valor={`${aTiempoPct}%`}
+          valor={aTiempoPct === null ? 'Sin datos' : `${aTiempoPct}%`}
           icono="trending-up"
-          color={aTiempoPct >= 80 ? 'verde' : 'amarillo'}
-          detalle={`${enPlazoGlobal} de ${totalOrdenes} en plazo · ${entregadasCount} entregadas`}
+          color={aTiempoPct === null ? 'azul' : aTiempoPct >= 80 ? 'verde' : 'amarillo'}
+          detalle={totalOrdenes === 0 ? 'Sin órdenes registradas' : `${enPlazoGlobal} de ${totalOrdenes} en plazo · ${entregadasCount} entregadas`}
           onClick={() => irA('reportes')}
         />
         <StatCard
@@ -148,7 +150,11 @@ export default function ManagementDashboard({ data, actions, irA }) {
         />
       </div>
 
-      {cuello.value > 0 ? (
+      {totalOrdenes === 0 ? (
+        <Alert tipo="info" titulo="Sin datos">
+          Aún no hay órdenes registradas para evaluar el flujo de producción.
+        </Alert>
+      ) : cuello.value > 0 ? (
         <Alert
           tipo="aviso"
           titulo="Cuello de botella detectado"
@@ -177,7 +183,11 @@ export default function ManagementDashboard({ data, actions, irA }) {
             </button>
           }
         >
-          <ColumnChart datos={serieSemanal(data.orders)} />
+          {data.orders.length === 0 ? (
+            <EmptyState icono="trending-up" titulo="Sin datos" texto="Aún no hay órdenes recibidas ni entregadas para graficar." />
+          ) : (
+            <ColumnChart datos={serieSemanal(data.orders)} />
+          )}
         </Panel>
         <Panel
           titulo="Órdenes activas por etapa"

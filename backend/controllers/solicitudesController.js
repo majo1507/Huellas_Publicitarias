@@ -59,6 +59,7 @@ function formatearSolicitud(s) {
     estado_db: s.estado,
     ordenId: ordenCodigo,
     orden_id: s.orden_id || null,
+    archivado: !!s.archivado,
     motivoRechazo: s.motivo_rechazo || '',
     archivosReferencia: Array.isArray(s.archivos_referencia) ? s.archivos_referencia : [],
     created_at: s.created_at,
@@ -96,8 +97,11 @@ async function consultarSolicitudCompleta(dbOrClient, uuid) {
   return res.rowCount > 0 ? formatearSolicitud(res.rows[0]) : null;
 }
 
-const listarSolicitudes = async (_req, res) => {
+const listarSolicitudes = async (req, res) => {
   try {
+    const incluirArchivados = req.query.incluir_archivados === 'true' || req.query.archivados === 'true';
+    const whereClause = incluirArchivados ? '' : 'WHERE COALESCE(s.archivado, false) = false';
+
     const result = await pool.query(`
       SELECT
         s.*,
@@ -107,6 +111,7 @@ const listarSolicitudes = async (_req, res) => {
       FROM solicitudes s
       INNER JOIN clientes c ON s.cliente_id = c.id
       LEFT JOIN ordenes o ON s.orden_id = o.id
+      ${whereClause}
       ORDER BY COALESCE(s.codigo, s.id::text) ASC
     `);
 
@@ -763,9 +768,143 @@ const validarSolicitud = async (req, res) => {
   }
 };
 
+// Actualizar solicitud (cuando aún no ha sido convertida a orden)
+const actualizarSolicitud = async (req, res) => {
+  try {
+    const sol = await resolverSolicitud(pool, req.params.id);
+    if (!sol) {
+      return res.status(404).json({ error: `Solicitud ${req.params.id} no encontrada.` });
+    }
+
+    if (sol.estado === 'convertida' || sol.orden_id) {
+      return res.status(400).json({
+        error: 'No se puede modificar una solicitud que ya ha sido convertida a Orden de Producción. Modifique la orden correspondiente.',
+      });
+    }
+
+    const producto = req.body.producto !== undefined ? req.body.producto.trim() : sol.producto;
+    const cantidad = req.body.cantidad !== undefined ? Number(req.body.cantidad) : sol.cantidad;
+    const dimensiones = req.body.dimensiones !== undefined ? req.body.dimensiones.trim() : sol.dimensiones;
+    const material = req.body.material !== undefined ? req.body.material.trim() : sol.material;
+    const prioridad = req.body.prioridad !== undefined ? req.body.prioridad : sol.prioridad;
+    const metodoEntrega = req.body.metodoEntrega !== undefined ? req.body.metodoEntrega : sol.metodo_entrega;
+    const acabados = req.body.acabados !== undefined ? req.body.acabados : sol.acabados;
+    const fechaEntrega = req.body.fechaEntrega !== undefined ? req.body.fechaEntrega : sol.fecha_entrega;
+    const presupuesto = req.body.presupuesto !== undefined ? Number(req.body.presupuesto) : sol.presupuesto;
+    const cotizacionTotal = req.body.cotizacionTotal !== undefined ? Number(req.body.cotizacionTotal) : sol.cotizacion_total;
+    const observaciones = req.body.observaciones !== undefined ? req.body.observaciones : sol.observaciones;
+    const requerimientos = req.body.requerimientos !== undefined ? req.body.requerimientos : sol.requerimientos;
+
+    if (req.body.dimensiones && !validarDimensiones(dimensiones)) {
+      return res.status(400).json({ error: MENSAJE_ERROR_DIMENSIONES });
+    }
+
+    await pool.query(
+      `UPDATE solicitudes
+       SET producto = $1, cantidad = $2, dimensiones = $3, material = $4,
+           prioridad = $5, metodo_entrega = $6, acabados = $7, fecha_entrega = $8,
+           presupuesto = $9, cotizacion_total = $10, observaciones = $11, requerimientos = $12
+       WHERE id = $13`,
+      [
+        producto,
+        cantidad,
+        dimensiones,
+        material,
+        prioridad,
+        metodoEntrega,
+        acabados,
+        fechaEntrega,
+        presupuesto,
+        cotizacionTotal,
+        observaciones,
+        requerimientos,
+        sol.id,
+      ]
+    );
+
+    const solCompleta = await consultarSolicitudCompleta(pool, sol.id);
+    res.json({
+      message: 'Solicitud actualizada exitosamente.',
+      data: solCompleta,
+    });
+  } catch (error) {
+    console.error('solicitudesController.actualizarSolicitud error:', error.message);
+    res.status(500).json({ error: 'Error al actualizar solicitud.' });
+  }
+};
+
+// Archivar solicitud
+const archivarSolicitud = async (req, res) => {
+  try {
+    const sol = await resolverSolicitud(pool, req.params.id);
+    if (!sol) {
+      return res.status(404).json({ error: `Solicitud ${req.params.id} no encontrada.` });
+    }
+
+    await pool.query('UPDATE solicitudes SET archivado = true WHERE id = $1', [sol.id]);
+    const solCompleta = await consultarSolicitudCompleta(pool, sol.id);
+    res.json({
+      message: 'Solicitud archivada exitosamente.',
+      data: solCompleta,
+    });
+  } catch (error) {
+    console.error('solicitudesController.archivarSolicitud error:', error.message);
+    res.status(500).json({ error: 'Error al archivar solicitud.' });
+  }
+};
+
+// Restaurar solicitud
+const restaurarSolicitud = async (req, res) => {
+  try {
+    const sol = await resolverSolicitud(pool, req.params.id);
+    if (!sol) {
+      return res.status(404).json({ error: `Solicitud ${req.params.id} no encontrada.` });
+    }
+
+    await pool.query('UPDATE solicitudes SET archivado = false WHERE id = $1', [sol.id]);
+    const solCompleta = await consultarSolicitudCompleta(pool, sol.id);
+    res.json({
+      message: 'Solicitud restaurada exitosamente.',
+      data: solCompleta,
+    });
+  } catch (error) {
+    console.error('solicitudesController.restaurarSolicitud error:', error.message);
+    res.status(500).json({ error: 'Error al restaurar solicitud.' });
+  }
+};
+
+// Eliminar solicitud segura
+const eliminarSolicitud = async (req, res) => {
+  try {
+    const sol = await resolverSolicitud(pool, req.params.id);
+    if (!sol) {
+      return res.status(404).json({ error: `Solicitud ${req.params.id} no encontrada.` });
+    }
+
+    if (sol.orden_id || sol.estado === 'convertida') {
+      return res.status(400).json({
+        error: `No es posible eliminar la solicitud "${sol.codigo}" porque ya fue convertida en la orden de producción OP-${sol.orden_id}. Utilice la opción de archivar para ocultarla conservando el historial.`,
+      });
+    }
+
+    await pool.query('DELETE FROM solicitudes WHERE id = $1', [sol.id]);
+    res.json({
+      message: `Solicitud "${sol.codigo}" eliminada permanentemente.`,
+      id: sol.codigo || sol.id,
+    });
+  } catch (error) {
+    console.error('solicitudesController.eliminarSolicitud error:', error.message);
+    res.status(500).json({ error: 'Error al eliminar solicitud.' });
+  }
+};
+
 module.exports = {
   listarSolicitudes,
   crearSolicitud,
+  actualizarSolicitud,
+  archivarSolicitud,
+  restaurarSolicitud,
+  eliminarSolicitud,
   enviarAValidacion,
   devolverSolicitud,
   corregirSolicitud,

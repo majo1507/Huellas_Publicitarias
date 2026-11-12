@@ -65,14 +65,17 @@ export function calcularCotizacion({
   const items = [];
 
   // 1. Producto Base e Impresión
+  // Sin tarifa configurada para el producto NO se inventa ningún valor: el precio queda en 0
+  // y la cotización se marca como "precios sin configurar" (el valor se ingresa manualmente).
+  const prodConfigurado = Boolean(producto && PRECIOS_PRODUCTOS_DEMO[producto]);
   const prodCfg = PRECIOS_PRODUCTOS_DEMO[producto] || {
-    tipo: 'area_m2',
-    baseUnitario: 35000,
-    desc: 'Producto estándar',
+    tipo: 'unidad',
+    baseUnitario: 0,
+    desc: 'Precio sin configurar',
   };
   const matCfg = PRECIOS_MATERIALES_DEMO[material] || {
     recargoM2: 0,
-    nombre: material || 'Sustrato estándar',
+    nombre: material || 'Sustrato',
   };
 
   let subtotalProducto = 0;
@@ -87,7 +90,7 @@ export function calcularCotizacion({
       id: 'item_prod',
       tipo: 'producto',
       concepto: producto || 'Impresión gran formato',
-      detalle: `${material || 'Sustrato'} (${dim.anchoM} x ${dim.altoM} m · ${dim.areaM2} m²/ud + 8% merma)`,
+      detalle: `${material || 'Sustrato'} (${dim.anchoM} x ${dim.altoM} m · ${dim.areaM2} m²/ud${FACTOR_DESPERDICIO_DEFAULT > 0 ? ` + ${Math.round(FACTOR_DESPERDICIO_DEFAULT * 100)}% merma` : ''})`,
       cantidad: cant,
       unidadMedida: 'm²',
       medidaUnitaria: dim.areaM2,
@@ -104,7 +107,7 @@ export function calcularCotizacion({
       id: 'item_prod',
       tipo: 'producto',
       concepto: producto || 'Producto publicitario',
-      detalle: `${material || 'Material estándar'} · Medida: ${dimensiones || 'Estándar'}`,
+      detalle: `${prodConfigurado ? '' : 'Precio sin configurar · '}${material || 'Material'} · Medida: ${dimensiones || 'Sin especificar'}`,
       cantidad: cant,
       unidadMedida: 'und',
       medidaUnitaria: 1,
@@ -193,6 +196,7 @@ export function calcularCotizacion({
     incluirIva: Boolean(incluirIva),
     total,
     dimensionesAnalizadas: dim,
+    preciosSinConfigurar: !prodConfigurado,
   };
 }
 
@@ -200,9 +204,9 @@ export function calcularCotizacion({
  * Genera un texto resumen estructurado y legible del desglose para guardar en observaciones / histórico.
  */
 export function formatearResumenCotizacion(calculo) {
-  if (!calculo || !Array.isArray(calculo.items)) return '';
+  if (!calculo || !Array.isArray(calculo.items) || calculo.preciosSinConfigurar) return '';
   const lineas = [
-    '=== DESGLOSE DE COTIZACIÓN AUTOMÁTICA (SIMULACIÓN) ===',
+    '=== DESGLOSE DE COTIZACIÓN AUTOMÁTICA ===',
     ...calculo.items.map(
       (it) =>
         `• ${it.concepto} (${it.detalle}): ${it.cantidad} ${it.unidadMedida} x $${it.precioUnitario.toLocaleString('es-CO')} = $${it.subtotal.toLocaleString('es-CO')}`

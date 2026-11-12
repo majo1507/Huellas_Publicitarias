@@ -27,13 +27,41 @@ export default function Reports({ data, actions, irA, role }) {
   const resumen = dash?.resumen || null
   const tieneErrorServidor = Boolean(dash?.error)
 
+  // Filtro de fecha unificado para Casos y Comunicaciones según periodo seleccionado
+  const DIA_MS = 86400000
+  const ahora = new Date()
+  function dentroDePeriodo(fechaInput) {
+    if (!periodo || periodo === 'todo' || !fechaInput) return true
+    const d = new Date(fechaInput)
+    if (isNaN(d.getTime())) return true
+    if (periodo === 'ultimos_7') {
+      const diff = (ahora - d) / DIA_MS
+      return diff >= 0 && diff <= 7
+    }
+    if (periodo === 'ultimos_15') {
+      const diff = (ahora - d) / DIA_MS
+      return diff >= 0 && diff <= 15
+    }
+    if (periodo === 'mes_actual') {
+      return d.getMonth() === ahora.getMonth() && d.getFullYear() === ahora.getFullYear()
+    }
+    if (periodo === 'mes_anterior') {
+      const mesAnt = new Date(ahora.getFullYear(), ahora.getMonth() - 1, 1)
+      return d.getMonth() === mesAnt.getMonth() && d.getFullYear() === mesAnt.getFullYear()
+    }
+    return true
+  }
+
+  const casosPeriodo = (data.cases || []).filter((c) => dentroDePeriodo(c.fecha || c.created_at))
+  const commsPeriodo = (data.comms || []).filter((c) => dentroDePeriodo(c.ultimaActividad || c.fecha || c.created_at))
+
   // 1. Cumplimiento de entregas unificado con pdfReport.js (evalúa todas las órdenes recibidas y concluidas en el periodo)
   const totalPeriodo = ordenesPeriodo.length
   const retrasadasPeriodo = ordenesPeriodo.filter(estaRetrasada).length
   const enPlazoPeriodo = Math.max(0, totalPeriodo - retrasadasPeriodo)
   const cumplimientoPct = totalPeriodo > 0
     ? Math.round((enPlazoPeriodo / totalPeriodo) * 100)
-    : 100
+    : null // sin órdenes no existe porcentaje de cumplimiento
 
   // 2. Ciclo promedio de orden (órdenes finalizadas)
   const cicloPromedioValor = resumen?.ciclo_promedio_dias != null
@@ -61,23 +89,19 @@ export default function Reports({ data, actions, irA, role }) {
         }))
 
   // 5. Conversaciones reales por canal de contacto (desde canales_contacto en PostgreSQL)
-  const commsCanal = dash?.comunicaciones?.conversaciones_por_canal?.length
-    ? dash.comunicaciones.conversaciones_por_canal
-    : (dash?.comunicaciones_por_canal?.length
-        ? dash.comunicaciones_por_canal
-        : [
-            { label: 'WhatsApp', value: (data.comms || []).filter((c) => c.canal === 'wa' || c.canal === 'whatsapp').length, color: 'verde' },
-            { label: 'Correo', value: (data.comms || []).filter((c) => c.canal === 'mail' || c.canal === 'correo' || c.canal === 'email').length, color: 'azul' },
-            { label: 'Telefonía', value: (data.comms || []).filter((c) => c.canal === 'call' || c.canal === 'telefono').length, color: 'amarillo' },
-          ])
+  const commsCanal = [
+    { label: 'WhatsApp', value: commsPeriodo.filter((c) => c.canal === 'wa' || c.canal === 'whatsapp').length, color: 'verde' },
+    { label: 'Correo', value: commsPeriodo.filter((c) => c.canal === 'mail' || c.canal === 'correo' || c.canal === 'email').length, color: 'azul' },
+    { label: 'Telefonía', value: commsPeriodo.filter((c) => c.canal === 'call' || c.canal === 'telefono').length, color: 'amarillo' },
+  ]
 
   const totalConversaciones = commsCanal.reduce((s, c) => s + Number(c.value || 0), 0)
-  const totalMensajes = dash?.comunicaciones?.total_mensajes ?? resumen?.comunicaciones_totales?.mensajes ?? 26
+  const totalMensajes = dash?.comunicaciones?.total_mensajes ?? resumen?.comunicaciones_totales?.mensajes ?? 0
 
-  // 6. Distribución de casos postventa reales
-  const casosResueltos = (data.cases || []).filter((c) => c.estado === 'Resuelto').length
-  const casosEnTramite = (data.cases || []).filter((c) => c.estado === 'En trámite' || c.estado === 'En reposición').length
-  const casosAbiertos = (data.cases || []).filter((c) => c.estado === 'Abierto').length
+  // 6. Distribución de casos postventa reales en el periodo
+  const casosResueltos = casosPeriodo.filter((c) => ['Resuelto', 'Solucionado', 'Cerrado'].includes(c.estado)).length
+  const casosEnTramite = casosPeriodo.filter((c) => ['En atención', 'En trámite', 'Pendiente de revisión', 'En reposición', 'En espera de información'].includes(c.estado)).length
+  const casosAbiertos = casosPeriodo.filter((c) => ['Abierto', 'Recibido'].includes(c.estado)).length
 
   const columnasProblemas = [
     {
@@ -162,10 +186,10 @@ export default function Reports({ data, actions, irA, role }) {
       <div className="kpis" style={{ marginBottom: '20px' }}>
         <StatCard
           titulo="Cumplimiento de entregas"
-          valor={`${cumplimientoPct}%`}
+          valor={cumplimientoPct === null ? 'Sin datos' : `${cumplimientoPct}%`}
           icono="check-circle"
-          color="verde"
-          detalle={`${enPlazoPeriodo} de ${totalPeriodo} órdenes en plazo`}
+          color={cumplimientoPct === null ? 'azul' : 'verde'}
+          detalle={totalPeriodo === 0 ? 'Sin órdenes en el periodo' : `${enPlazoPeriodo} de ${totalPeriodo} órdenes en plazo`}
         />
         <StatCard
           titulo="Ciclo promedio orden"
@@ -195,7 +219,9 @@ export default function Reports({ data, actions, irA, role }) {
         etiqueta="CONTROL DE RIESGOS Y ATENCIÓN PRIORITARIA"
         titulo={`Órdenes con alerta operativa o retraso (${problemas.length})`}
         subtitulo={
-          problemas.length > 0
+          totalPeriodo === 0
+            ? 'Sin órdenes registradas en el periodo seleccionado.'
+            : problemas.length > 0
             ? `${problemas.length} orden(es) requieren intervención o seguimiento de plazos por parte de Gerencia y Coordinación.`
             : 'Todas las órdenes activas del periodo se encuentran dentro de los plazos comprometidos.'
         }
@@ -216,8 +242,8 @@ export default function Reports({ data, actions, irA, role }) {
       <div className="grid-3" style={{ marginBottom: '20px' }}>
         <Panel titulo="Cumplimiento del periodo" icono="check-circle">
           <DonutChart
-            centro={`${cumplimientoPct}%`}
-            subtitulo="En plazo"
+            centro={cumplimientoPct === null ? '—' : `${cumplimientoPct}%`}
+            subtitulo={cumplimientoPct === null ? 'Sin datos' : 'En plazo'}
             items={[
               { label: 'En plazo / entregadas', value: enPlazoPeriodo, color: 'verde' },
               { label: 'Con retraso', value: retrasadasPeriodo, color: 'rojo' },
@@ -264,13 +290,23 @@ export default function Reports({ data, actions, irA, role }) {
         </Panel>
 
         <Panel titulo="Días promedio por etapa vs. Meta técnica" icono="clock">
-          <div style={{ padding: '28px 16px', textAlign: 'center', color: 'var(--text-subtle, #6b7280)' }}>
-            <Icon nombre="clock" tamano={22} style={{ opacity: 0.6, marginBottom: '6px' }} />
-            <p style={{ fontWeight: 600, margin: '2px 0', color: 'inherit', fontSize: '13px' }}>Telemetría en consolidación</p>
-            <p className="sm mut" style={{ margin: 0, maxWidth: '420px', marginLeft: 'auto', marginRight: 'auto', fontSize: '11.5px' }}>
-              Los registros de tiempos de transición individuales entre estaciones de taller se sincronizan continuamente con las actividades finalizadas en PostgreSQL.
-            </p>
-          </div>
+          {dash?.tiempos_promedio_etapa?.disponible && Array.isArray(dash.tiempos_promedio_etapa.etapas) && dash.tiempos_promedio_etapa.etapas.length > 0 ? (
+            <BarChart
+              items={dash.tiempos_promedio_etapa.etapas.map((e) => ({
+                label: e.nombre || `Etapa ${e.etapa}`,
+                value: Number(e.promedio_dias || (e.promedio_segundos / 86400).toFixed(1)),
+              }))}
+              unidad=" días"
+            />
+          ) : (
+            <div style={{ padding: '28px 16px', textAlign: 'center', color: 'var(--text-subtle, #6b7280)' }}>
+              <Icon nombre="clock" tamano={22} style={{ opacity: 0.6, marginBottom: '6px' }} />
+              <p style={{ fontWeight: 600, margin: '2px 0', color: 'inherit', fontSize: '13px' }}>Telemetría en calibración acumulativa</p>
+              <p className="sm mut" style={{ margin: 0, maxWidth: '420px', marginLeft: 'auto', marginRight: 'auto', fontSize: '11.5px' }}>
+                Los tiempos de permanencia en planta se calculan dinámicamente sobre la tabla PostgreSQL <code>orden_etapa_historial</code> conforme las órdenes avanzan por las diferentes estaciones.
+              </p>
+            </div>
+          )}
         </Panel>
       </div>
     </div>

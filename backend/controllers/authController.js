@@ -191,8 +191,82 @@ const logout = async (_req, res) => {
   res.json({ ok: true, message: 'Sesión cerrada correctamente.' });
 };
 
+// Iniciar sesión validando Firebase ID Token contra usuarios autorizados en PostgreSQL
+const firebaseLogin = async (req, res) => {
+  const { idToken } = req.body;
+
+  if (!idToken) {
+    return res.status(400).json({ error: 'Debes proporcionar un idToken de Firebase.' });
+  }
+
+  try {
+    const { verificarIdTokenFirebase } = require('../config/firebaseAdmin');
+    const decoded = await verificarIdTokenFirebase(idToken);
+    const email = (decoded.email || '').trim().toLowerCase();
+
+    if (!email) {
+      return res.status(400).json({
+        error: 'El token de Firebase no contiene un correo electrónico verificado.',
+      });
+    }
+
+    // Consulta estricta en PostgreSQL: el usuario DEBE existir previamente y estar activo
+    const result = await pool.query(
+      `SELECT id, codigo, nombre_completo, email, rol, cargo, esta_activo
+       FROM usuarios
+       WHERE LOWER(email) = $1
+       LIMIT 1`,
+      [email]
+    );
+
+    if (result.rowCount === 0) {
+      console.warn(`🔒 [Auth] Intento de acceso denegado: el correo ${email} no existe en PostgreSQL.`);
+      return res.status(403).json({
+        error: `Acceso denegado. El correo ${email} no está registrado ni autorizado en el sistema empresarial ORVEX. Contacta a Gerencia para ser dado de alta.`,
+        no_autorizado: true,
+      });
+    }
+
+    const usuario = result.rows[0];
+
+    if (!usuario.esta_activo) {
+      console.warn(`🔒 [Auth] Intento de acceso con usuario inactivo: ${email}`);
+      return res.status(403).json({
+        error: 'Este usuario se encuentra inactivo en el sistema ORVEX. Contacta a Gerencia.',
+        inactivo: true,
+      });
+    }
+
+    const serializado = serializarUsuarioAuth(usuario);
+    const tokenPayload = {
+      id: usuario.id,
+      codigo: usuario.codigo,
+      nombre_completo: usuario.nombre_completo,
+      email: usuario.email,
+      rol: usuario.rol,
+      rolUi: serializado.rolUi,
+      firebase_uid: decoded.uid,
+    };
+
+    const token = jwt.sign(tokenPayload, getJwtSecret(), { expiresIn: JWT_EXPIRES_IN });
+
+    res.json({
+      message: 'Inicio de sesión exitoso con Firebase Authentication.',
+      token,
+      expira_en: JWT_EXPIRES_IN,
+      usuario: serializado,
+    });
+  } catch (error) {
+    console.error('authController.firebaseLogin error:', error.message);
+    res.status(401).json({
+      error: error.message || 'Error al validar el token de Firebase.',
+    });
+  }
+};
+
 module.exports = {
   login,
+  firebaseLogin,
   register,
   obtenerPerfil,
   logout,

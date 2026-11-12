@@ -1,11 +1,11 @@
-import { useState, useMemo, useEffect } from 'react'
+﻿import { useState, useMemo, useEffect } from 'react'
 import PageHeader from '../components/PageHeader.jsx'
 import Icon from '../components/Icon.jsx'
 import Alert from '../components/Alert.jsx'
 import Modal from '../components/Modal.jsx'
 import StatusBadge from '../components/StatusBadge.jsx'
 import {
-  FECHA_DEMO,
+  obtenerFechaReferencia,
   formatearFecha,
   formatoCOP,
   formatearFechaBogota,
@@ -71,7 +71,7 @@ const FORMATOS_PERMITIDOS = ['png', 'jpg', 'jpeg', 'pdf', 'svg', 'webp', 'ai', '
 
 // Fecha mínima permitida (aaaa-mm-dd) a partir de la fecha de referencia del sistema
 function fechaMinima() {
-  const d = new Date(FECHA_DEMO)
+  const d = new Date(obtenerFechaReferencia())
   const mm = String(d.getMonth() + 1).padStart(2, '0')
   const dd = String(d.getDate()).padStart(2, '0')
   return `${d.getFullYear()}-${mm}-${dd}`
@@ -1183,7 +1183,7 @@ export default function NewOrder({ clients, onSubmit, irA, clienteInicialId }) {
                         </span>
                         <div>
                           <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted, #64748b)', fontWeight: 700 }}>
-                            Cotización estimada en tiempo real (Catálogo Demo)
+                            {cotizacionDinamica.preciosSinConfigurar ? 'Cotización · Precios sin configurar' : 'Cotización estimada en tiempo real'}
                           </div>
                           <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
                             <strong style={{ fontSize: '1.25rem', color: 'var(--primary, #2563eb)' }}>
@@ -1345,7 +1345,8 @@ export default function NewOrder({ clients, onSubmit, irA, clienteInicialId }) {
                 <StatusBadge estado={estadoPago} />
               </div>
 
-              {/* BANNER INFORMATIVO DE PRECIOS DE SIMULACIÓN */}
+              {/* AVISO DE TARIFAS SIN CONFIGURAR */}
+              {cotizacionDinamica.preciosSinConfigurar && (
               <div
                 style={{
                   background: '#eff6ff',
@@ -1360,10 +1361,11 @@ export default function NewOrder({ clients, onSubmit, irA, clienteInicialId }) {
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, marginBottom: '2px' }}>
                   <Icon nombre="info" tamano={13} />
-                  <span>Cálculo automático (Tarifas demo)</span>
+                  <span>Precios sin configurar</span>
                 </div>
-                <span>Valores de simulación según medidas, producto y acabados. Tarifas oficiales pendientes por Huellas Publicidad.</span>
+                <span>{AVISO_DATOS_DEMO}</span>
               </div>
+              )}
 
               {/* DESGLOSE EN TIEMPO REAL DE CONCEPTOS CALCULADOS */}
               <div

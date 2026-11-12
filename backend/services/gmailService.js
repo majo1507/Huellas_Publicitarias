@@ -563,6 +563,25 @@ function extraerCuerpoTexto(payload) {
  * Sincroniza correos entrantes desde la bandeja de entrada de Gmail hacia ORVEX.
  * Deduplica estrictamente por gmailMessageId, crea hilos y vincula clientes automáticamente sin migraciones.
  */
+// Fecha de corte de sincronización: solo se importan correos recibidos desde este instante.
+// Evita reimportar correos históricos de prueba tras una limpieza. Se persiste en config/.sync_cutoff.json.
+const SYNC_CUTOFF_PATH = path.join(CONFIG_DIR, '.sync_cutoff.json');
+function obtenerCorteSincronizacion() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(SYNC_CUTOFF_PATH, 'utf8'));
+    if (Number.isFinite(parsed?.desdeMs)) return parsed.desdeMs;
+  } catch {
+    // sin archivo: se crea abajo
+  }
+  const desdeMs = Date.now();
+  try {
+    fs.writeFileSync(SYNC_CUTOFF_PATH, JSON.stringify({ desdeMs }, null, 2), { mode: 0o600 });
+  } catch {
+    // si no se puede persistir, se usa el valor en memoria
+  }
+  return desdeMs;
+}
+
 async function sincronizarCorreosEntrantes({ db }) {
   if (!db) {
     throw new Error('Se requiere instancia de base de datos para sincronizar.');
@@ -579,10 +598,12 @@ async function sincronizarCorreosEntrantes({ db }) {
     return { ok: false, razon: 'Gmail no está conectado.' };
   }
 
-  // 1. Consultar últimos 25 mensajes de la bandeja de entrada
+  // 1. Consultar últimos 25 mensajes de la bandeja de entrada recibidos desde la fecha de corte
+  const corteMs = obtenerCorteSincronizacion();
+  const corteSeg = Math.floor(corteMs / 1000);
   let listResp;
   try {
-    listResp = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?q=in:inbox&maxResults=25', {
+    listResp = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(`in:inbox after:${corteSeg}`)}&maxResults=25`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
   } catch (netErr) {
@@ -633,6 +654,8 @@ async function sincronizarCorreosEntrantes({ db }) {
       if (!msgResp.ok) continue;
 
       const msgData = await msgResp.json();
+      // Descartar correos anteriores a la fecha de corte (histórico de prueba)
+      if (msgData.internalDate && parseInt(msgData.internalDate, 10) < corteMs) continue;
       const headers = msgData.payload?.headers || [];
       const getH = (nombre) => headers.find((h) => h.name.toLowerCase() === nombre.toLowerCase())?.value || '';
 

@@ -72,15 +72,15 @@ export default function DonutChart({ items, centro, subtitulo }) {
           {/* Centro con halo sutil */}
           <circle cx="70" cy="70" r="36" className="donut-core" />
           <circle cx="70" cy="70" r="36" fill="none" className="donut-core-ring" strokeWidth="1" />
-          <text x="70" y="68" textAnchor="middle" className="donut-number">{centro ?? total}</text>
+          <text x="70" y="68" textAnchor="middle" className="donut-number">{total === 0 ? '—' : (centro ?? total)}</text>
           <text
             x="70"
             y="84"
             textAnchor="middle"
             className="donut-caption"
-            style={subtitulo && subtitulo.length > 9 ? { fontSize: '7.2px', letterSpacing: '0.03em' } : undefined}
+            style={(total === 0 ? 'Sin datos' : subtitulo) && (total === 0 ? 'Sin datos' : subtitulo).length > 9 ? { fontSize: '7.2px', letterSpacing: '0.03em' } : undefined}
           >
-            {subtitulo}
+            {total === 0 ? 'Sin datos' : subtitulo}
           </text>
         </svg>
       </div>
@@ -92,7 +92,7 @@ export default function DonutChart({ items, centro, subtitulo }) {
             <li key={i.label} title={`${i.label}: ${i.value} (${pct}%)`}>
               <span className="legend-dot" style={{ background: `linear-gradient(135deg, ${par[0]}, ${par[1]})`, boxShadow: `0 0 8px ${par[0]}55` }} />
               <span className="legend-label">{i.label}</span>
-              <span className="legend-pct">{pct}%</span>
+              <span className="legend-pct">{total > 0 ? `${pct}%` : '—'}</span>
               <strong>{i.value}</strong>
             </li>
           )

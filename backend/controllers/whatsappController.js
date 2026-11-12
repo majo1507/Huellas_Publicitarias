@@ -212,7 +212,152 @@ async function procesarMensajeEntrante(msg) {
 
   console.log(`💬 [WhatsAppWebhook] Mensaje entrante registrado de ${msg.from} en conversación ${canalRow.codigo || canalRow.id}.`);
 
-  // 4. Emitir notificación en tiempo real a los clientes de ORVEX conectados (SSE)
+  // 4. Procesamiento inteligente de intención (Consulta de Pedido / PQRSF / Garantía)
+  const textoMensaje = String(msg.text || '').toLowerCase().trim();
+
+  // A. Consulta de estado de pedido
+  const matchOrden = msg.text?.match(/OP-\d{4}-\d+/i);
+  const tieneIntencionPedido = matchOrden || /(pedido|orden|estado|seguimiento|como va|cu[aá]ndo entregan)/i.test(textoMensaje);
+
+  if (tieneIntencionPedido && clienteRow) {
+    try {
+      let queryOrden = `
+        SELECT o.*, c.empresa AS cliente_empresa
+        FROM ordenes o
+        INNER JOIN clientes c ON o.cliente_id = c.id
+        WHERE o.cliente_id = $1
+      `;
+      const queryParams = [clienteRow.id];
+
+      if (matchOrden) {
+        queryParams.push(matchOrden[0].toUpperCase());
+        queryOrden += ` AND UPPER(o.codigo) = $2`;
+      } else {
+        queryOrden += ` ORDER BY o.created_at DESC LIMIT 1`;
+      }
+
+      const { rows: ordenesEncontradas } = await pool.query(queryOrden, queryParams);
+
+      if (ordenesEncontradas.length > 0) {
+        const ord = ordenesEncontradas[0];
+        const etapasMap = {
+          1: 'Diseño',
+          2: 'Aprobación del cliente',
+          3: 'Impresión',
+          4: 'Acabados y confección',
+          5: 'Control de calidad',
+          6: 'Empaque y despacho',
+          7: 'Entregada',
+        };
+        const etapaNombre = ord.estado_nombre || etapasMap[ord.etapa] || 'En producción';
+        const respuestaWA = `👋 ¡Hola ${clienteRow.contacto_principal || clienteRow.empresa}! Tu orden *${ord.codigo}* (${ord.producto}) se encuentra en la etapa: *${etapaNombre}* (Avance: ${ord.porcentaje_avance || 0}%). Fecha estimada de entrega: ${ord.fecha_entrega || 'Por definir'}. Puedes consultar más detalles en nuestro portal o esperar la respuesta de tu ejecutiva comercial.`;
+
+        // Intentar responder por WhatsApp si está configurado
+        if (whatsappService.estaConfigurado()) {
+          await whatsappService.enviarMensajeTexto({
+            to: telNormalizado,
+            texto: respuestaWA,
+          }).catch((e) => console.warn('[WhatsAppWebhook] No se pudo enviar respuesta automática de pedido:', e.message));
+        }
+
+        // Registrar mensaje de respuesta en el hilo
+        await pool.query(
+          `INSERT INTO mensajes_entrantes (
+             canal_id, remitente, texto, de, fecha_texto, hora_texto, marca_tiempo, resumen
+           ) VALUES ($1, 'Asistente ORVEX', $2, 'ejecutiva', $3, $4, NOW(), $5)`,
+          [
+            canalRow.id,
+            respuestaWA,
+            formatearFechaHoy(),
+            formatearHoraAhora(),
+            JSON.stringify({ canal: 'wa', tipo: 'auto_respuesta_pedido', ordenCodigo: ord.codigo }),
+          ]
+        );
+      }
+    } catch (errPed) {
+      console.warn('[WhatsAppWebhook] Error procesando consulta automática de pedido:', errPed.message);
+    }
+  }
+
+  // B. Radicación automática de reclamos / garantías / PQRSF
+  const tieneIntencionPQRSF = /(garant[ií]a|reclamo|queja|da[ñn]o|da[ñn]ado|defectuoso|falla|inconforme|pqrsf)/i.test(textoMensaje);
+
+  if (tieneIntencionPQRSF && clienteRow && textoMensaje.length > 10) {
+    try {
+      const year = new Date().getFullYear();
+      const countRes = await pool.query(`SELECT COUNT(*)::int AS total FROM postventa`);
+      const nextNum = (countRes.rows[0]?.total || 0) + 1;
+      const esGarantia = /(garant[ií]a|defecto|da[ñn]o)/i.test(textoMensaje);
+      const radicado = `${esGarantia ? 'GAR' : 'RAD'}-${year}-${String(nextNum).padStart(4, '0')}`;
+      const codigoCaso = `CASO-${year}-${String(nextNum).padStart(3, '0')}`;
+
+      // Buscar última orden del cliente si existe
+      const { rows: ultOrd } = await pool.query(
+        `SELECT id, producto FROM ordenes WHERE cliente_id = $1 ORDER BY created_at DESC LIMIT 1`,
+        [clienteRow.id]
+      );
+      const ordenId = ultOrd[0]?.id || null;
+      const productoNombre = ultOrd[0]?.producto || 'Servicio publicitario';
+
+      await pool.query(
+        `INSERT INTO postventa (
+           codigo, radicado, orden_id, ejecutiva_id, tipo, categoria, subtipo, motivo,
+           descripcion, prioridad, estado, canal, telefono_contacto, email_contacto,
+           fecha_texto, fecha_recepcion, created_at, historial
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'Media', 'Recibido', 'WhatsApp', $10, $11, $12, CURRENT_DATE, NOW(), $13::jsonb)`,
+        [
+          codigoCaso,
+          radicado,
+          ordenId,
+          clienteRow.ejecutiva_id,
+          esGarantia ? 'Garantía' : 'Reclamo',
+          esGarantia ? 'Garantía' : 'PQRSF',
+          esGarantia ? 'Garantía' : 'Reclamo',
+          'Atención automática vía WhatsApp',
+          msg.text,
+          `+${telNormalizado}`,
+          clienteRow.correo || '',
+          formatearFechaHoy(),
+          JSON.stringify([
+            {
+              fecha: formatearFechaHoy(),
+              hora: formatearHoraAhora(),
+              autor: clienteRow.contacto_principal || 'Cliente vía WhatsApp',
+              estado: 'Recibido',
+              accion: 'Radicación automática vía WhatsApp',
+              detalle: msg.text,
+            },
+          ]),
+        ]
+      );
+
+      const respuestaPQRSF = `📋 Hemos radicado formalmente tu caso con el radicado *${radicado}*. Nuestro equipo de Calidad y Postventa de Huellas Publicidad lo atenderá a la mayor brevedad.`;
+
+      if (whatsappService.estaConfigurado()) {
+        await whatsappService.enviarMensajeTexto({
+          to: telNormalizado,
+          texto: respuestaPQRSF,
+        }).catch((e) => console.warn('[WhatsAppWebhook] No se pudo enviar confirmación de radicado:', e.message));
+      }
+
+      await pool.query(
+        `INSERT INTO mensajes_entrantes (
+           canal_id, remitente, texto, de, fecha_texto, hora_texto, marca_tiempo, resumen
+         ) VALUES ($1, 'Postventa ORVEX', $2, 'ejecutiva', $3, $4, NOW(), $5)`,
+        [
+          canalRow.id,
+          respuestaPQRSF,
+          formatearFechaHoy(),
+          formatearHoraAhora(),
+          JSON.stringify({ canal: 'wa', tipo: 'radicado_postventa', radicado }),
+        ]
+      );
+    } catch (errPq) {
+      console.warn('[WhatsAppWebhook] Error radicando caso automático de postventa:', errPq.message);
+    }
+  }
+
+  // 5. Emitir notificación en tiempo real a los clientes de ORVEX conectados (SSE)
   notificar({
     tipo: 'nuevo_mensaje',
     canalId: canalRow.id,

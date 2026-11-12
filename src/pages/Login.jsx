@@ -2,16 +2,23 @@ import { useState, useEffect, useRef } from 'react'
 import Icon from '../components/Icon.jsx'
 import { ROLES, normalizarRol } from '../data/roles.js'
 import { api } from '../services/api.js'
+import {
+  isFirebaseConfigured,
+  loginWithEmailPassword,
+  loginWithGoogle,
+  resetPassword,
+  logoutFirebase,
+} from '../config/firebase.js'
 import './Login.css'
 
 // Credenciales oficiales de prueba para el prototipo
 const CUENTAS_DEMO = [
-  { rol: 'coordinador', usuario: 'carlos.gomez@huellas.co', clave: 'coord123', nombre: 'Carlos Ruiz', cargo: 'Coordinador de producción', color: 'linear-gradient(135deg, #3b82f6, #1d4ed8)' },
-  { rol: 'comercial', usuario: 'ana.martinez@huellas.co', clave: 'comercial123', nombre: 'Ana Martínez', cargo: 'Comercial / Recepción', color: 'linear-gradient(135deg, #10b981, #059669)' },
-  { rol: 'disenador', usuario: 'maria.lopez@huellas.co', clave: 'diseno123', nombre: 'María López', cargo: 'Diseñadora gráfica', color: 'linear-gradient(135deg, #8b5cf6, #6d28d9)' },
-  { rol: 'operario', usuario: 'pedro.morales@huellas.co', clave: 'taller123', nombre: 'Juan Pérez', cargo: 'Operario de impresión', color: 'linear-gradient(135deg, #f59e0b, #d97706)' },
-  { rol: 'postventa', usuario: 'sofia.herrera@huellas.co', clave: 'post123', nombre: 'Sofía Herrera', cargo: 'Atención postventa', color: 'linear-gradient(135deg, #ec4899, #db2777)' },
-  { rol: 'gerencia', usuario: 'laura.sanchez@huellas.co', clave: 'gerencia123', nombre: 'Andrés Torres', cargo: 'Gerente general', color: 'linear-gradient(135deg, #06b6d4, #0284c7)' },
+  { rol: 'coordinador', usuario: 'jhon.avilahe@amigo.edu.co', clave: '', nombre: 'Carlos Ruiz', cargo: 'Coordinador de producción', color: 'linear-gradient(135deg, #3b82f6, #1d4ed8)' },
+  { rol: 'comercial', usuario: 'jhonavila1038800612@gmail.com', clave: '', nombre: 'Ana Martínez', cargo: 'Comercial / Recepción', color: 'linear-gradient(135deg, #10b981, #059669)' },
+  { rol: 'disenador', usuario: 'nicoohdz418@gmail.com', clave: '', nombre: 'María López', cargo: 'Diseñadora gráfica', color: 'linear-gradient(135deg, #8b5cf6, #6d28d9)' },
+  { rol: 'operario', usuario: 'andresvarrera10@gmail.com', clave: '', nombre: 'Juan Pérez', cargo: 'Operario de impresión', color: 'linear-gradient(135deg, #f59e0b, #d97706)' },
+  { rol: 'postventa', usuario: 'Victoriavi324@gmail.com', clave: '', nombre: 'Sofía Herrera', cargo: 'Atención postventa', color: 'linear-gradient(135deg, #ec4899, #db2777)' },
+  { rol: 'gerencia', usuario: 'guidohernandezhdz@gmail.com', clave: '', nombre: 'Andrés Torres', cargo: 'Gerente general', color: 'linear-gradient(135deg, #06b6d4, #0284c7)' },
 ]
 
 // Las 5 etapas del flujo integral de ORVEX
@@ -23,14 +30,21 @@ const ETAPAS_PRODUCCION = [
   { id: 'entrega', nombre: 'Entrega', icono: 'truck', detalle: 'Despacho con evidencias' },
 ]
 
-export default function Login({ onLogin }) {
+export default function Login({ onLogin, onIrAlPortal }) {
   const [identificador, setIdentificador] = useState('')
   const [clave, setClave] = useState('')
   const [verClave, setVerClave] = useState(false)
   const [cargando, setCargando] = useState(false)
+  const [cargandoGoogle, setCargandoGoogle] = useState(false)
   const [errorGlobal, setErrorGlobal] = useState('')
   const [erroresCampos, setErroresCampos] = useState({})
   const [rolActivo, setRolActivo] = useState(null)
+
+  // Estado para modal de recuperación de contraseña vía Firebase
+  const [mostrarModalRecuperacion, setMostrarModalRecuperacion] = useState(false)
+  const [correoRecuperacion, setCorreoRecuperacion] = useState('')
+  const [mensajeRecuperacion, setMensajeRecuperacion] = useState('')
+  const [cargandoRecuperacion, setCargandoRecuperacion] = useState(false)
 
   const canvasRef = useRef(null)
 
@@ -145,11 +159,51 @@ export default function Login({ onLogin }) {
     if (!validarCampos()) return
 
     setCargando(true)
+    const cleanIdent = identificador.trim()
+
     try {
-      const res = await api.login({
-        identificador: identificador.trim(),
-        clave,
-      })
+      let res
+      if (isFirebaseConfigured()) {
+        try {
+          // 1. Autenticar en Firebase Authentication
+          const { idToken } = await loginWithEmailPassword(cleanIdent, clave)
+          // 2. Validar ID Token y permisos autorizados en PostgreSQL
+          res = await api.firebaseLogin(idToken)
+        } catch (fbErr) {
+          // Si el rechazo viene del backend por falta de autorización en PostgreSQL
+          if (
+            fbErr.status === 403 ||
+            fbErr.message?.includes('Acceso denegado') ||
+            fbErr.message?.includes('inactivo')
+          ) {
+            await logoutFirebase()
+            throw fbErr
+          }
+
+          // Si el usuario aún no existe en Firebase (migración paulatina) o contraseña incorrecta en Firebase,
+          // intentar autenticación directa de ORVEX en PostgreSQL para no bloquear la operación
+          if (
+            fbErr.code === 'auth/user-not-found' ||
+            fbErr.code === 'auth/invalid-credential' ||
+            fbErr.code === 'auth/wrong-password' ||
+            fbErr.code === 'auth/invalid-email'
+          ) {
+            res = await api.login({
+              identificador: cleanIdent,
+              clave,
+            })
+          } else {
+            throw fbErr
+          }
+        }
+      } else {
+        // Fallback cuando Firebase aún no tiene API Key en .env
+        res = await api.login({
+          identificador: cleanIdent,
+          clave,
+        })
+      }
+
       const usr = res?.usuario || {}
       const rolUi = normalizarRol(usr.rolUi || usr.rol || 'coordinador')
       setRolActivo(rolUi)
@@ -159,7 +213,7 @@ export default function Login({ onLogin }) {
           id: usr.id,
           dbId: usr.uuid || usr.dbId,
           nombre: usr.nombre || ROLES[rolUi]?.usuario?.nombre || 'Usuario',
-          correo: usr.correo || usr.email || identificador.trim(),
+          correo: usr.correo || usr.email || cleanIdent,
           cargo: usr.cargo || ROLES[rolUi]?.usuario?.cargo || rolUi,
           rol: rolUi,
           rolBd: usr.rolBd || usr.rol,
@@ -168,10 +222,64 @@ export default function Login({ onLogin }) {
       )
     } catch (err) {
       setCargando(false)
+      await logoutFirebase()
       setErrorGlobal(
         err.message ||
           'Credenciales incorrectas. Verifica tu usuario y contraseña, o utiliza uno de los accesos de demostración.'
       )
+    }
+  }
+
+  async function handleGoogleLogin() {
+    setErrorGlobal('')
+    setCargandoGoogle(true)
+    try {
+      if (!isFirebaseConfigured()) {
+        throw new Error('El acceso con Google requiere configurar VITE_FIREBASE_API_KEY en el archivo .env.')
+      }
+      const { idToken } = await loginWithGoogle()
+      const res = await api.firebaseLogin(idToken)
+      const usr = res?.usuario || {}
+      const rolUi = normalizarRol(usr.rolUi || usr.rol || 'coordinador')
+      setRolActivo(rolUi)
+      setCargandoGoogle(false)
+      onLogin(
+        {
+          id: usr.id,
+          dbId: usr.uuid || usr.dbId,
+          nombre: usr.nombre || ROLES[rolUi]?.usuario?.nombre || 'Usuario',
+          correo: usr.correo || usr.email,
+          cargo: usr.cargo || ROLES[rolUi]?.usuario?.cargo || rolUi,
+          rol: rolUi,
+          rolBd: usr.rolBd || usr.rol,
+        },
+        rolUi
+      )
+    } catch (err) {
+      setCargandoGoogle(false)
+      await logoutFirebase()
+      setErrorGlobal(
+        err.message || 'Error al iniciar sesión con Google. Verifica que tu correo esté registrado y activo en ORVEX.'
+      )
+    }
+  }
+
+  async function handleRecuperarClave(e) {
+    e.preventDefault()
+    if (!correoRecuperacion.trim()) return
+    setCargandoRecuperacion(true)
+    setMensajeRecuperacion('')
+    try {
+      await resetPassword(correoRecuperacion.trim())
+      setMensajeRecuperacion('Se ha enviado un enlace de restablecimiento a tu correo electrónico.')
+    } catch (err) {
+      if (err.code === 'auth/user-not-found') {
+        setMensajeRecuperacion('No se encontró una cuenta de Firebase asociada a este correo.')
+      } else {
+        setMensajeRecuperacion(err.message || 'No se pudo enviar el correo de recuperación.')
+      }
+    } finally {
+      setCargandoRecuperacion(false)
     }
   }
 
@@ -332,9 +440,22 @@ export default function Login({ onLogin }) {
               </div>
 
               <div className={`orvex-form-field ${erroresCampos.clave ? 'has-error' : ''}`}>
-                <label className="orvex-input-label" htmlFor="loginClave">
-                  Contraseña
-                </label>
+                <div className="orvex-input-label-row">
+                  <label className="orvex-input-label" htmlFor="loginClave">
+                    Contraseña
+                  </label>
+                  <button
+                    type="button"
+                    className="orvex-forgot-btn"
+                    onClick={() => {
+                      setMostrarModalRecuperacion(true)
+                      setCorreoRecuperacion(identificador.trim())
+                      setMensajeRecuperacion('')
+                    }}
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </button>
+                </div>
                 <div className="orvex-input-wrap">
                   <span className="orvex-input-icon">
                     <Icon nombre="lock" tamano={17} />
@@ -374,7 +495,7 @@ export default function Login({ onLogin }) {
               <button
                 type="submit"
                 className="orvex-submit-btn"
-                disabled={cargando}
+                disabled={cargando || cargandoGoogle}
                 aria-busy={cargando}
               >
                 {cargando ? (
@@ -384,6 +505,35 @@ export default function Login({ onLogin }) {
                   </>
                 ) : (
                   <span>Iniciar sesión</span>
+                )}
+              </button>
+
+              <div className="orvex-login-divider">
+                <span>o</span>
+              </div>
+
+              <button
+                type="button"
+                className="orvex-google-btn"
+                onClick={handleGoogleLogin}
+                disabled={cargandoGoogle || cargando}
+                aria-label="Continuar con Google"
+              >
+                {cargandoGoogle ? (
+                  <>
+                    <Icon nombre="refresh" tamano={18} className="spin" />
+                    <span>Conectando con Google...</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="orvex-google-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                    </svg>
+                    <span>Continuar con Google</span>
+                  </>
                 )}
               </button>
             </form>
@@ -423,9 +573,119 @@ export default function Login({ onLogin }) {
                 })}
               </div>
             </div>
+
+            {/* Acceso directo al Portal Público de Clientes */}
+            <div style={{ marginTop: '20px', textAlign: 'center', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+              <button
+                type="button"
+                onClick={onIrAlPortal}
+                style={{
+                  background: 'rgba(2, 132, 199, 0.12)',
+                  border: '1px solid rgba(56, 189, 248, 0.35)',
+                  color: '#38bdf8',
+                  padding: '9px 16px',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                <span>📦</span> ¿Eres cliente? Consulta tu pedido o radica una PQRSF
+              </button>
+            </div>
           </div>
         </section>
       </div>
+
+      {/* Modal de Restablecimiento de Contraseña vía Firebase */}
+      {mostrarModalRecuperacion && (
+        <div
+          className="orvex-modal-backdrop"
+          onClick={() => setMostrarModalRecuperacion(false)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="orvex-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="orvex-modal-header">
+              <div className="orvex-modal-title-row">
+                <Icon nombre="lock" tamano={18} />
+                <h3>Restablecer contraseña</h3>
+              </div>
+              <button
+                type="button"
+                className="orvex-modal-close"
+                onClick={() => setMostrarModalRecuperacion(false)}
+                aria-label="Cerrar modal"
+              >
+                <Icon nombre="x" tamano={18} />
+              </button>
+            </div>
+
+            <p className="orvex-modal-desc">
+              Ingresa el correo institucional registrado en ORVEX. Te enviaremos un enlace oficial de Firebase para restablecer tu contraseña.
+            </p>
+
+            <form onSubmit={handleRecuperarClave} className="orvex-modal-form">
+              <div className="orvex-form-field">
+                <label className="orvex-input-label" htmlFor="recupEmail">
+                  Correo registrado
+                </label>
+                <div className="orvex-input-wrap">
+                  <span className="orvex-input-icon">
+                    <Icon nombre="mail" tamano={17} />
+                  </span>
+                  <input
+                    id="recupEmail"
+                    type="email"
+                    className="orvex-input"
+                    placeholder="ej. carlos.gomez@huellas.co"
+                    value={correoRecuperacion}
+                    onChange={(e) => setCorreoRecuperacion(e.target.value)}
+                    required
+                    autoFocus
+                  />
+                </div>
+              </div>
+
+              {mensajeRecuperacion && (
+                <div
+                  className={`orvex-modal-alert ${
+                    mensajeRecuperacion.includes('enviado') ? 'is-success' : 'is-error'
+                  }`}
+                  role="alert"
+                >
+                  <Icon
+                    nombre={mensajeRecuperacion.includes('enviado') ? 'check-circle' : 'alert-circle'}
+                    tamano={16}
+                  />
+                  <span>{mensajeRecuperacion}</span>
+                </div>
+              )}
+
+              <div className="orvex-modal-actions">
+                <button
+                  type="button"
+                  className="orvex-modal-cancel-btn"
+                  onClick={() => setMostrarModalRecuperacion(false)}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="orvex-modal-submit-btn"
+                  disabled={cargandoRecuperacion}
+                >
+                  {cargandoRecuperacion ? 'Enviando enlace...' : 'Enviar enlace'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -573,11 +573,19 @@ export default function Requests({ data, actions, irA, role }) {
   const [detalle, setDetalle] = useState(null) // solicitud a inspeccionar en modal de detalle
   const [archivoPreview, setArchivoPreview] = useState(null)
   const [corrigiendo, setCorrigiendo] = useState(null) // solicitud devuelta a editar/corregir por Comercial
+  const [filtroEstado, setFiltroEstado] = useState('activas') // 'activas' | 'archivadas' | 'todas'
 
   const esCoordinador = role === 'coordinador' || role === 'gerencia'
-  const porValidar = data.requests.filter((s) => s.estado === 'En validación').length
-  const porEnviar = data.requests.filter((s) => s.estado === 'Pendiente').length
-  const devueltas = data.requests.filter((s) => s.estado === 'Devuelta para corrección').length
+
+  const solicitudesFiltradas = data.requests.filter((s) => {
+    if (filtroEstado === 'activas') return !s.archivado
+    if (filtroEstado === 'archivadas') return Boolean(s.archivado)
+    return true
+  })
+
+  const porValidar = data.requests.filter((s) => !s.archivado && s.estado === 'En validación').length
+  const porEnviar = data.requests.filter((s) => !s.archivado && s.estado === 'Pendiente').length
+  const devueltas = data.requests.filter((s) => !s.archivado && s.estado === 'Devuelta para corrección').length
 
   function descargarAdjunto(a) {
     if (!a) return
@@ -792,6 +800,42 @@ export default function Requests({ data, actions, irA, role }) {
               <Icon nombre="clipboard" tamano={12} /> OP {s.ordenId}
             </button>
           )}
+
+          {(role === 'comercial' || role === 'gerencia') && (
+            <>
+              {s.archivado ? (
+                <button
+                  className="btn btn-outline btn-xs"
+                  onClick={() => actions?.restoreRequest && actions.restoreRequest(s.id)}
+                  title="Restaurar solicitud archivada"
+                >
+                  <Icon nombre="refresh-cw" tamano={12} />
+                </button>
+              ) : (
+                <button
+                  className="btn btn-outline btn-xs"
+                  onClick={() => actions?.archiveRequest && actions.archiveRequest(s.id)}
+                  title="Archivar solicitud"
+                >
+                  <Icon nombre="archive" tamano={12} />
+                </button>
+              )}
+              {!s.ordenId && s.estado !== 'Aprobada' && (
+                <button
+                  className="btn btn-outline btn-xs"
+                  style={{ color: '#ef4444', borderColor: '#fca5a5' }}
+                  onClick={() => {
+                    if (window.confirm(`¿Está seguro de eliminar permanentemente la solicitud ${s.id}? Esta acción no se puede deshacer.`)) {
+                      actions?.deleteRequest && actions.deleteRequest(s.id)
+                    }
+                  }}
+                  title="Eliminar solicitud permanente"
+                >
+                  <Icon nombre="trash-2" tamano={12} />
+                </button>
+              )}
+            </>
+          )}
         </div>
       ),
     },
@@ -816,6 +860,28 @@ export default function Requests({ data, actions, irA, role }) {
         }
       />
 
+      {/* Selector de estado (Activas / Archivadas / Todas) */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+        <button
+          className={`btn btn-sm ${filtroEstado === 'activas' ? 'btn-primary' : 'btn-outline'}`}
+          onClick={() => setFiltroEstado('activas')}
+        >
+          Activas ({data.requests.filter((s) => !s.archivado).length})
+        </button>
+        <button
+          className={`btn btn-sm ${filtroEstado === 'archivadas' ? 'btn-primary' : 'btn-outline'}`}
+          onClick={() => setFiltroEstado('archivadas')}
+        >
+          Archivadas ({data.requests.filter((s) => s.archivado).length})
+        </button>
+        <button
+          className={`btn btn-sm ${filtroEstado === 'todas' ? 'btn-primary' : 'btn-outline'}`}
+          onClick={() => setFiltroEstado('todas')}
+        >
+          Todas ({data.requests.length})
+        </button>
+      </div>
+
       {esCoordinador && porValidar > 0 && (
         <Alert tipo="aviso" titulo={`${porValidar} solicitud(es) esperan tu validación técnica`}>
           Revisa las especificaciones antes de decidir: puedes aprobar para generar la orden, devolver para corrección o rechazarla.
@@ -836,7 +902,7 @@ export default function Requests({ data, actions, irA, role }) {
 
       <DataTable
         columnas={columnas}
-        filas={data.requests}
+        filas={solicitudesFiltradas}
         porPagina={8}
         filaClase={(s) => (role === 'comercial' && s.estado === 'Pendiente' ? 'fila-pendiente-envio' : '')}
         buscar={(s) => `${s.id} ${s.cliente} ${s.producto} ${s.material} ${s.dimensiones}`}

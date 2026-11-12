@@ -46,19 +46,21 @@ export default function AfterSalesDashboard({ data, actions, irA, role }) {
   const { orders, cases, tasks = [], users = [] } = data
   const puedeGestionarPostventa = ['postventa', 'coordinador', 'comercial'].includes(role)
 
-  // Pestaña principal: 'Satisfacción' | 'PQRSF' | 'Garantía' | 'Cierre'
-  const [seccionActiva, setSeccionActiva] = useState('PQRSF')
+  // Pestaña principal: 'Resumen' | 'PQRSF' | 'Garantía' | 'Satisfacción' | 'Seguimiento' | 'Cierre'
+  const [seccionActiva, setSeccionActiva] = useState('Resumen')
 
-  // Filtros de búsqueda y estado
+  // Filtros de búsqueda, estado y archivados
   const [busqueda, setBusqueda] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('Todos')
   const [filtroSubtipoPqrsf, setFiltroSubtipoPqrsf] = useState('Todos')
   const [filtroDictamen, setFiltroDictamen] = useState('Todos')
+  const [filtroArchivados, setFiltroArchivados] = useState('activos') // 'activos' | 'archivados' | 'todos'
 
   // Paginación por sección para aligerar la interfaz
   const [paginaSat, setPaginaSat] = useState(1)
   const [paginaPqrsf, setPaginaPqrsf] = useState(1)
   const [paginaGar, setPaginaGar] = useState(1)
+  const [paginaSeg, setPaginaSeg] = useState(1)
   const [paginaCierre, setPaginaCierre] = useState(1)
   const [filtroSoloPendientesCierre, setFiltroSoloPendientesCierre] = useState(true)
   const POR_PAGINA_POSTVENTA = 6
@@ -72,23 +74,32 @@ export default function AfterSalesDashboard({ data, actions, irA, role }) {
   )
   const listaOrdenesSelect = ordenesEntregadas.length > 0 ? ordenesEntregadas : orders
 
-  // Clasificación estricta en las 3 secciones independientes
-  const calificacionesSatisfaccion = cases.filter(
+  // Filtrado base por archivados
+  const casosBase = cases.filter((c) => {
+    if (filtroArchivados === 'activos') return !c.archivado
+    if (filtroArchivados === 'archivados') return !!c.archivado
+    return true
+  })
+
+  // Clasificación estricta en las secciones
+  const calificacionesSatisfaccion = casosBase.filter(
     (c) => c.categoria === 'Satisfacción' || c.tipo === 'Satisfacción'
   )
-  const casosPqrsf = cases.filter(
+  const casosPqrsf = casosBase.filter(
     (c) =>
       c.categoria === 'PQRSF' ||
       (!c.categoria && c.tipo !== 'Garantía' && c.tipo !== 'Satisfacción')
   )
-  const casosGarantia = cases.filter(
+  const casosGarantia = casosBase.filter(
     (c) => c.categoria === 'Garantía' || (!c.categoria && c.tipo === 'Garantía')
   )
 
   // Indicadores globales
-  const pqrsfPendientes = casosPqrsf.filter((c) => c.estado !== 'Resuelto' && c.estado !== 'Cerrado')
+  const pqrsfPendientes = casosPqrsf.filter(
+    (c) => c.estado !== 'Resuelto' && c.estado !== 'Cerrado' && c.estado !== 'Solucionado'
+  )
   const garantiasEnEvaluacion = casosGarantia.filter(
-    (c) => c.estado !== 'Resuelto' && c.estado !== 'Cerrado'
+    (c) => c.estado !== 'Resuelto' && c.estado !== 'Cerrado' && c.estado !== 'Solucionado'
   )
   const garantiasProcedentes = casosGarantia.filter((c) =>
     String(c.dictamenGarantia || '').startsWith('Procedente')
@@ -303,6 +314,7 @@ export default function AfterSalesDashboard({ data, actions, irA, role }) {
     const q = busqueda.toLowerCase()
     return (
       String(c.id || '').toLowerCase().includes(q) ||
+      String(c.radicado || '').toLowerCase().includes(q) ||
       String(c.ordenId || '').toLowerCase().includes(q) ||
       String(c.cliente || '').toLowerCase().includes(q) ||
       String(c.motivo || '').toLowerCase().includes(q) ||
@@ -326,6 +338,12 @@ export default function AfterSalesDashboard({ data, actions, irA, role }) {
     return true
   })
 
+  const casosSeguimientoFiltrados = casosBase.filter((c) => {
+    if (!coincideTexto(c)) return false
+    if (filtroEstado !== 'Todos' && c.estado !== filtroEstado) return false
+    return true
+  })
+
   // Cálculos de paginación para las tablas de Postventa
   const totalPaginasSat = Math.max(1, Math.ceil(satisfaccionFiltrada.length / POR_PAGINA_POSTVENTA))
   const pagActualSat = Math.min(paginaSat, totalPaginasSat)
@@ -346,6 +364,13 @@ export default function AfterSalesDashboard({ data, actions, irA, role }) {
   const garantiasVisibles = garantiasFiltradas.slice(
     (pagActualGar - 1) * POR_PAGINA_POSTVENTA,
     pagActualGar * POR_PAGINA_POSTVENTA
+  )
+
+  const totalPaginasSeg = Math.max(1, Math.ceil(casosSeguimientoFiltrados.length / POR_PAGINA_POSTVENTA))
+  const pagActualSeg = Math.min(paginaSeg, totalPaginasSeg)
+  const seguimientoVisibles = casosSeguimientoFiltrados.slice(
+    (pagActualSeg - 1) * POR_PAGINA_POSTVENTA,
+    pagActualSeg * POR_PAGINA_POSTVENTA
   )
 
   // Cierre de órdenes: cola priorizada
@@ -429,7 +454,11 @@ export default function AfterSalesDashboard({ data, actions, irA, role }) {
                   ? calificacionesSatisfaccion.length
                   : sec.id === 'PQRSF'
                   ? casosPqrsf.length
-                  : casosGarantia.length
+                  : sec.id === 'Garantía'
+                  ? casosGarantia.length
+                  : sec.id === 'Seguimiento'
+                  ? casosBase.filter((c) => c.estado !== 'Cerrado' && c.estado !== 'Solucionado').length
+                  : casosBase.length
               return (
                 <button
                   key={sec.id}
@@ -459,14 +488,41 @@ export default function AfterSalesDashboard({ data, actions, irA, role }) {
 
           {seccionActiva !== 'Cierre' && (
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div className="chips" style={{ marginBottom: 0, display: 'inline-flex' }}>
+                <button
+                  type="button"
+                  className={filtroArchivados === 'activos' ? 'chip active' : 'chip'}
+                  onClick={() => setFiltroArchivados('activos')}
+                  style={{ fontSize: '11.5px', padding: '3px 8px' }}
+                >
+                  Activos
+                </button>
+                <button
+                  type="button"
+                  className={filtroArchivados === 'archivados' ? 'chip active' : 'chip'}
+                  onClick={() => setFiltroArchivados('archivados')}
+                  style={{ fontSize: '11.5px', padding: '3px 8px' }}
+                >
+                  Archivados
+                </button>
+                <button
+                  type="button"
+                  className={filtroArchivados === 'todos' ? 'chip active' : 'chip'}
+                  onClick={() => setFiltroArchivados('todos')}
+                  style={{ fontSize: '11.5px', padding: '3px 8px' }}
+                >
+                  Todos
+                </button>
+              </div>
+
               <input
                 type="search"
-                placeholder="Buscar por caso, orden, cliente o motivo..."
+                placeholder="Buscar por caso, orden, radicado..."
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
-                style={{ width: 250, padding: '6px 10px', fontSize: 13 }}
+                style={{ width: 220, padding: '6px 10px', fontSize: 13 }}
               />
-              {seccionActiva !== 'Satisfacción' && (
+              {seccionActiva !== 'Satisfacción' && seccionActiva !== 'Resumen' && (
                 <select
                   value={filtroEstado}
                   onChange={(e) => setFiltroEstado(e.target.value)}
@@ -484,6 +540,170 @@ export default function AfterSalesDashboard({ data, actions, irA, role }) {
           )}
         </div>
       </div>
+
+      {/* ===================================================================== */}
+      {/* SECCIÓN 0: RESUMEN GENERAL DE POSTVENTA Y CALIDAD                    */}
+      {/* ===================================================================== */}
+      {seccionActiva === 'Resumen' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 16 }}>
+          <div className="card">
+            <div className="card-header">
+              <div>
+                <h2>Resumen General de Calidad, PQRSF y Postventa</h2>
+                <span className="muted">
+                  Visión consolidada del servicio post-entrega, tiempos de resolución, canales de atención y satisfacción global.
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn btn-sm" onClick={() => abrirModalNuevo('Satisfacción')}>
+                  <Icon nombre="star" tamano={13} /> Nueva calificación
+                </button>
+                <button className="btn btn-sm" onClick={() => abrirModalNuevo('PQRSF')}>
+                  <Icon nombre="plus" tamano={13} /> Radicar PQRSF
+                </button>
+                <button className="btn btn-primary btn-sm" onClick={() => abrirModalNuevo('Garantía')}>
+                  <Icon nombre="shield" tamano={13} /> Reclamación garantía
+                </button>
+              </div>
+            </div>
+
+            <div className="grid-2" style={{ gap: 16 }}>
+              {/* Distribución por estado del ciclo de vida */}
+              <div style={{ padding: 14, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-sunken)' }}>
+                <h3 style={{ fontSize: 14, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Icon nombre="activity" tamano={16} /> Estados del Ciclo de Vida ({casosBase.length} casos)
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+                  {ESTADOS_CASO_POSTVENTA.map((est) => {
+                    const cant = casosBase.filter((c) => c.estado === est).length
+                    const pct = casosBase.length ? Math.round((cant / casosBase.length) * 100) : 0
+                    return (
+                      <div key={est}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3 }}>
+                          <span><strong>{est}</strong></span>
+                          <span className="muted">{cant} ({pct}%)</span>
+                        </div>
+                        <div style={{ height: 6, borderRadius: 3, background: 'var(--border)', overflow: 'hidden' }}>
+                          <div
+                            style={{
+                              width: `${pct}%`,
+                              height: '100%',
+                              background:
+                                est === 'Cerrado' || est === 'Solucionado'
+                                  ? 'var(--success, #10b981)'
+                                  : est === 'En atención'
+                                  ? 'var(--primary, #3b82f6)'
+                                  : est === 'En espera de información'
+                                  ? 'var(--warning, #f59e0b)'
+                                  : 'var(--text-muted, #64748b)',
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Distribución por Canal de Contacto y Categoría */}
+              <div style={{ padding: 14, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-sunken)' }}>
+                <h3 style={{ fontSize: 14, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Icon nombre="share-2" tamano={16} /> Canales de Radicación y Recepción
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginTop: 12 }}>
+                  {[
+                    { canal: 'Portal de Clientes', icono: 'globe', count: casosBase.filter((c) => (c.canal || '').toLowerCase().includes('portal')).length },
+                    { canal: 'WhatsApp Cloud API', icono: 'message-square', count: casosBase.filter((c) => (c.canal || '').toLowerCase().includes('whatsapp')).length },
+                    { canal: 'Correo Electrónico', icono: 'mail', count: casosBase.filter((c) => (c.canal || '').toLowerCase().includes('correo') || (c.canal || '').toLowerCase().includes('gmail')).length },
+                    { canal: 'Interno / Taller', icono: 'user-check', count: casosBase.filter((c) => !(c.canal || '').toLowerCase().includes('portal') && !(c.canal || '').toLowerCase().includes('whatsapp') && !(c.canal || '').toLowerCase().includes('correo')).length },
+                  ].map((ch) => (
+                    <div
+                      key={ch.canal}
+                      style={{
+                        padding: '10px 12px',
+                        borderRadius: 6,
+                        border: '1px solid var(--border)',
+                        background: 'var(--bg-card, #ffffff)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                      }}
+                    >
+                      <div>
+                        <div className="muted" style={{ fontSize: 11 }}>{ch.canal}</div>
+                        <div style={{ fontSize: 18, fontWeight: 700 }}>{ch.count}</div>
+                      </div>
+                      <Icon nombre={ch.icono} tamano={18} />
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ marginTop: 14, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                    <span>Garantías Técnicas: <strong>{casosGarantia.length}</strong></span>
+                    <span>PQRSF: <strong>{casosPqrsf.length}</strong></span>
+                    <span>Calificaciones: <strong>{calificacionesSatisfaccion.length}</strong></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Acceso directo a últimos casos registrados */}
+            <div style={{ marginTop: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <h3 style={{ fontSize: 14, margin: 0 }}>Últimos casos y novedades de postventa</h3>
+                <button className="link" onClick={() => setSeccionActiva('Seguimiento')} style={{ fontSize: 12 }}>
+                  Ver seguimiento completo →
+                </button>
+              </div>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Radicado / ID</th>
+                      <th>Orden / Cliente</th>
+                      <th>Tipo / Causal</th>
+                      <th>Fecha</th>
+                      <th>Estado</th>
+                      <th>Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {casosBase.slice(0, 5).map((c) => (
+                      <tr key={c.id}>
+                        <td className="mono">
+                          <strong>{c.radicado || c.id}</strong>
+                          {c.canal && <div className="muted" style={{ fontSize: 10 }}>{c.canal}</div>}
+                        </td>
+                        <td>
+                          <a className="link" onClick={() => irA('detalle', c.ordenId)}>{c.ordenId}</a>
+                          <div style={{ fontSize: 12 }}>{c.cliente}</div>
+                        </td>
+                        <td>
+                          <div>{c.motivo || c.tipo}</div>
+                          <div className="muted" style={{ fontSize: 11 }}>{c.categoria || 'Caso'}</div>
+                        </td>
+                        <td className="muted">{c.fecha}</td>
+                        <td><StatusBadge estado={c.estado} /></td>
+                        <td>
+                          <button className="btn btn-ghost btn-xs" onClick={() => abrirGestionCaso(c)}>
+                            Expediente
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {casosBase.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="empty">No hay casos registrados en postventa.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ===================================================================== */}
       {/* SECCIÓN 1: CALIFICACIÓN DE SATISFACCIÓN DEL CLIENTE DESPUÉS DE ENTREGA */}
@@ -757,13 +977,47 @@ export default function AfterSalesDashboard({ data, actions, irA, role }) {
                         )}
                       </td>
                       <td>
-                        <button
-                          className="btn btn-primary btn-xs"
-                          onClick={() => abrirGestionCaso(c)}
-                          title="Gestionar caso, ver historial completo y evidencias"
-                        >
-                          <Icon nombre="edit" tamano={12} /> Gestionar
-                        </button>
+                        <div className="row-actions" style={{ gap: '4px', flexWrap: 'wrap' }}>
+                          <button
+                            className="btn btn-primary btn-xs"
+                            onClick={() => abrirGestionCaso(c)}
+                            title="Gestionar caso, ver historial completo y evidencias"
+                          >
+                            <Icon nombre="edit" tamano={12} /> Gestionar
+                          </button>
+                          {puedeGestionarPostventa && (
+                            <>
+                              {c.archivado ? (
+                                <button
+                                  className="btn btn-secondary btn-xs"
+                                  onClick={() => actions.restoreCase(c.id)}
+                                  title="Restaurar caso archivado"
+                                >
+                                  Restaurar
+                                </button>
+                              ) : (
+                                <button
+                                  className="btn btn-ghost btn-xs text-muted"
+                                  onClick={() => actions.archiveCase(c.id)}
+                                  title="Archivar caso"
+                                >
+                                  Archivar
+                                </button>
+                              )}
+                              <button
+                                className="btn btn-ghost btn-xs text-rojo"
+                                onClick={() => {
+                                  if (window.confirm(`¿Eliminar permanentemente el caso ${c.radicado || c.id}?`)) {
+                                    actions.deleteCase(c.id)
+                                  }
+                                }}
+                                title="Eliminar caso"
+                              >
+                                <Icon nombre="trash-2" tamano={12} />
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   )
@@ -943,6 +1197,38 @@ export default function AfterSalesDashboard({ data, actions, irA, role }) {
                               <Icon nombre="copy" tamano={12} /> Reimprimir
                             </button>
                           )}
+                          {puedeGestionarPostventa && (
+                            <>
+                              {c.archivado ? (
+                                <button
+                                  className="btn btn-secondary btn-xs"
+                                  onClick={() => actions.restoreCase(c.id)}
+                                  title="Restaurar caso"
+                                >
+                                  Restaurar
+                                </button>
+                              ) : (
+                                <button
+                                  className="btn btn-ghost btn-xs text-muted"
+                                  onClick={() => actions.archiveCase(c.id)}
+                                  title="Archivar caso"
+                                >
+                                  Archivar
+                                </button>
+                              )}
+                              <button
+                                className="btn btn-ghost btn-xs text-rojo"
+                                onClick={() => {
+                                  if (window.confirm(`¿Eliminar la solicitud de garantía ${c.radicado || c.id}?`)) {
+                                    actions.deleteCase(c.id)
+                                  }
+                                }}
+                                title="Eliminar caso"
+                              >
+                                <Icon nombre="trash-2" tamano={12} />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -962,7 +1248,188 @@ export default function AfterSalesDashboard({ data, actions, irA, role }) {
       )}
 
       {/* ===================================================================== */}
-      {/* SECCIÓN 4: CIERRE FORMAL Y REAPERTURA DE ÓRDENES                      */}
+      {/* SECCIÓN 4: SEGUIMIENTO Y TRAZABILIDAD OPERATIVA DE CASOS              */}
+      {/* ===================================================================== */}
+      {seccionActiva === 'Seguimiento' && (
+        <div className="card">
+          <div className="card-header">
+            <div>
+              <h2>Seguimiento y Trazabilidad Operativa de Casos</h2>
+              <span className="muted">
+                Control de ciclo de vida (6 estados formales), asignación operativa, bitácora de novedades y auditoría de radicados.
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              {casosSeguimientoFiltrados.length > POR_PAGINA_POSTVENTA && (
+                <div className="row" style={{ gap: '4px', alignItems: 'center', marginRight: '6px' }}>
+                  <button
+                    className="btn btn-ghost btn-xs"
+                    disabled={pagActualSeg <= 1}
+                    onClick={() => setPaginaSeg((p) => Math.max(1, p - 1))}
+                    style={{ padding: '3px 8px' }}
+                    title="Página anterior"
+                    aria-label="Página anterior"
+                  >
+                    <Icon nombre="chevron-left" tamano={14} />
+                  </button>
+                  <span className="sm mut" style={{ fontSize: '11.5px' }}>
+                    {pagActualSeg} / {totalPaginasSeg}
+                  </span>
+                  <button
+                    className="btn btn-ghost btn-xs"
+                    disabled={pagActualSeg >= totalPaginasSeg}
+                    onClick={() => setPaginaSeg((p) => Math.min(totalPaginasSeg, p + 1))}
+                    style={{ padding: '3px 8px' }}
+                    title="Página siguiente"
+                    aria-label="Página siguiente"
+                  >
+                    <Icon nombre="chevron-right" tamano={14} />
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th style={{ width: '135px' }}>Radicado / ID</th>
+                  <th style={{ width: '160px' }}>Orden y Cliente</th>
+                  <th>Categoría y Asunto</th>
+                  <th style={{ width: '140px' }}>Responsable / Canal</th>
+                  <th style={{ width: '170px' }}>Estado y Transición</th>
+                  <th style={{ width: '150px' }}>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {seguimientoVisibles.map((c) => {
+                  const ord = orders.find((o) => o.id === c.ordenId)
+                  return (
+                    <tr key={c.id}>
+                      <td className="mono">
+                        <button
+                          className="link-inline"
+                          onClick={() => abrirGestionCaso(c)}
+                          style={{ fontWeight: 700 }}
+                        >
+                          {c.radicado || c.id}
+                        </button>
+                        <div style={{ marginTop: 2 }}>
+                          <StatusBadge estado={c.prioridad || 'Media'} />
+                        </div>
+                      </td>
+                      <td>
+                        <a className="link" onClick={() => irA('detalle', c.ordenId)}>
+                          {c.ordenId}
+                        </a>
+                        <div style={{ fontWeight: 600, fontSize: 12 }}>{c.cliente || ord?.cliente || '—'}</div>
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: 600, fontSize: 12 }}>
+                          <span className="badge" style={{ fontSize: 10, marginRight: 4 }}>
+                            {c.categoria || c.tipo}
+                          </span>
+                          {c.motivo || c.tipo}
+                        </div>
+                        <div className="muted cell-truncate" style={{ fontSize: 11, maxWidth: 280 }} title={c.descripcion}>
+                          {c.descripcion}
+                        </div>
+                      </td>
+                      <td>
+                        <div style={{ fontSize: 12, fontWeight: 500 }}>{c.responsable || 'Sin asignar'}</div>
+                        <small className="muted" style={{ fontSize: 10 }}>
+                          {c.canal || 'Directo'} · {c.fecha}
+                        </small>
+                      </td>
+                      <td>
+                        <div style={{ marginBottom: 4 }}>
+                          <StatusBadge estado={c.estado} />
+                        </div>
+                        {puedeGestionarPostventa && (
+                          <select
+                            value={c.estado}
+                            onChange={(e) => {
+                              const nuevoEstado = e.target.value
+                              if (nuevoEstado !== c.estado) {
+                                actions.updateCase(
+                                  c.id,
+                                  { estado: nuevoEstado },
+                                  `Estado actualizado a "${nuevoEstado}" desde la mesa de seguimiento.`
+                                )
+                              }
+                            }}
+                            style={{ fontSize: 11, padding: '2px 4px', width: '100%', maxWidth: 150 }}
+                          >
+                            {ESTADOS_CASO_POSTVENTA.map((est) => (
+                              <option key={est} value={est}>
+                                → {est}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </td>
+                      <td>
+                        <div className="row-actions" style={{ gap: '4px', flexWrap: 'wrap' }}>
+                          <button
+                            className="btn btn-primary btn-xs"
+                            onClick={() => abrirGestionCaso(c)}
+                            title="Ver expediente e historial"
+                          >
+                            <Icon nombre="file-text" tamano={12} /> Ficha
+                          </button>
+                          {puedeGestionarPostventa && (
+                            <>
+                              {c.archivado ? (
+                                <button
+                                  className="btn btn-secondary btn-xs"
+                                  onClick={() => actions.restoreCase(c.id)}
+                                  title="Restaurar caso"
+                                >
+                                  Restaurar
+                                </button>
+                              ) : (
+                                <button
+                                  className="btn btn-ghost btn-xs text-muted"
+                                  onClick={() => actions.archiveCase(c.id)}
+                                  title="Archivar caso"
+                                >
+                                  Archivar
+                                </button>
+                              )}
+                              <button
+                                className="btn btn-ghost btn-xs text-rojo"
+                                onClick={() => {
+                                  if (window.confirm(`¿Eliminar definitivamente el caso ${c.radicado || c.id}?`)) {
+                                    actions.deleteCase(c.id)
+                                  }
+                                }}
+                                title="Eliminar caso"
+                              >
+                                <Icon nombre="trash-2" tamano={12} />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+                {casosSeguimientoFiltrados.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="empty">
+                      No hay casos en seguimiento para el filtro actual.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* SECCIÓN 5: CIERRE FORMAL Y REAPERTURA DE ÓRDENES                      */}
       {/* ===================================================================== */}
       {seccionActiva === 'Cierre' && (
         <div className="card">
@@ -1692,15 +2159,58 @@ export default function AfterSalesDashboard({ data, actions, irA, role }) {
                   </label>
                 </div>
 
-                <div className="form-actions">
-                  <button type="button" className="btn btn-secondary" onClick={() => setCasoDetalleId(null)}>
-                    Cerrar
-                  </button>
-                  {puedeGestionarPostventa && (
-                    <button type="submit" className="btn btn-primary">
-                      Guardar cambios y registrar en historial
+                <div className="form-actions" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', flexWrap: 'wrap', gap: 8 }}>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {puedeGestionarPostventa && (
+                      <>
+                        {casoSeleccionado.archivado ? (
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => {
+                              actions.restoreCase(casoSeleccionado.id)
+                              setCasoDetalleId(null)
+                            }}
+                          >
+                            Restaurar caso
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm text-muted"
+                            onClick={() => {
+                              actions.archiveCase(casoSeleccionado.id)
+                              setCasoDetalleId(null)
+                            }}
+                          >
+                            Archivar caso
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm text-rojo"
+                          onClick={() => {
+                            if (window.confirm(`¿Eliminar definitivamente el caso ${casoSeleccionado.radicado || casoSeleccionado.id}?`)) {
+                              actions.deleteCase(casoSeleccionado.id)
+                              setCasoDetalleId(null)
+                            }
+                          }}
+                        >
+                          Eliminar
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button type="button" className="btn btn-secondary" onClick={() => setCasoDetalleId(null)}>
+                      Cerrar
                     </button>
-                  )}
+                    {puedeGestionarPostventa && (
+                      <button type="submit" className="btn btn-primary">
+                        Guardar cambios y registrar en historial
+                      </button>
+                    )}
+                  </div>
                 </div>
               </form>
             )}

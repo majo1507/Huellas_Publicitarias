@@ -11,17 +11,24 @@ import {
   formatearFecha,
   formatearHora,
   parseFecha,
-  FECHA_DEMO,
   estaActiva,
   estaRetrasada,
 } from './format.js'
+
+// Etiqueta "Mes Año" en español calculada con la fecha real del sistema
+function etiquetaMes(desplazamiento = 0) {
+  const base = new Date()
+  const d = new Date(base.getFullYear(), base.getMonth() + desplazamiento, 1)
+  const txt = new Intl.DateTimeFormat('es-CO', { month: 'long', year: 'numeric' }).format(d)
+  return txt.charAt(0).toUpperCase() + txt.slice(1)
+}
 
 export const PERIODOS_GESTION = [
   { id: 'todo', label: 'Todo el registro histórico' },
   { id: 'ultimos_7', label: 'Últimos 7 días' },
   { id: 'ultimos_15', label: 'Últimos 15 días' },
-  { id: 'octubre_2026', label: 'Octubre 2026' },
-  { id: 'septiembre_2026', label: 'Septiembre 2026' },
+  { id: 'mes_actual', label: `Mes actual (${etiquetaMes(0)})` },
+  { id: 'mes_anterior', label: `Mes anterior (${etiquetaMes(-1)})` },
 ]
 
 export function filtrarOrdenesPorPeriodo(orders = [], periodo = 'todo') {
@@ -30,19 +37,21 @@ export function filtrarOrdenesPorPeriodo(orders = [], periodo = 'todo') {
 
   return orders.filter((o) => {
     const f = parseFecha(o.fechaSolicitud)
+    const ahora = new Date()
     if (periodo === 'ultimos_7') {
-      const diff = (FECHA_DEMO - f) / DIA_MS
-      return diff >= -365 && diff <= 7
+      const diff = (ahora - f) / DIA_MS
+      return diff >= 0 && diff <= 7
     }
     if (periodo === 'ultimos_15') {
-      const diff = (FECHA_DEMO - f) / DIA_MS
-      return diff >= -365 && diff <= 15
+      const diff = (ahora - f) / DIA_MS
+      return diff >= 0 && diff <= 15
     }
-    if (periodo === 'octubre_2026') {
-      return f.getMonth() === 9 && f.getFullYear() === 2026
+    if (periodo === 'mes_actual') {
+      return f.getMonth() === ahora.getMonth() && f.getFullYear() === ahora.getFullYear()
     }
-    if (periodo === 'septiembre_2026') {
-      return f.getMonth() === 8 && f.getFullYear() === 2026
+    if (periodo === 'mes_anterior') {
+      const ant = new Date(ahora.getFullYear(), ahora.getMonth() - 1, 1)
+      return f.getMonth() === ant.getMonth() && f.getFullYear() === ant.getFullYear()
     }
     return true
   })

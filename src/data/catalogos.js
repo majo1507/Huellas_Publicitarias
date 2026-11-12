@@ -281,12 +281,12 @@ export const METODOS_ENTREGA = [
   'Transportadora nacional',
 ];
 
-// Catálogos de Postventa: estrictamente divididos en 3 secciones independientes
+// Catálogos de Postventa: 5 secciones integrales de calidad y servicio
 export const SECCIONES_POSTVENTA = [
   {
-    id: 'Satisfacción',
-    titulo: 'Calificación de satisfacción',
-    subtitulo: 'Evaluación del cliente posterior a la entrega del pedido',
+    id: 'Resumen',
+    titulo: 'Resumen General',
+    subtitulo: 'Indicadores clave de calidad, casos activos, tiempos y satisfacción',
   },
   {
     id: 'PQRSF',
@@ -297,6 +297,16 @@ export const SECCIONES_POSTVENTA = [
     id: 'Garantía',
     titulo: 'Gestión de garantías',
     subtitulo: 'Evaluación técnica por daños, defectos de material, impresión o especificaciones',
+  },
+  {
+    id: 'Satisfacción',
+    titulo: 'Calificación de satisfacción',
+    subtitulo: 'Evaluación del cliente posterior a la entrega del pedido',
+  },
+  {
+    id: 'Seguimiento',
+    titulo: 'Seguimiento de Casos',
+    subtitulo: 'Trazabilidad operativa, transiciones de estado y bitácora de novedades',
   },
 ];
 
@@ -368,10 +378,11 @@ export const ACCIONES_GARANTIA = [
 ];
 
 export const ESTADOS_CASO_POSTVENTA = [
-  'Abierto',
-  'En revisión',
-  'En trámite',
-  'Resuelto',
+  'Recibido',
+  'Pendiente de revisión',
+  'En atención',
+  'En espera de información',
+  'Solucionado',
   'Cerrado',
 ];
 

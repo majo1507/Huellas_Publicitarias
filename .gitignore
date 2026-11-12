@@ -11,6 +11,10 @@ programacion_web/
 *.bak
 *.bak.*
 *.log
+*.patch
+backend/backups/
+backend/check_tables.js
+backend/create_backup.js
 ORVEX_RESPALDO_VERSION_ACTUAL/
 
 # Metadatos locales de agentes
@@ -20,4 +24,13 @@ ORVEX_RESPALDO_VERSION_ACTUAL/
 skills-lock.json
 
 # Tokens y archivos de configuración sensibles de integraciones
-backend/config/
+backend/config/*.json
+backend/config/*.pem
+backend/config/*.key
+backend/config/*.enc
+backend/config/.*
+backend/config/tokens/
+*firebase*.json
+*service-account*.json
+*serviceAccount*.json
+firebase-adminsdk*.json

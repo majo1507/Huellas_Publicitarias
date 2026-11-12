@@ -23,7 +23,7 @@ function inferirCategoria(pv) {
 }
 
 function formatearCasoPostventa(pv) {
-  const ordenCodigo = pv.orden_codigo || `OP-2026-${String(pv.orden_id).padStart(4, '0')}`;
+  const ordenCodigo = pv.orden_codigo || (pv.orden_id ? `OP-2026-${String(pv.orden_id).padStart(4, '0')}` : '—');
   const categoria = inferirCategoria(pv);
   const subtipo = pv.subtipo || (categoria === 'Garantía' ? 'Garantía' : categoria === 'Satisfacción' ? 'Satisfacción' : pv.tipo);
   const fechaBase = pv.fecha_texto || formatearFechaHoy(new Date(pv.created_at));
@@ -38,13 +38,15 @@ function formatearCasoPostventa(pv) {
     },
   ];
   return {
-    id: pv.codigo || pv.id,
+    id: pv.radicado || pv.codigo || pv.id,
     uuid: pv.id,
     codigo: pv.codigo,
+    radicado: pv.radicado,
+    canal: pv.canal || 'Directo',
     ordenId: ordenCodigo,
     orden_id: pv.orden_id,
-    producto: pv.producto,
-    cliente: pv.cliente_empresa,
+    producto: pv.producto || '—',
+    cliente: pv.cliente_empresa || pv.email_contacto || pv.telefono_contacto || 'Cliente',
     cliente_empresa: pv.cliente_empresa,
     ejecutiva_nombre: pv.ejecutiva_nombre,
     categoria,
@@ -54,6 +56,11 @@ function formatearCasoPostventa(pv) {
     prioridad: pv.prioridad || 'Media',
     fecha: fechaBase,
     descripcion: pv.descripcion || '',
+    radicado: pv.radicado || pv.codigo,
+    canal: pv.canal || 'Portal Web',
+    email_contacto: pv.email_contacto || '',
+    telefono_contacto: pv.telefono_contacto || '',
+    archivado: Boolean(pv.archivado),
     responsable: pv.responsable_nombre !== null && pv.responsable_nombre !== undefined ? pv.responsable_nombre : '',
     estado: pv.estado || 'Abierto',
     dictamenGarantia: pv.dictamen_garantia || (categoria === 'Garantía' ? 'Pendiente de evaluación' : ''),
@@ -83,7 +90,10 @@ async function resolverCaso(dbOrClient, idOrCodigo) {
     const res = await dbOrClient.query('SELECT * FROM postventa WHERE id = $1', [str]);
     if (res.rowCount > 0) return res.rows[0];
   }
-  const res = await dbOrClient.query('SELECT * FROM postventa WHERE codigo = $1', [str]);
+  const res = await dbOrClient.query(
+    'SELECT * FROM postventa WHERE codigo = $1 OR radicado = $1',
+    [str]
+  );
   return res.rowCount > 0 ? res.rows[0] : null;
 }
 
@@ -100,9 +110,9 @@ const listarPostventa = async (req, res) => {
         c.empresa AS cliente_empresa,
         u.nombre_completo AS ejecutiva_nombre
       FROM postventa pv
-      INNER JOIN ordenes o ON pv.orden_id = o.id
-      INNER JOIN clientes c ON o.cliente_id = c.id
-      INNER JOIN usuarios u ON pv.ejecutiva_id = u.id
+      LEFT JOIN ordenes o ON pv.orden_id = o.id
+      LEFT JOIN clientes c ON o.cliente_id = c.id
+      LEFT JOIN usuarios u ON pv.ejecutiva_id = u.id
       WHERE 1=1
     `;
     const params = [];
@@ -117,6 +127,11 @@ const listarPostventa = async (req, res) => {
     if (tipo) {
       params.push(tipo);
       queryText += ` AND pv.tipo = $${params.length}`;
+    }
+
+    const incluirArchivados = req.query.incluir_archivados === 'true' || req.query.archivados === 'true';
+    if (!incluirArchivados) {
+      queryText += ' AND COALESCE(pv.archivado, false) = false';
     }
 
     queryText += ' ORDER BY pv.created_at DESC, COALESCE(pv.codigo, pv.id::text) ASC';
@@ -329,9 +344,9 @@ const crearPostventa = async (req, res) => {
     const fullRes = await pool.query(
       `SELECT pv.*, o.codigo AS orden_codigo, o.producto, c.empresa AS cliente_empresa, u.nombre_completo AS ejecutiva_nombre
        FROM postventa pv
-       INNER JOIN ordenes o ON pv.orden_id = o.id
-       INNER JOIN clientes c ON o.cliente_id = c.id
-       INNER JOIN usuarios u ON pv.ejecutiva_id = u.id
+       LEFT JOIN ordenes o ON pv.orden_id = o.id
+       LEFT JOIN clientes c ON o.cliente_id = c.id
+       LEFT JOIN usuarios u ON pv.ejecutiva_id = u.id
        WHERE pv.id = $1`,
       [insertRes.rows[0].id]
     );
@@ -502,9 +517,9 @@ const actualizarPostventa = async (req, res) => {
     const fullRes = await pool.query(
       `SELECT pv.*, o.codigo AS orden_codigo, o.producto, c.empresa AS cliente_empresa, u.nombre_completo AS ejecutiva_nombre
        FROM postventa pv
-       INNER JOIN ordenes o ON pv.orden_id = o.id
-       INNER JOIN clientes c ON o.cliente_id = c.id
-       INNER JOIN usuarios u ON pv.ejecutiva_id = u.id
+       LEFT JOIN ordenes o ON pv.orden_id = o.id
+       LEFT JOIN clientes c ON o.cliente_id = c.id
+       LEFT JOIN usuarios u ON pv.ejecutiva_id = u.id
        WHERE pv.id = $1`,
       [actual.id]
     );
@@ -590,9 +605,9 @@ const solicitarReimpresion = async (req, res) => {
     const fullRes = await pool.query(
       `SELECT pv.*, o.codigo AS orden_codigo, o.producto, c.empresa AS cliente_empresa, u.nombre_completo AS ejecutiva_nombre
        FROM postventa pv
-       INNER JOIN ordenes o ON pv.orden_id = o.id
-       INNER JOIN clientes c ON o.cliente_id = c.id
-       INNER JOIN usuarios u ON pv.ejecutiva_id = u.id
+       LEFT JOIN ordenes o ON pv.orden_id = o.id
+       LEFT JOIN clientes c ON o.cliente_id = c.id
+       LEFT JOIN usuarios u ON pv.ejecutiva_id = u.id
        WHERE pv.id = $1`,
       [caso.id]
     );
@@ -813,9 +828,9 @@ const autorizarReimpresion = async (req, res) => {
     const fullRes = await pool.query(
       `SELECT pv.*, o.codigo AS orden_codigo, o.producto, c.empresa AS cliente_empresa, u.nombre_completo AS ejecutiva_nombre
        FROM postventa pv
-       INNER JOIN ordenes o ON pv.orden_id = o.id
-       INNER JOIN clientes c ON o.cliente_id = c.id
-       INNER JOIN usuarios u ON pv.ejecutiva_id = u.id
+       LEFT JOIN ordenes o ON pv.orden_id = o.id
+       LEFT JOIN clientes c ON o.cliente_id = c.id
+       LEFT JOIN usuarios u ON pv.ejecutiva_id = u.id
        WHERE pv.id = $1`,
       [caso.id]
     );
@@ -841,10 +856,96 @@ const autorizarReimpresion = async (req, res) => {
   }
 };
 
+// Archivar caso de postventa
+const archivarPostventa = async (req, res) => {
+  try {
+    const caso = await resolverCaso(pool, req.params.id);
+    if (!caso) {
+      return res.status(404).json({ error: `Caso de postventa ${req.params.id} no encontrado.` });
+    }
+
+    await pool.query('UPDATE postventa SET archivado = true WHERE id = $1', [caso.id]);
+    const fullRes = await pool.query(
+      `SELECT pv.*, o.codigo AS orden_codigo, o.producto, c.empresa AS cliente_empresa, u.nombre_completo AS ejecutiva_nombre
+       FROM postventa pv
+       LEFT JOIN ordenes o ON pv.orden_id = o.id
+       LEFT JOIN clientes c ON o.cliente_id = c.id
+       LEFT JOIN usuarios u ON pv.ejecutiva_id = u.id
+       WHERE pv.id = $1`,
+      [caso.id]
+    );
+
+    res.json({
+      message: 'Caso de postventa archivado exitosamente.',
+      data: formatearCasoPostventa(fullRes.rows[0]),
+    });
+  } catch (error) {
+    console.error('postventaController.archivarPostventa error:', error.message);
+    res.status(500).json({ error: 'Error al archivar el caso de postventa.' });
+  }
+};
+
+// Restaurar caso de postventa
+const restaurarPostventa = async (req, res) => {
+  try {
+    const caso = await resolverCaso(pool, req.params.id);
+    if (!caso) {
+      return res.status(404).json({ error: `Caso de postventa ${req.params.id} no encontrado.` });
+    }
+
+    await pool.query('UPDATE postventa SET archivado = false WHERE id = $1', [caso.id]);
+    const fullRes = await pool.query(
+      `SELECT pv.*, o.codigo AS orden_codigo, o.producto, c.empresa AS cliente_empresa, u.nombre_completo AS ejecutiva_nombre
+       FROM postventa pv
+       LEFT JOIN ordenes o ON pv.orden_id = o.id
+       LEFT JOIN clientes c ON o.cliente_id = c.id
+       LEFT JOIN usuarios u ON pv.ejecutiva_id = u.id
+       WHERE pv.id = $1`,
+      [caso.id]
+    );
+
+    res.json({
+      message: 'Caso de postventa restaurado exitosamente.',
+      data: formatearCasoPostventa(fullRes.rows[0]),
+    });
+  } catch (error) {
+    console.error('postventaController.restaurarPostventa error:', error.message);
+    res.status(500).json({ error: 'Error al restaurar el caso de postventa.' });
+  }
+};
+
+// Eliminar caso seguro (solo si fue registrado por error y sin reimpresión autorizada)
+const eliminarPostventa = async (req, res) => {
+  try {
+    const caso = await resolverCaso(pool, req.params.id);
+    if (!caso) {
+      return res.status(404).json({ error: `Caso de postventa ${req.params.id} no encontrado.` });
+    }
+
+    if (caso.reimpresion_autorizada || caso.reimpresion_orden_id) {
+      return res.status(400).json({
+        error: `No es posible eliminar el caso de garantía ${caso.codigo} porque ya tiene una reimpresión autorizada y generada en planta. Debe archivarse para mantener la trazabilidad.`,
+      });
+    }
+
+    await pool.query('DELETE FROM postventa WHERE id = $1', [caso.id]);
+    res.json({
+      message: `Registro de postventa "${caso.codigo || caso.id}" eliminado permanentemente.`,
+      id: caso.codigo || caso.id,
+    });
+  } catch (error) {
+    console.error('postventaController.eliminarPostventa error:', error.message);
+    res.status(500).json({ error: 'Error al eliminar el caso de postventa.' });
+  }
+};
+
 module.exports = {
   listarPostventa,
   crearPostventa,
   actualizarPostventa,
+  archivarPostventa,
+  restaurarPostventa,
+  eliminarPostventa,
   solicitarReimpresion,
   autorizarReimpresion,
 };

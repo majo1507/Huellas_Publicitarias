@@ -4,6 +4,8 @@ const { verificarToken, verificarRol, asociarCapacidad } = require('../middlewar
 const {
   listarTareas,
   crearTarea,
+  actualizarTarea,
+  eliminarTarea,
   asignarTarea,
   ejecutarAccionTarea,
   actualizarAvanceTarea,
@@ -15,6 +17,8 @@ router.use(verificarToken);
 
 router.get('/', listarTareas);
 router.post('/', asociarCapacidad('tareas.crear'), verificarRol('coord'), crearTarea);
+router.patch('/:id', verificarRol('coord', 'gerente'), actualizarTarea);
+router.delete('/:id', verificarRol('coord', 'gerente'), eliminarTarea);
 router.patch('/:id/asignar', asociarCapacidad('tareas.asignar'), verificarRol('coord'), asignarTarea);
 router.patch('/:id/accion', verificarRol('produccion', 'disenador', 'coord'), ejecutarAccionTarea);
 router.patch('/:id/avance', verificarRol('produccion', 'disenador', 'coord'), actualizarAvanceTarea);

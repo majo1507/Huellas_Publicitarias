@@ -2,9 +2,7 @@ import { ETAPAS } from '../data/mockData.js'
 
 // Funciones auxiliares de fechas, dinero y estados de las órdenes
 
-// Criterio temporal unificado: preferir la fecha actual del sistema con normalización a medianoche
-export const FECHA_DEMO = new Date(2026, 9, 3)
-
+// Criterio temporal unificado: siempre la fecha actual del sistema
 export function obtenerFechaReferencia() {
   return new Date()
 }
@@ -270,11 +268,12 @@ export function eventosRecientes(orders, { soloPublicos = false, limite = 6 } = 
     .slice(0, limite)
 }
 
-// Serie de las últimas 6 semanas: órdenes recibidas y entregadas (calculada con los datos reales del prototipo)
+// Serie de las últimas 6 semanas: órdenes recibidas y entregadas (calculada dinámicamente con fechas reales)
 export function serieSemanal(orders, semanas = 6) {
   const resultado = []
+  const ref = obtenerFechaReferencia()
   for (let i = semanas - 1; i >= 0; i--) {
-    const fin = new Date(FECHA_DEMO.getTime() - i * 7 * DIA_MS)
+    const fin = new Date(ref.getTime() - i * 7 * DIA_MS)
     const inicio = new Date(fin.getTime() - 6 * DIA_MS)
     const enRango = (texto) => {
       const f = parseFecha(texto)

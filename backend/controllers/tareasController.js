@@ -865,9 +865,68 @@ const crearTarea = async (req, res) => {
   }
 };
 
+// Actualizar actividad / tarea
+const actualizarTarea = async (req, res) => {
+  try {
+    const tarea = await fetchTareaByIdOrCodigo(req.params.id);
+    if (!tarea) {
+      return res.status(404).json({ error: `Actividad ${req.params.id} no encontrada.` });
+    }
+
+    const titulo = req.body.actividad || req.body.titulo || tarea.titulo;
+    const prioridad = req.body.prioridad || tarea.prioridad;
+    const fechaLimite = req.body.fechaLimite !== undefined ? req.body.fechaLimite : tarea.fecha_limite;
+    const etapa = req.body.etapa || tarea.etapa;
+
+    const upRes = await pool.query(
+      `UPDATE tareas
+       SET titulo = $1, prioridad = $2, fecha_limite = $3, etapa = $4, updated_at = NOW()
+       WHERE id = $5
+       RETURNING *`,
+      [titulo, prioridad, fechaLimite, etapa, tarea.id]
+    );
+
+    const updated = await fetchTareaByIdOrCodigo(tarea.id);
+    res.json({
+      mensaje: 'Actividad actualizada exitosamente.',
+      data: mapTareaRow(updated),
+    });
+  } catch (err) {
+    console.error('tareasController.actualizarTarea error:', err.message);
+    res.status(500).json({ error: 'Error al actualizar la actividad.' });
+  }
+};
+
+// Eliminar tarea segura
+const eliminarTarea = async (req, res) => {
+  try {
+    const tarea = await fetchTareaByIdOrCodigo(req.params.id);
+    if (!tarea) {
+      return res.status(404).json({ error: `Actividad ${req.params.id} no encontrada.` });
+    }
+
+    if (tarea.estado === 'Completada' || tarea.estado === 'En proceso') {
+      return res.status(400).json({
+        error: `No es posible eliminar la actividad "${tarea.titulo}" porque se encuentra en estado "${tarea.estado}". Si ya no es requerida, marque su avance o agregue una nota explicativa.`,
+      });
+    }
+
+    await pool.query('DELETE FROM tareas WHERE id = $1', [tarea.id]);
+    res.json({
+      mensaje: `Actividad "${tarea.titulo}" eliminada permanentemente.`,
+      id: tarea.codigo || tarea.id,
+    });
+  } catch (err) {
+    console.error('tareasController.eliminarTarea error:', err.message);
+    res.status(500).json({ error: 'Error al eliminar la actividad.' });
+  }
+};
+
 module.exports = {
   listarTareas,
   crearTarea,
+  actualizarTarea,
+  eliminarTarea,
   asignarTarea,
   ejecutarAccionTarea,
   actualizarAvanceTarea,

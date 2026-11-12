@@ -73,11 +73,11 @@ const obtenerMetricas = async (req, res) => {
       }
     }
 
-    // Cumplimiento de entregas sobre el universo total de órdenes comprometidas
+    // Cumplimiento de entregas sobre el universo total de órdenes comprometidas (null si no hay órdenes)
     const enPlazoTotal = Math.max(0, totalOrdenes - retrasadasCount);
     const aTiempoPct = totalOrdenes > 0
       ? Math.round((enPlazoTotal / totalOrdenes) * 100)
-      : 100;
+      : null;
 
     const totalPresupuesto = esRolOperativoSinFinanciero
       ? undefined
@@ -267,7 +267,33 @@ const obtenerMetricas = async (req, res) => {
       ? cicloRes.rows[0].ciclo_promedio
       : null;
 
-    res.json({
+    // Filtrado de seguridad según rol:
+    // Gerencia recibe el reporte ejecutivo integral con métricas financieras y comerciales.
+    // Coordinación recibe únicamente los indicadores operativos de planta y taller.
+    const esGerencia = rolUsuario === 'gerente';
+
+    // 13. Tiempos promedio reales por etapa (calculados desde orden_etapa_historial)
+    let tiemposPromedioItems = [];
+    let hayTelemetriaEtapas = false;
+    try {
+      const tiemposRes = await pool.query(`
+        SELECT
+          etapa_nombre AS label,
+          ROUND(AVG(tiempo_segundos) / 3600.0, 1)::float AS value_horas,
+          ROUND(AVG(tiempo_segundos) / 86400.0, 1)::float AS value,
+          COUNT(*)::int AS mediciones
+        FROM orden_etapa_historial
+        WHERE tiempo_segundos IS NOT NULL AND tiempo_segundos > 0
+        GROUP BY etapa_nombre
+        ORDER BY MIN(etapa_nueva) ASC;
+      `);
+      if (tiemposRes.rowCount > 0) {
+        tiemposPromedioItems = tiemposRes.rows;
+        hayTelemetriaEtapas = true;
+      }
+    } catch (_) {}
+
+    const payload = {
       resumen: {
         total_ordenes: totalOrdenes,
         activas: activas.length,
@@ -275,12 +301,12 @@ const obtenerMetricas = async (req, res) => {
         bloqueadas: bloqueadas.length,
         retrasadas: retrasadasCount,
         a_tiempo_pct: aTiempoPct,
-        ...(totalPresupuesto !== undefined ? { total_presupuestado: totalPresupuesto } : {}),
-        solicitudes: solRes.rows[0],
+        ...(esGerencia && totalPresupuesto !== undefined ? { total_presupuestado: totalPresupuesto } : {}),
+        solicitudes: esGerencia ? solRes.rows[0] : undefined,
         actividades: tarRes.rows[0],
-        postventa: postventaStatsRes.rows[0],
-        promedio_satisfaccion_estrellas: postventaStatsRes.rows[0].promedio_satisfaccion,
-        total_evaluaciones_postventa: postventaStatsRes.rows[0].total_evaluaciones,
+        postventa: esGerencia ? postventaStatsRes.rows[0] : undefined,
+        promedio_satisfaccion_estrellas: esGerencia ? postventaStatsRes.rows[0].promedio_satisfaccion : undefined,
+        total_evaluaciones_postventa: esGerencia ? postventaStatsRes.rows[0].total_evaluaciones : undefined,
         eficiencia_diseno: {
           aprobados_primera_version_pct: aprobadosPrimeraVersionPct,
           aprobadas_v1: arteStats.aprobadas_v1,
@@ -291,32 +317,38 @@ const obtenerMetricas = async (req, res) => {
         aprobados_primera_version_pct: aprobadosPrimeraVersionPct,
         total_artes_evaluados: arteStats.total_evaluadas,
         artes_pendientes_evaluacion: arteStats.total_pendientes,
-        ciclo_promedio_dias: cicloPromedioDias,
-        comunicaciones_totales: {
-          conversaciones: totalConversaciones,
-          mensajes: totalMensajes,
-        },
+        ciclo_promedio_dias: esGerencia ? cicloPromedioDias : undefined,
+        ...(esGerencia ? {
+          comunicaciones_totales: {
+            conversaciones: totalConversaciones,
+            mensajes: totalMensajes,
+          },
+        } : {}),
       },
       embudo_produccion_kanban: embudoEtapas,
       ordenes_activas_por_etapa: porEtapa,
       cuello_de_botella: cuello,
       prioridades_activas: prioridadRes.rows,
       carga_usuarios: cargaRes.rows,
-      comunicaciones: {
-        conversaciones_por_canal: conversacionesPorCanal,
-        mensajes_por_canal: mensajesPorCanal,
-        total_conversaciones: totalConversaciones,
-        total_mensajes: totalMensajes,
-      },
-      comunicaciones_por_canal: conversacionesPorCanal,
-      top_clientes_activos: topClientesRes.rows,
-      // Tiempos promedio por etapa: honestamente sin datos de telemetría histórica
+      ...(esGerencia ? {
+        comunicaciones: {
+          conversaciones_por_canal: conversacionesPorCanal,
+          mensajes_por_canal: mensajesPorCanal,
+          total_conversaciones: totalConversaciones,
+          total_mensajes: totalMensajes,
+        },
+        comunicaciones_por_canal: conversacionesPorCanal,
+        top_clientes_activos: topClientesRes.rows,
+      } : {}),
+      // Tiempos promedio por etapa: dinámico según orden_etapa_historial
       tiempos_promedio_etapa: {
-        disponible: false,
-        mensaje: 'Sin datos disponibles',
-        items: [],
+        disponible: hayTelemetriaEtapas,
+        mensaje: hayTelemetriaEtapas ? 'Consolidado histórico de transiciones' : 'Sin datos disponibles',
+        items: tiemposPromedioItems,
       },
-    });
+    };
+
+    res.json(payload);
   } catch (error) {
     console.error('dashboardController.obtenerMetricas error:', error.message);
     res.status(500).json({ error: 'Error al generar métricas del dashboard.', detalle: error.message });

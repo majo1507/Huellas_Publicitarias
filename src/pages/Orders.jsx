@@ -7,7 +7,7 @@ import OrderCard from '../components/OrderCard.jsx'
 import ProgressBar from '../components/ProgressBar.jsx'
 import Avatar from '../components/Avatar.jsx'
 import Icon from '../components/Icon.jsx'
-import { ETAPAS, OPERARIOS } from '../data/mockData.js'
+import { ETAPAS } from '../data/mockData.js'
 import { estaActiva, estaRetrasada, estaEnRiesgo, prioridadOrden, textoPlazo, formatoCOP, progreso } from '../utils/format.js'
 import { generarReporteOrdenPDF } from '../utils/pdfReport.js'
 
@@ -20,10 +20,17 @@ export default function Orders({ data, actions, irA, role }) {
   const [responsableEdit, setResponsableEdit] = useState('')
   const [presupuestoEdit, setPresupuestoEdit] = useState(0)
   const [costoEdit, setCostoEdit] = useState(0)
+  const [filtroEstado, setFiltroEstado] = useState('activas') // 'activas' | 'archivadas' | 'todas'
 
-  const esCoordinador = role === 'coordinador'
+  const esCoordinador = role === 'coordinador' || role === 'gerencia'
   const soloEntregadas = role === 'postventa'
-  const base = soloEntregadas ? data.orders.filter((o) => !estaActiva(o)) : data.orders
+  let base = soloEntregadas ? data.orders.filter((o) => !estaActiva(o)) : data.orders
+
+  if (filtroEstado === 'activas') {
+    base = base.filter((o) => !o.archivado)
+  } else if (filtroEstado === 'archivadas') {
+    base = base.filter((o) => Boolean(o.archivado))
+  }
   const titulo = soloEntregadas
     ? 'Órdenes entregadas'
     : role === 'comercial'
@@ -45,14 +52,10 @@ export default function Orders({ data, actions, irA, role }) {
     : []
   const listaDisenadores = usuariosEquipo.some((u) => u.rol === 'Diseñador')
     ? usuariosEquipo.filter((u) => u.rol === 'Diseñador' || u.rol === 'Coordinador').map((u) => u.nombre)
-    : ['María López', 'Carlos Gómez']
+    : []
   const listaOperarios = [
     ...new Set([
-      'Pedro Morales',
-      ...OPERARIOS,
       ...usuariosEquipo.map((u) => u.nombre),
-      'María López',
-      'Carlos Gómez',
     ]),
   ]
 
@@ -60,8 +63,8 @@ export default function Orders({ data, actions, irA, role }) {
     setOrdenProgramando(o)
     setPrioridadEdit(o.prioridad || prioridadOrden(o) || 'Media')
     setFechaEntregaEdit(o.fechaEntrega || '')
-    setDisenadorEdit(o.disenador || 'María López')
-    setResponsableEdit(o.responsable || 'Pedro Morales')
+    setDisenadorEdit(o.disenador || '')
+    setResponsableEdit(o.responsable || '')
     setPresupuestoEdit(Number(o.presupuesto || 0))
     setCostoEdit(Number(o.costoInterno || 0))
   }
@@ -157,7 +160,7 @@ export default function Orders({ data, actions, irA, role }) {
         esCoordinador ? (
           <div style={{ fontSize: '11.5px', lineHeight: '1.4' }}>
             <div>
-              <span className="mut">D: </span><strong>{o.disenador || 'María López'}</strong>
+              <span className="mut">D: </span><strong>{o.disenador || 'Sin asignar'}</strong>
             </div>
             <div>
               <span className="mut">T: </span><strong>{o.responsable}</strong>
@@ -216,6 +219,39 @@ export default function Orders({ data, actions, irA, role }) {
               <Icon nombre="download" tamano={12} /> PDF
             </button>
           )}
+          {esCoordinador && (
+            <>
+              {o.archivado ? (
+                <button
+                  className="btn btn-outline btn-xs"
+                  onClick={() => actions?.restoreOrder && actions.restoreOrder(o.id)}
+                  title="Restaurar orden archivada"
+                >
+                  <Icon nombre="refresh-cw" tamano={12} />
+                </button>
+              ) : (
+                <button
+                  className="btn btn-outline btn-xs"
+                  onClick={() => actions?.archiveOrder && actions.archiveOrder(o.id)}
+                  title="Archivar orden"
+                >
+                  <Icon nombre="archive" tamano={12} />
+                </button>
+              )}
+              <button
+                className="btn btn-outline btn-xs"
+                style={{ color: '#ef4444', borderColor: '#fca5a5' }}
+                onClick={() => {
+                  if (window.confirm(`¿Está seguro de eliminar permanentemente la orden ${o.id}? Si cuenta con registros de tareas, pagos o entregas asociadas, el sistema bloqueará la acción para preservar la integridad.`)) {
+                    actions?.deleteOrder && actions.deleteOrder(o.id)
+                  }
+                }}
+                title="Eliminar orden permanente"
+              >
+                <Icon nombre="trash-2" tamano={12} />
+              </button>
+            </>
+          )}
         </div>
       ),
     },
@@ -243,6 +279,28 @@ export default function Orders({ data, actions, irA, role }) {
           ) : null
         }
       />
+
+      {/* Selector de estado (Activas / Archivadas / Todas) */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+        <button
+          className={`btn btn-sm ${filtroEstado === 'activas' ? 'btn-primary' : 'btn-outline'}`}
+          onClick={() => setFiltroEstado('activas')}
+        >
+          Activas ({data.orders.filter((o) => !o.archivado).length})
+        </button>
+        <button
+          className={`btn btn-sm ${filtroEstado === 'archivadas' ? 'btn-primary' : 'btn-outline'}`}
+          onClick={() => setFiltroEstado('archivadas')}
+        >
+          Archivadas ({data.orders.filter((o) => o.archivado).length})
+        </button>
+        <button
+          className={`btn btn-sm ${filtroEstado === 'todas' ? 'btn-primary' : 'btn-outline'}`}
+          onClick={() => setFiltroEstado('todas')}
+        >
+          Todas ({data.orders.length})
+        </button>
+      </div>
 
       {esCoordinador && (
         <div className="kpis" style={{ marginBottom: '16px' }}>

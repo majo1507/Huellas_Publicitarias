@@ -11,6 +11,16 @@ router.get('/', verificarToken, ordenesController.listarOrdenes);
 router.get('/:id', verificarToken, ordenesController.obtenerOrdenPorId);
 router.get('/:id/historial', verificarToken, ordenesController.obtenerHistorialOrden);
 
+// Edición de datos generales de la orden (Coordinador y Gerencia)
+router.patch('/:id', verificarToken, verificarRol('coord', 'gerente'), ordenesController.actualizarOrden);
+
+// Archivar y restaurar órdenes de producción
+router.patch('/:id/archivar', verificarToken, verificarRol('coord', 'gerente'), ordenesController.archivarOrden);
+router.patch('/:id/restaurar', verificarToken, verificarRol('coord', 'gerente'), ordenesController.restaurarOrden);
+
+// Eliminación permanente segura (verificando dependencias)
+router.delete('/:id', verificarToken, verificarRol('coord', 'gerente'), ordenesController.eliminarOrden);
+
 // Creación formal de orden de producción vinculada a solicitud (exclusivo Coordinador)
 router.post(
   '/',
@@ -20,12 +30,12 @@ router.post(
   ordenesController.crearOrden
 );
 
-// Transición de etapa global de la orden en planta (controlada automáticamente por ORVEX según avance de actividades y aprobaciones; bloqueada para avance manual)
+// Transición de etapa global de la orden en planta (Exclusivo Coordinación de Producción)
 router.patch(
   '/:id/etapa',
   verificarToken,
   asociarCapacidad('ordenes.etapa'),
-  verificarRol('sistema_automatico'),
+  verificarRol('coord'),
   ordenesController.actualizarEtapa
 );
 
@@ -38,12 +48,12 @@ router.patch(
   ordenesController.actualizarAsignacionOrden
 );
 
-// Registro formal de entrega y remisión (Comercial/Recepción y Postventa; retirado de Coordinación)
+// Registro formal de entrega y remisión (Coordinación de Producción o Postventa)
 router.post(
   '/:id/entrega',
   verificarToken,
   asociarCapacidad('ordenes.entrega'),
-  verificarRol('ejecutiva', 'postventa'),
+  verificarRol('coord', 'postventa'),
   upload.single('evidencia'),
   ordenesController.registrarEntrega
 );

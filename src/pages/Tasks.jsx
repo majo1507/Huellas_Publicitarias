@@ -7,10 +7,9 @@ import Avatar from '../components/Avatar.jsx'
 import Modal from '../components/Modal.jsx'
 import ProgressBar from '../components/ProgressBar.jsx'
 import Icon from '../components/Icon.jsx'
-import { OPERARIOS } from '../data/mockData.js'
 import { ROLES } from '../data/roles.js'
 import { ACTIVIDADES_TALLER_POR_ETAPA } from '../data/catalogos.js'
-import { estaActiva } from '../utils/format.js'
+import { estaActiva, formatearFecha } from '../utils/format.js'
 
 export default function Tasks({ data, actions, irA, role, usuarioActual: sesion }) {
   const [pestaña, setPestaña] = useState('todas')
@@ -30,21 +29,19 @@ export default function Tasks({ data, actions, irA, role, usuarioActual: sesion 
   const [descNuevaAct, setDescNuevaAct] = useState('')
   const [instNuevaAct, setInstNuevaAct] = useState('')
   const [etapaNuevaAct, setEtapaNuevaAct] = useState('Impresión')
-  const [respNuevaAct, setRespNuevaAct] = useState('Pedro Morales')
+  const [respNuevaAct, setRespNuevaAct] = useState('')
   const [prioNuevaAct, setPrioNuevaAct] = useState('Media')
-  const [fechaNuevaAct, setFechaNuevaAct] = useState('12/10/2026')
+  const [fechaNuevaAct, setFechaNuevaAct] = useState(() => formatearFecha(new Date()))
   const [errNuevaAct, setErrNuevaAct] = useState('')
 
   // Persona autenticada; el nombre de ejemplo del rol solo aplica sin sesión
   const usuarioActual = sesion?.nombre || ROLES[role]?.usuario?.nombre || 'Usuario'
   const esMia = (t) => (t.owner_id && sesion?.dbId ? t.owner_id === sesion.dbId : t.responsable === usuarioActual)
   const orden = (ordenId) => data.orders.find((o) => o.id === ordenId)
-  const puedeReasignar = role === 'coordinador'
+  const puedeReasignar = role === 'coordinador' || role === 'gerencia'
   const puedeEjecutar = role === 'operario'
   const listaResponsables = [
     ...new Set([
-      'Pedro Morales',
-      ...OPERARIOS,
       ...(data.users?.length
         ? data.users.filter((u) => u.estado === 'Activo' && u.rol !== 'Cliente').map((u) => u.nombre)
         : []),
@@ -78,9 +75,9 @@ export default function Tasks({ data, actions, irA, role, usuarioActual: sesion 
     setDescNuevaAct('')
     setInstNuevaAct('')
     setEtapaNuevaAct('Impresión')
-    setRespNuevaAct('Pedro Morales')
+    setRespNuevaAct('')
     setPrioNuevaAct('Media')
-    setFechaNuevaAct(primeraOrden?.fechaEntrega || '12/10/2026')
+    setFechaNuevaAct(primeraOrden?.fechaEntrega || formatearFecha(new Date()))
     setErrNuevaAct('')
     setModalNuevaActividad(true)
   }
@@ -97,9 +94,9 @@ export default function Tasks({ data, actions, irA, role, usuarioActual: sesion 
       descripcion: descNuevaAct.trim(),
       instrucciones: instNuevaAct.trim(),
       etapa: etapaNuevaAct,
-      responsable: respNuevaAct || 'Pedro Morales',
+      responsable: respNuevaAct,
       prioridad: prioNuevaAct,
-      fechaLimite: fechaNuevaAct.trim() || '12/10/2026',
+      fechaLimite: fechaNuevaAct.trim() || formatearFecha(new Date()),
     })
     setModalNuevaActividad(false)
   }
@@ -309,6 +306,20 @@ export default function Tasks({ data, actions, irA, role, usuarioActual: sesion 
             >
               <Icon nombre="eye" tamano={12} /> Orden
             </button>
+            {puedeReasignar && t.estado === 'Pendiente' && (
+              <button
+                className="btn btn-outline btn-xs"
+                style={{ color: '#ef4444', borderColor: '#fca5a5' }}
+                onClick={() => {
+                  if (window.confirm(`¿Está seguro de eliminar la actividad "${t.actividad}"?`)) {
+                    actions?.deleteTask && actions.deleteTask(t.id)
+                  }
+                }}
+                title="Eliminar actividad pendiente"
+              >
+                <Icon nombre="trash-2" tamano={12} />
+              </button>
+            )}
           </div>
         )
       },

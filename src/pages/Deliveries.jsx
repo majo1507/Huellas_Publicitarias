@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import PageHeader from '../components/PageHeader.jsx'
 import StatCard from '../components/StatCard.jsx'
 import DataTable from '../components/DataTable.jsx'
@@ -6,7 +6,7 @@ import StatusBadge from '../components/StatusBadge.jsx'
 import Avatar from '../components/Avatar.jsx'
 import Icon from '../components/Icon.jsx'
 import Modal from '../components/Modal.jsx'
-import { diasParaEntrega, textoPlazo, parseFecha, FECHA_DEMO, estaRetrasada, formatearFecha, formatearHora } from '../utils/format.js'
+import { diasParaEntrega, textoPlazo, parseFecha, obtenerFechaReferencia, estaRetrasada, formatearFecha, formatearHora } from '../utils/format.js'
 import { TIPOS_DOCUMENTO } from '../data/catalogos.js'
 
 // Módulo de Despachos y Entregas (HU-17)
@@ -36,9 +36,9 @@ export default function Deliveries({ data, actions, irA, role }) {
   const entregadas = data.orders
     .filter((o) => ['Entrega', 'Postventa', 'Cerrada'].includes(o.estado))
 
-  // Generación de los 7 días del calendario a partir de FECHA_DEMO (03/10/2026)
+  // Generación de los 7 días del calendario a partir de la fecha actual del sistema
   const diasSemana = [0, 1, 2, 3, 4, 5, 6].map((i) => {
-    const d = new Date(FECHA_DEMO)
+    const d = new Date(obtenerFechaReferencia())
     d.setDate(d.getDate() + i)
     const nombres = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
     return {

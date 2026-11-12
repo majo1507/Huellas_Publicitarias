@@ -170,7 +170,7 @@ export default function DesignPreview({ order, version, grande = false, classNam
 
         {/* Textos de la tarjeta */}
         <text x="145" y="44" fontSize="12" fontWeight="800" fill="#ffffff" fontFamily="sans-serif">
-          {order.entrega?.contacto || 'Laura Gómez'}
+          {order.entrega?.contacto || order.cliente || 'Contacto'}
         </text>
         <text x="145" y="58" fontSize="8" fontWeight="600" fill={pal.sec} fontFamily="sans-serif">
           Gerencia de Marca

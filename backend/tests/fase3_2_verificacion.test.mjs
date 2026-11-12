@@ -159,9 +159,9 @@ async function runFase32Tests() {
     console.log(`  ✅ 2.4 Cumplimiento de entregas verificado: ${resumen.a_tiempo_pct}% (${enPlazoEsperado} de ${resumen.total_ordenes} en plazo).`);
 
     // ------------------------------------------------------------
-    // 3. Segregación Financiera en Dashboard
+    // 3. Segregación Financiera y Restricción de Dashboard
     // ------------------------------------------------------------
-    console.log('\n📌 3. Verificando segregación financiera en /api/dashboard...');
+    console.log('\n📌 3. Verificando segregación financiera y restricción en /api/dashboard...');
     const loginDis = await req('/auth/login', {
       method: 'POST',
       body: { identificador: 'maria.lopez@huellas.co', clave: 'diseno123' },
@@ -170,8 +170,7 @@ async function runFase32Tests() {
     const tokenDis = loginDis.data.token;
 
     const dashDis = await req('/dashboard', { token: tokenDis });
-    assert.equal(dashDis.status, 200);
-    assert.equal(dashDis.data.resumen.total_presupuestado, undefined, 'total_presupuestado DEBE ser undefined para diseñador');
+    assert.equal(dashDis.status, 403, 'Diseñador bloqueado de dashboard gerencial (403)');
 
     const loginOp = await req('/auth/login', {
       method: 'POST',
@@ -181,9 +180,12 @@ async function runFase32Tests() {
     const tokenOp = loginOp.data.token;
 
     const dashOp = await req('/dashboard', { token: tokenOp });
-    assert.equal(dashOp.status, 200);
-    assert.equal(dashOp.data.resumen.total_presupuestado, undefined, 'total_presupuestado DEBE ser undefined para operario');
-    console.log('  ✅ 3. Segregación financiera comprobada: total_presupuestado oculto a Diseñador y Operario.');
+    assert.equal(dashOp.status, 403, 'Operario bloqueado de dashboard gerencial (403)');
+
+    const dashCoord = await req('/dashboard', { token: tokenCoord });
+    assert.equal(dashCoord.status, 200, 'Coordinador accede a dashboard operativo');
+    assert.equal(dashCoord.data.resumen.total_presupuestado, undefined, 'total_presupuestado DEBE ser undefined para coordinador');
+    console.log('  ✅ 3. Segregación financiera comprobada: 403 a Diseñador/Operario y métricas financieras omitidas a Coordinador.');
 
     // ------------------------------------------------------------
     // 4. Verificación de Protección de Modo Demo ante Fallos del Dashboard

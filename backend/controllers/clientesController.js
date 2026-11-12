@@ -25,6 +25,7 @@ function formatearCliente(c) {
     municipio,
     ciudad: c.ciudad || municipio,
     estado: c.estado,
+    archivado: !!c.archivado,
     ejecutiva_id: c.ejecutiva_id,
     ejecutiva_nombre: c.ejecutiva_nombre || null,
     created_at: c.created_at,
@@ -32,8 +33,11 @@ function formatearCliente(c) {
 }
 
 // Listar clientes con su ejecutiva asignada
-const listarClientes = async (_req, res) => {
+const listarClientes = async (req, res) => {
   try {
+    const incluirArchivados = req.query.incluir_archivados === 'true' || req.query.archivados === 'true';
+    const whereClause = incluirArchivados ? '' : 'WHERE COALESCE(c.archivado, false) = false';
+
     const result = await pool.query(`
       SELECT
         c.id,
@@ -51,11 +55,13 @@ const listarClientes = async (_req, res) => {
         c.municipio,
         c.ciudad,
         c.estado,
+        c.archivado,
         c.created_at,
         c.ejecutiva_id,
         u.nombre_completo AS ejecutiva_nombre
       FROM clientes c
       INNER JOIN usuarios u ON c.ejecutiva_id = u.id
+      ${whereClause}
       ORDER BY NULLIF(regexp_replace(c.codigo, '[^0-9]', '', 'g'), '')::int ASC NULLS LAST, c.created_at ASC
     `);
 
@@ -206,9 +212,101 @@ const actualizarCliente = async (req, res) => {
   }
 };
 
+// Archivar cliente
+const archivarCliente = async (req, res) => {
+  try {
+    const actual = await resolverCliente(pool, req.params.id);
+    if (!actual) {
+      return res.status(404).json({ error: `Cliente ${req.params.id} no encontrado.` });
+    }
+
+    const result = await pool.query(
+      `UPDATE clientes SET archivado = true WHERE id = $1 RETURNING *`,
+      [actual.id]
+    );
+
+    res.json({
+      message: 'Cliente archivado exitosamente.',
+      data: formatearCliente(result.rows[0]),
+    });
+  } catch (error) {
+    console.error('clientesController.archivarCliente error:', error.message);
+    res.status(500).json({ error: 'Error al archivar cliente.' });
+  }
+};
+
+// Restaurar cliente archivado
+const restaurarCliente = async (req, res) => {
+  try {
+    const actual = await resolverCliente(pool, req.params.id);
+    if (!actual) {
+      return res.status(404).json({ error: `Cliente ${req.params.id} no encontrado.` });
+    }
+
+    const result = await pool.query(
+      `UPDATE clientes SET archivado = false WHERE id = $1 RETURNING *`,
+      [actual.id]
+    );
+
+    res.json({
+      message: 'Cliente restaurado exitosamente.',
+      data: formatearCliente(result.rows[0]),
+    });
+  } catch (error) {
+    console.error('clientesController.restaurarCliente error:', error.message);
+    res.status(500).json({ error: 'Error al restaurar cliente.' });
+  }
+};
+
+// Eliminar cliente (protegido contra referencias de integridad)
+const eliminarCliente = async (req, res) => {
+  try {
+    const actual = await resolverCliente(pool, req.params.id);
+    if (!actual) {
+      return res.status(404).json({ error: `Cliente ${req.params.id} no encontrado.` });
+    }
+
+    // 1. Verificar si tiene órdenes asociadas
+    const ordCheck = await pool.query(
+      'SELECT COUNT(*)::int AS total FROM ordenes WHERE cliente_id = $1',
+      [actual.id]
+    );
+    if (ordCheck.rows[0].total > 0) {
+      return res.status(400).json({
+        error: `No es posible eliminar el cliente "${actual.empresa}" porque tiene ${ordCheck.rows[0].total} órdenes de producción asociadas. Le recomendamos archivarlo para preservar el historial comercial y contable.`,
+      });
+    }
+
+    // 2. Verificar si tiene solicitudes activas
+    const solCheck = await pool.query(
+      'SELECT COUNT(*)::int AS total FROM solicitudes WHERE cliente_id = $1',
+      [actual.id]
+    );
+    if (solCheck.rows[0].total > 0) {
+      return res.status(400).json({
+        error: `No es posible eliminar el cliente "${actual.empresa}" porque tiene ${solCheck.rows[0].total} cotizaciones o solicitudes registradas. Archívelo para conservar la trazabilidad.`,
+      });
+    }
+
+    // 3. Ejecutar eliminación física
+    await pool.query('DELETE FROM clientes WHERE id = $1', [actual.id]);
+
+    res.json({
+      message: `Cliente "${actual.empresa}" eliminado permanentemente de forma segura.`,
+      id: actual.codigo || actual.id,
+    });
+  } catch (error) {
+    console.error('clientesController.eliminarCliente error:', error.message);
+    res.status(500).json({ error: 'Error al eliminar cliente de la base de datos.' });
+  }
+};
+
 module.exports = {
   listarClientes,
   obtenerClientePorId,
   crearCliente,
   actualizarCliente,
+  archivarCliente,
+  restaurarCliente,
+  eliminarCliente,
 };

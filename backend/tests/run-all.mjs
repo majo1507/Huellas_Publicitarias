@@ -31,6 +31,7 @@ const suites = [
   'fecha_envio_disenos.test.mjs',
   'flujo_diseno_comercial.test.mjs',
   'flujo_integral_presentacion.test.mjs',
+  'firebase_auth.test.mjs',
 ];
 
 console.log(`🧪 Ejecutando ${suites.length} suites sobre la base "${db}"\n`);

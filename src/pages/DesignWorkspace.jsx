@@ -8,6 +8,7 @@ import Alert from '../components/Alert.jsx'
 import Icon from '../components/Icon.jsx'
 import EmptyState from '../components/EmptyState.jsx'
 import DesignPreview from '../components/DesignPreview.jsx'
+import StatCard from '../components/StatCard.jsx'
 import { ROLES } from '../data/roles.js'
 import { ultimaVersion } from '../utils/format.js'
 

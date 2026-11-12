@@ -19,6 +19,7 @@ const postventaRouter = require('./routes/postventa');
 const comunicacionesRouter = require('./routes/comunicaciones');
 const inventarioRouter = require('./routes/inventario');
 const dashboardRouter = require('./routes/dashboard');
+const portalRouter = require('./routes/portal');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -58,7 +59,7 @@ app.get('/', (_req, res) => {
     motor_bd: 'PostgreSQL',
     rutas_disponibles: {
       health: 'GET /api/health',
-      auth: 'POST /api/auth/login | GET /api/auth/perfil | POST /api/auth/register',
+      auth: 'POST /api/auth/login | POST /api/auth/firebase-login | GET /api/auth/perfil | POST /api/auth/register',
       usuarios: 'GET /api/usuarios | POST /api/usuarios | PATCH /api/usuarios/:id | PATCH /api/usuarios/:id/estado',
       clientes: 'GET /api/clientes | POST /api/clientes | PATCH /api/clientes/:id',
       solicitudes: 'GET /api/solicitudes | POST /api/solicitudes | PATCH /api/solicitudes/:id/enviar | POST /api/solicitudes/:id/validar',
@@ -114,6 +115,7 @@ app.use('/api/proveedores', (req, res, next) => {
   inventarioRouter(req, res, next);
 });
 app.use('/api/dashboard', dashboardRouter);
+app.use('/api/portal', portalRouter);
 
 // Manejo de rutas inexistentes (404)
 app.use((_req, res) => {

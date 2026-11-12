@@ -25,8 +25,29 @@ router.patch(
   '/:id',
   verificarToken,
   asociarCapacidad('postventa.editar'),
-  verificarRol('postventa', 'coord'),
+  verificarRol('postventa', 'coord', 'gerente'),
   postventaController.actualizarPostventa
+);
+
+router.patch(
+  '/:id/archivar',
+  verificarToken,
+  verificarRol('postventa', 'coord', 'gerente'),
+  postventaController.archivarPostventa
+);
+
+router.patch(
+  '/:id/restaurar',
+  verificarToken,
+  verificarRol('postventa', 'coord', 'gerente'),
+  postventaController.restaurarPostventa
+);
+
+router.delete(
+  '/:id',
+  verificarToken,
+  verificarRol('postventa', 'coord', 'gerente'),
+  postventaController.eliminarPostventa
 );
 
 // Resolución y dictamen técnico formal de reclamación / garantía (excluye Comercial y Gerencia directa)

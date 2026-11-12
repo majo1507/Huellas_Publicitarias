@@ -239,9 +239,12 @@ async function ejecutarSincronizacionAutomatica() {
 }
 
 // Iniciar intervalo en segundo plano (cada 5 segundos)
-setInterval(() => {
+const sincronizadorTimer = setInterval(() => {
   ejecutarSincronizacionAutomatica().catch(() => {});
 }, 5000);
+if (sincronizadorTimer && typeof sincronizadorTimer.unref === 'function') {
+  sincronizadorTimer.unref();
+}
 
 const listarComunicaciones = async (_req, res) => {
   try {

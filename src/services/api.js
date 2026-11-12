@@ -1,234 +1,20 @@
 // Capa de acceso a datos de ORVEX — Huellas Publicidad.
-// Conectada al backend real Express + PostgreSQL con soporte JWT y fallback automático
-// al modo de demostración local (mockData) cuando PostgreSQL no está disponible.
+// Conectada al backend real Express + PostgreSQL con JWT. No existe modo demostración:
+// si el servidor no responde se informa el error, nunca se sustituye por datos locales.
 
-import * as mock from '../data/mockData.js'
-
-const USAR_MOCK = import.meta.env?.VITE_USE_MOCK === 'true'
 const API_URL = import.meta.env?.VITE_API_URL || 'http://localhost:3000/api'
 const TOKEN_KEY = 'orvex_auth_token'
-const DEMO_FALLBACK_KEY = 'orvex_demo_fallback'
-export const DEMO_STATE_KEY = 'orvex_demo_state_v1'
 
-function crearEstadoInicialDemo() {
-  return {
-    clients: structuredClone(mock.initialClients),
-    orders: structuredClone(mock.initialOrders),
-    requests: structuredClone(mock.initialRequests),
-    tasks: structuredClone(mock.initialTasks),
-    cases: structuredClone(mock.initialCases),
-    users: structuredClone(mock.initialUsers),
-    comms: structuredClone(mock.initialComms),
-    inventory: structuredClone(mock.initialInventory || []),
-    suppliers: structuredClone(mock.initialSuppliers || []),
-    inventoryMovements: structuredClone(mock.initialInventoryMovements || []),
-  }
-}
+// Limpieza de restos del antiguo modo demostración en el navegador
+try {
+  sessionStorage.removeItem('orvex_demo_fallback')
+  localStorage.removeItem('orvex_demo_state_v1')
+  if (sessionStorage.getItem(TOKEN_KEY) === 'mock-jwt-token') sessionStorage.removeItem(TOKEN_KEY)
+  if (localStorage.getItem(TOKEN_KEY) === 'mock-jwt-token') localStorage.removeItem(TOKEN_KEY)
+} catch {}
 
-export function leerEstadoDemo() {
-  const base = crearEstadoInicialDemo()
-  if (typeof window === 'undefined' || !window.localStorage) return base
-  try {
-    const raw = window.localStorage.getItem(DEMO_STATE_KEY)
-    if (!raw) {
-      window.localStorage.setItem(DEMO_STATE_KEY, JSON.stringify(base))
-      return base
-    }
-    const parsed = JSON.parse(raw)
-    if (!parsed || typeof parsed !== 'object') return base
-
-    // Garantizar que Pedro Morales y Carlos Gómez existan en usuarios aunque hubiera un estado previo
-    const usersGuardados = Array.isArray(parsed.users) && parsed.users.length ? parsed.users : base.users
-    const tienePedro = usersGuardados.some((u) => u.nombre === 'Pedro Morales')
-    const usersFinal = tienePedro
-      ? usersGuardados
-      : [...usersGuardados, { id: 'U4-PM', nombre: 'Pedro Morales', cargo: 'Operario de taller', rol: 'Operario', correo: 'pedro.morales@huellas.co', estado: 'Activo' }]
-
-    const tasksGuardadas = Array.isArray(parsed.tasks) && parsed.tasks.length ? parsed.tasks : base.tasks
-    const tasksFinal = tasksGuardadas.map((t) => ({
-      descripcion: '',
-      instrucciones: '',
-      notas: [],
-      incidencias: [],
-      deps: [],
-      ...t,
-    }))
-
-    const clientsRaw = Array.isArray(parsed.clients) && parsed.clients.length ? parsed.clients : base.clients
-    const clientsFinal = clientsRaw.map((c) => {
-      const ref = base.clients.find((b) => b.id === c.id) || {}
-      const ciudad = c.municipio || c.ciudad || ref.ciudad || 'Bogotá'
-      return {
-        tipoDocumento: 'NIT',
-        nit: ref.nit || '900.000.000-1',
-        tipoCliente: 'Persona Jurídica (Empresa)',
-        pais: 'Colombia',
-        departamento: ciudad === 'Medellín' ? 'Antioquia' : ciudad === 'Cali' ? 'Valle del Cauca' : 'Bogotá D.C.',
-        municipio: ciudad,
-        ciudad,
-        ...ref,
-        ...c,
-      }
-    })
-
-    const casesRaw = Array.isArray(parsed.cases) && parsed.cases.length ? parsed.cases : base.cases
-    // Si el almacenamiento previo no tenía casos categorizados (Satisfacción / Garantía / PQRSF), usar la nueva base enriquecida conservando registros nuevos
-    const tieneNuevasCategorias = casesRaw.some((c) => c.categoria === 'Satisfacción' || String(c.id).startsWith('GAR-'))
-    const casesCombinados = tieneNuevasCategorias
-      ? casesRaw
-      : [
-          ...base.cases,
-          ...casesRaw.filter((c) => !base.cases.some((b) => b.id === c.id) && !/^PV-00[1-8]$/.test(String(c.id))),
-        ]
-    const casesFinal = casesCombinados.map((c) => {
-      const cat =
-        c.categoria ||
-        (c.tipo === 'Garantía' ? 'Garantía' : c.tipo === 'Satisfacción' ? 'Satisfacción' : 'PQRSF')
-      const sub = c.subtipo || c.tipo || (cat === 'Garantía' ? 'Garantía' : cat === 'Satisfacción' ? 'Satisfacción' : 'Reclamo')
-      return {
-        categoria: cat,
-        subtipo: sub,
-        tipo: c.tipo || sub,
-        motivo: c.motivo || (cat === 'Garantía' ? 'Incumplimiento de las especificaciones acordadas' : sub),
-        prioridad: c.prioridad || 'Media',
-        dictamenGarantia: c.dictamenGarantia || (cat === 'Garantía' ? 'Pendiente de evaluación' : ''),
-        justificacionDictamen: c.justificacionDictamen || '',
-        accionCorrectiva: c.accionCorrectiva || '',
-        seguimiento: c.seguimiento || '',
-        respuestaCliente: c.respuestaCliente || c.solucion || '',
-        evidencias: Array.isArray(c.evidencias) ? c.evidencias : [],
-        aspectosEvaluados: Array.isArray(c.aspectosEvaluados) ? c.aspectosEvaluados : [],
-        historial:
-          Array.isArray(c.historial) && c.historial.length
-            ? c.historial
-            : [
-                {
-                  fecha: c.fecha || '01/10/2026',
-                  hora: '09:00',
-                  autor: c.cliente || 'Cliente ORVEX',
-                  estado: c.estado || 'Abierto',
-                  accion: `Registro inicial (${cat} — ${sub})`,
-                  detalle: c.descripcion || '',
-                },
-              ],
-        ...c,
-      }
-    })
-
-    return {
-      clients: clientsFinal,
-      orders: Array.isArray(parsed.orders) && parsed.orders.length ? parsed.orders : base.orders,
-      requests: Array.isArray(parsed.requests) && parsed.requests.length ? parsed.requests : base.requests,
-      tasks: tasksFinal,
-      cases: casesFinal,
-      users: usersFinal,
-      comms: Array.isArray(parsed.comms) ? parsed.comms : base.comms,
-      inventory: Array.isArray(parsed.inventory) && parsed.inventory.length ? parsed.inventory : base.inventory,
-      suppliers: Array.isArray(parsed.suppliers) && parsed.suppliers.length ? parsed.suppliers : base.suppliers,
-      inventoryMovements: Array.isArray(parsed.inventoryMovements) ? parsed.inventoryMovements : base.inventoryMovements,
-    }
-  } catch {
-    return base
-  }
-}
-
-export function guardarEstadoDemo(parcial = {}) {
-  if (typeof window === 'undefined' || !window.localStorage) return
-  try {
-    const actual = leerEstadoDemo()
-    const siguiente = { ...actual, ...parcial, updatedAt: Date.now() }
-    window.localStorage.setItem(DEMO_STATE_KEY, JSON.stringify(siguiente))
-  } catch {}
-}
-
-// Cuentas locales de prueba para demostración cuando PostgreSQL no está disponible
-const CUENTAS_DEMO_LOCAL = [
-  {
-    id: 'U2',
-    rol: 'coordinador',
-    rolUi: 'coordinador',
-    rolBd: 'coord',
-    correo: 'carlos.gomez@huellas.co',
-    email: 'carlos.gomez@huellas.co',
-    aliases: ['carlos.gomez@huellas.co', 'carlos.ruiz@orvex.test', 'carlos gómez', 'carlos gomez', 'carlos ruiz'],
-    clave: 'coord123',
-    nombre: 'Carlos Gómez',
-    nombre_completo: 'Carlos Gómez',
-    cargo: 'Coordinador de producción',
-    estado: 'Activo',
-  },
-  {
-    id: 'U1',
-    rol: 'comercial',
-    rolUi: 'comercial',
-    rolBd: 'ejecutiva',
-    correo: 'ana.martinez@huellas.co',
-    email: 'ana.martinez@huellas.co',
-    aliases: ['ana.martinez@huellas.co', 'ana.martinez@orvex.test', 'ana martínez', 'ana martinez'],
-    clave: 'comercial123',
-    nombre: 'Ana Martínez',
-    nombre_completo: 'Ana Martínez',
-    cargo: 'Ejecutiva comercial',
-    estado: 'Activo',
-  },
-  {
-    id: 'U3',
-    rol: 'disenador',
-    rolUi: 'disenador',
-    rolBd: 'disenador',
-    correo: 'maria.lopez@huellas.co',
-    email: 'maria.lopez@huellas.co',
-    aliases: ['maria.lopez@huellas.co', 'maria.lopez@orvex.test', 'maría lópez', 'maria lopez'],
-    clave: 'diseno123',
-    nombre: 'María López',
-    nombre_completo: 'María López',
-    cargo: 'Diseñadora gráfica',
-    estado: 'Activo',
-  },
-  {
-    id: 'U4',
-    rol: 'operario',
-    rolUi: 'operario',
-    rolBd: 'produccion',
-    correo: 'pedro.morales@huellas.co',
-    email: 'pedro.morales@huellas.co',
-    aliases: ['pedro.morales@huellas.co', 'juan.perez@orvex.test', 'pedro.ramirez@orvex.test', 'pedro morales', 'juan pérez', 'juan perez'],
-    clave: 'taller123',
-    nombre: 'Pedro Morales',
-    nombre_completo: 'Pedro Morales',
-    cargo: 'Operario de taller',
-    estado: 'Activo',
-  },
-  {
-    id: 'U6',
-    rol: 'postventa',
-    rolUi: 'postventa',
-    rolBd: 'postventa',
-    correo: 'sofia.herrera@huellas.co',
-    email: 'sofia.herrera@huellas.co',
-    aliases: ['sofia.herrera@huellas.co', 'sofia.herrera@orvex.test', 'sofía herrera', 'sofia herrera'],
-    clave: 'post123',
-    nombre: 'Sofía Herrera',
-    nombre_completo: 'Sofía Herrera',
-    cargo: 'Atención postventa',
-    estado: 'Activo',
-  },
-  {
-    id: 'U7',
-    rol: 'gerencia',
-    rolUi: 'gerencia',
-    rolBd: 'gerente',
-    correo: 'laura.sanchez@huellas.co',
-    email: 'laura.sanchez@huellas.co',
-    aliases: ['laura.sanchez@huellas.co', 'andres.torres@orvex.test', 'laura sánchez', 'laura sanchez', 'andrés torres', 'andres torres'],
-    clave: 'gerencia123',
-    nombre: 'Laura Sánchez',
-    nombre_completo: 'Laura Sánchez',
-    cargo: 'Gerente general',
-    estado: 'Activo',
-  },
-]
-
+// Compatibilidad: ya no se persiste ningún estado local de demostración
+export function guardarEstadoDemo() {}
 export function getAuthToken() {
   try {
     return sessionStorage.getItem(TOKEN_KEY) || localStorage.getItem(TOKEN_KEY) || ''
@@ -248,59 +34,6 @@ export function setAuthToken(token) {
     }
   } catch {}
 }
-
-export function getModoDemoLocal() {
-  if (USAR_MOCK) return true
-  try {
-    return sessionStorage.getItem(DEMO_FALLBACK_KEY) === 'true' || getAuthToken() === 'mock-jwt-token'
-  } catch {
-    return false
-  }
-}
-
-export function setModoDemoLocal(activo) {
-  try {
-    if (activo) sessionStorage.setItem(DEMO_FALLBACK_KEY, 'true')
-    else sessionStorage.removeItem(DEMO_FALLBACK_KEY)
-  } catch {}
-}
-
-function buscarCuentaDemoLocal(credenciales = {}) {
-  const idInput = String(credenciales.identificador || credenciales.email || credenciales.correo || '')
-    .trim()
-    .toLowerCase()
-  const password = String(credenciales.clave || credenciales.password || '')
-
-  return (
-    CUENTAS_DEMO_LOCAL.find(
-      (c) => c.aliases.includes(idInput) && c.clave === password
-    ) || null
-  )
-}
-
-function autenticarDemoLocal(credenciales = {}) {
-  const cuenta = buscarCuentaDemoLocal(credenciales)
-
-  if (!cuenta) {
-    const err = new Error('Credenciales inválidas. Verifica tu correo y contraseña o selecciona uno de los accesos de demostración.')
-    err.status = 401
-    throw err
-  }
-
-  setModoDemoLocal(true)
-  setAuthToken('mock-jwt-token')
-
-  const { aliases, clave, ...usuarioLimpio } = cuenta
-  return {
-    token: 'mock-jwt-token',
-    modoDemo: true,
-    usuario: usuarioLimpio,
-  }
-}
-
-// Simula la respuesta de un servidor en modo demostración
-const simular = (valor, ms = 120) =>
-  new Promise((resolve) => setTimeout(() => resolve(structuredClone(valor)), ms))
 
 // Petición real a la API REST con cabeceras JWT y manejo de errores JSON
 async function pedir(ruta, opciones = {}) {
@@ -355,15 +88,7 @@ function errorDeSesionReal(err) {
   return err
 }
 
-async function consultarLista(ruta, datosMock, claveDemo = null) {
-  const obtenerRespaldo = () => {
-    if (claveDemo) {
-      const estado = leerEstadoDemo()
-      if (Array.isArray(estado[claveDemo])) return estado[claveDemo]
-    }
-    return datosMock
-  }
-  if (getModoDemoLocal()) return simular(obtenerRespaldo())
+async function consultarLista(ruta) {
   try {
     const res = await pedir(ruta)
     return Array.isArray(res) ? res : res?.data || []
@@ -372,8 +97,7 @@ async function consultarLista(ruta, datosMock, claveDemo = null) {
   }
 }
 
-async function ejecutarConFallback(fnReal, valorFallback) {
-  if (getModoDemoLocal()) return simular(valorFallback)
+async function ejecutarConFallback(fnReal) {
   try {
     return await fnReal()
   } catch (err) {
@@ -382,39 +106,37 @@ async function ejecutarConFallback(fnReal, valorFallback) {
 }
 
 export const api = {
+  // El modo demostración fue eliminado: siempre se opera contra PostgreSQL
   get usarMock() {
-    return getModoDemoLocal()
+    return false
   },
 
-  // Autenticación (HU-02): intenta login real contra PostgreSQL; si PostgreSQL o el backend
-  // no están disponibles, activa automáticamente el modo de demostración local.
+  // Autenticación: Firebase Authentication + verificación del ID token y rol en PostgreSQL
+  async firebaseLogin(idToken) {
+    const res = await pedir('/auth/firebase-login', {
+      method: 'POST',
+      body: JSON.stringify({ idToken }),
+    })
+    if (res?.token) setAuthToken(res.token)
+    return res
+  },
+
+  // Respaldo bcrypt en PostgreSQL; ante fallos de red se propaga el error real
   async login(credenciales) {
-    if (USAR_MOCK) {
-      return simular(autenticarDemoLocal(credenciales))
-    }
     try {
       const res = await pedir('/auth/login', {
         method: 'POST',
         body: JSON.stringify(credenciales),
       })
-      setModoDemoLocal(false)
       if (res?.token) setAuthToken(res.token)
       return res
     } catch (err) {
-      // Solo se entra al modo demostración cuando el servidor o PostgreSQL no están disponibles.
-      // Un 401 real del servidor es un rechazo de credenciales y nunca se sustituye por datos locales.
-      if (esErrorDeConexionOBaseDatos(err) && buscarCuentaDemoLocal(credenciales)) {
-        return autenticarDemoLocal(credenciales)
-      }
       throw errorDeSesionReal(err)
     }
   },
 
   async logout() {
-    const eraMock = getModoDemoLocal()
     setAuthToken('')
-    setModoDemoLocal(false)
-    if (eraMock || USAR_MOCK) return simular({ ok: true })
     try {
       return await pedir('/auth/logout', { method: 'POST' })
     } catch {
@@ -423,7 +145,6 @@ export const api = {
   },
 
   async obtenerPerfil() {
-    if (getModoDemoLocal()) return simular(null)
     try {
       const res = await pedir('/auth/perfil')
       return res?.data || res
@@ -432,54 +153,93 @@ export const api = {
       throw err
     }
   },
-
   // Clientes
-  listarClientes: () => consultarLista('/clientes', mock.initialClients, 'clients'),
+  listarClientes: () => consultarLista('/clientes'),
   crearCliente: (cliente) =>
     ejecutarConFallback(
-      () => pedir('/clientes', { method: 'POST', body: JSON.stringify(cliente) }),
-      { modoMock: true, data: null }
+      () => pedir('/clientes', { method: 'POST', body: JSON.stringify(cliente) })
+    ),
+  actualizarCliente: (id, cliente) =>
+    ejecutarConFallback(
+      () => pedir(`/clientes/${id}`, { method: 'PATCH', body: JSON.stringify(cliente) })
+    ),
+  archivarCliente: (id) =>
+    ejecutarConFallback(
+      () => pedir(`/clientes/${id}/archivar`, { method: 'PATCH' })
+    ),
+  restaurarCliente: (id) =>
+    ejecutarConFallback(
+      () => pedir(`/clientes/${id}/restaurar`, { method: 'PATCH' })
+    ),
+  eliminarCliente: (id) =>
+    ejecutarConFallback(
+      () => pedir(`/clientes/${id}`, { method: 'DELETE' })
     ),
 
   // Solicitudes (HU-03 a HU-06)
-  listarSolicitudes: () => consultarLista('/solicitudes', mock.initialRequests, 'requests'),
+  listarSolicitudes: () => consultarLista('/solicitudes'),
   crearSolicitud: (solicitud) =>
     ejecutarConFallback(
-      () => pedir('/solicitudes', { method: 'POST', body: JSON.stringify(solicitud) }),
-      { modoMock: true, data: null }
+      () => pedir('/solicitudes', { method: 'POST', body: JSON.stringify(solicitud) })
+    ),
+  actualizarSolicitud: (id, solicitud) =>
+    ejecutarConFallback(
+      () => pedir(`/solicitudes/${id}`, { method: 'PATCH', body: JSON.stringify(solicitud) })
+    ),
+  archivarSolicitud: (id) =>
+    ejecutarConFallback(
+      () => pedir(`/solicitudes/${id}/archivar`, { method: 'PATCH' })
+    ),
+  restaurarSolicitud: (id) =>
+    ejecutarConFallback(
+      () => pedir(`/solicitudes/${id}/restaurar`, { method: 'PATCH' })
+    ),
+  eliminarSolicitud: (id) =>
+    ejecutarConFallback(
+      () => pedir(`/solicitudes/${id}`, { method: 'DELETE' })
     ),
   enviarAValidacion: (id) =>
     ejecutarConFallback(
-      () => pedir(`/solicitudes/${id}/enviar`, { method: 'PATCH' }),
-      { modoMock: true, data: { id, estado: 'En validación' } }
+      () => pedir(`/solicitudes/${id}/enviar`, { method: 'PATCH' })
     ),
   corregirSolicitud: (id, datos) =>
     ejecutarConFallback(
-      () => pedir(`/solicitudes/${id}/corregir`, { method: 'PATCH', body: JSON.stringify(datos) }),
-      { modoMock: true, data: { id, ...datos, estado: 'En validación' } }
+      () => pedir(`/solicitudes/${id}/corregir`, { method: 'PATCH', body: JSON.stringify(datos) })
     ),
   validarSolicitud: (id) =>
     ejecutarConFallback(
-      () => pedir(`/solicitudes/${id}/validar`, { method: 'POST' }),
-      { modoMock: true }
+      () => pedir(`/solicitudes/${id}/validar`, { method: 'POST' })
     ),
   devolverSolicitud: (id, motivo) =>
     ejecutarConFallback(
-      () => pedir(`/solicitudes/${id}/devolver`, { method: 'PATCH', body: JSON.stringify({ motivo }) }),
-      { modoMock: true, data: { id, estado: 'Devuelta para corrección', motivoRechazo: motivo } }
+      () => pedir(`/solicitudes/${id}/devolver`, { method: 'PATCH', body: JSON.stringify({ motivo }) })
     ),
   rechazarSolicitud: (id, motivo) =>
     ejecutarConFallback(
-      () => pedir(`/solicitudes/${id}/rechazar`, { method: 'PATCH', body: JSON.stringify({ motivo }) }),
-      { modoMock: true, data: { id, estado: 'Rechazada', motivoRechazo: motivo } }
+      () => pedir(`/solicitudes/${id}/rechazar`, { method: 'PATCH', body: JSON.stringify({ motivo }) })
     ),
 
   // Órdenes de producción (HU-06, HU-13, HU-16, HU-17, HU-19, HU-20)
-  listarOrdenes: () => consultarLista('/ordenes', mock.initialOrders, 'orders'),
+  listarOrdenes: () => consultarLista('/ordenes'),
   obtenerOrden: (id) =>
     ejecutarConFallback(
-      () => pedir(`/ordenes/${id}`),
-      leerEstadoDemo().orders.find((o) => o.id === id)
+      () => pedir(`/ordenes/${id}`)
+    ),
+  actualizarOrden: (id, orden) =>
+    ejecutarConFallback(
+      () => pedir(`/ordenes/${id}`, { method: 'PATCH', body: JSON.stringify(orden) })
+    ),
+  archivarOrden: (id) =>
+    ejecutarConFallback(
+      () => pedir(`/ordenes/${id}/archivar`, { method: 'PATCH' })
+    ),
+  restaurarOrden: (id) =>
+    ejecutarConFallback(
+      () => pedir(`/ordenes/${id}/restaurar`, { method: 'PATCH' })
+    ),
+  eliminarOrden: (id) =>
+    ejecutarConFallback(
+      () => pedir(`/ordenes/${id}`, { method: 'DELETE' })
     ),
   avanzarEtapaOrden: (id, etapa) =>
     ejecutarConFallback(
@@ -487,8 +247,7 @@ export const api = {
         pedir(`/ordenes/${id}/etapa`, {
           method: 'PATCH',
           body: JSON.stringify(etapa ? { etapa } : {}),
-        }),
-      { modoMock: true }
+        })
     ),
   asignarEquipoOrden: (id, datos) =>
     ejecutarConFallback(
@@ -496,8 +255,7 @@ export const api = {
         pedir(`/ordenes/${id}/asignacion`, {
           method: 'PATCH',
           body: JSON.stringify(datos),
-        }),
-      { modoMock: true, data: datos }
+        })
     ),
   registrarEntrega: (ordenId, datosEntrega) =>
     ejecutarConFallback(
@@ -505,8 +263,7 @@ export const api = {
         pedir(`/ordenes/${ordenId}/entrega`, {
           method: 'POST',
           body: JSON.stringify(datosEntrega),
-        }),
-      { modoMock: true }
+        })
     ),
   cerrarOrden: (id, motivo) =>
     ejecutarConFallback(
@@ -514,8 +271,7 @@ export const api = {
         pedir(`/ordenes/${id}/cerrar`, {
           method: 'POST',
           body: JSON.stringify({ motivo }),
-        }),
-      { modoMock: true }
+        })
     ),
   reabrirOrden: (id, motivo) =>
     ejecutarConFallback(
@@ -523,8 +279,7 @@ export const api = {
         pedir(`/ordenes/${id}/reabrir`, {
           method: 'POST',
           body: JSON.stringify({ motivo }),
-        }),
-      { modoMock: true }
+        })
     ),
   clonarOrden: (id, motivo) =>
     ejecutarConFallback(
@@ -532,13 +287,11 @@ export const api = {
         pedir(`/ordenes/${id}/clonar`, {
           method: 'POST',
           body: JSON.stringify({ motivo }),
-        }),
-      { modoMock: true }
+        })
     ),
   obtenerHistorialOrden: (id) =>
     ejecutarConFallback(
-      () => pedir(`/ordenes/${id}/historial`),
-      mock.initialOrders.find((o) => o.id === id)?.historial || []
+      () => pedir(`/ordenes/${id}/historial`)
     ),
 
   // Diseño y versiones de arte (HU-11, HU-12, HU-13)
@@ -548,8 +301,7 @@ export const api = {
         pedir(`/disenos/orden/${ordenId}`, {
           method: 'POST',
           body: JSON.stringify(payload),
-        }),
-      { modoMock: true }
+        })
     ),
   enviarDiseno: (ordenId, observaciones = '') =>
     ejecutarConFallback(
@@ -557,8 +309,7 @@ export const api = {
         pedir(`/disenos/orden/${ordenId}/enviar`, {
           method: 'PATCH',
           body: JSON.stringify({ observaciones }),
-        }),
-      { modoMock: true }
+        })
     ),
   responderDiseno: (ordenId, decision, comentario = '', decisor = '', extra = {}) =>
     ejecutarConFallback(
@@ -566,8 +317,7 @@ export const api = {
         pedir(`/disenos/orden/${ordenId}/aprobacion`, {
           method: 'PATCH',
           body: JSON.stringify({ estado: decision, comentario, decisor, ...extra }),
-        }),
-      { modoMock: true }
+        })
     ),
   gestionarPropuestaComercial: (ordenId, datos) =>
     ejecutarConFallback(
@@ -590,28 +340,40 @@ export const api = {
           method: 'PATCH',
           body: JSON.stringify(payloadJson),
         })
-      },
-      { modoMock: true }
+      }
     ),
   liberarParaImpresion: (ordenId) =>
     ejecutarConFallback(
       () =>
         pedir(`/disenos/orden/${ordenId}/liberar-impresion`, {
           method: 'PATCH',
-        }),
-      { modoMock: true }
+        })
     ),
 
   // Actividades de taller (HU-08, HU-10, HU-14, HU-15)
-  listarActividades: () => consultarLista('/actividades', mock.initialTasks, 'tasks'),
+  listarActividades: () => consultarLista('/actividades'),
   crearActividad: (tarea) =>
     ejecutarConFallback(
       () =>
         pedir('/actividades', {
           method: 'POST',
           body: JSON.stringify(tarea),
-        }),
-      { modoMock: true, data: null }
+        })
+    ),
+  actualizarActividad: (id, tarea) =>
+    ejecutarConFallback(
+      () =>
+        pedir(`/actividades/${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify(tarea),
+        })
+    ),
+  eliminarActividad: (id) =>
+    ejecutarConFallback(
+      () =>
+        pedir(`/actividades/${id}`, {
+          method: 'DELETE',
+        })
     ),
   asignarActividad: (id, responsable) =>
     ejecutarConFallback(
@@ -619,8 +381,7 @@ export const api = {
         pedir(`/actividades/${id}/asignar`, {
           method: 'PATCH',
           body: JSON.stringify({ responsable }),
-        }),
-      { modoMock: true }
+        })
     ),
   accionActividad: (id, accion) =>
     ejecutarConFallback(
@@ -628,8 +389,7 @@ export const api = {
         pedir(`/actividades/${id}/accion`, {
           method: 'PATCH',
           body: JSON.stringify({ accion }),
-        }),
-      { modoMock: true }
+        })
     ),
   actualizarAvanceActividad: (id, estado, pct) =>
     ejecutarConFallback(
@@ -637,8 +397,7 @@ export const api = {
         pedir(`/actividades/${id}/avance`, {
           method: 'PATCH',
           body: JSON.stringify({ estado, pct }),
-        }),
-      { modoMock: true }
+        })
     ),
   agregarNotaActividad: (id, texto, esIncidencia = false) =>
     ejecutarConFallback(
@@ -646,8 +405,7 @@ export const api = {
         pedir(`/actividades/${id}/notas`, {
           method: 'POST',
           body: JSON.stringify({ texto, esIncidencia }),
-        }),
-      { modoMock: true }
+        })
     ),
   resolverIncidenciaActividad: (id, index, solucion) =>
     ejecutarConFallback(
@@ -655,41 +413,79 @@ export const api = {
         pedir(`/actividades/${id}/resolver-incidencia`, {
           method: 'PATCH',
           body: JSON.stringify({ index, solucion }),
-        }),
-      { modoMock: true }
+        })
     ),
 
   // Inventario, proveedores y movimientos de bodega
-  listarInventario: () => consultarLista('/inventario', mock.initialInventory || [], 'inventory'),
+  listarInventario: () => consultarLista('/inventario'),
   crearMaterialInventario: (material) =>
     ejecutarConFallback(
-      () => pedir('/inventario', { method: 'POST', body: JSON.stringify(material) }),
-      { modoMock: true, data: null }
+      () => pedir('/inventario', { method: 'POST', body: JSON.stringify(material) })
     ),
-  listarProveedores: () => consultarLista('/inventario/proveedores', mock.initialSuppliers || [], 'suppliers'),
+  actualizarMaterialInventario: (id, material) =>
+    ejecutarConFallback(
+      () => pedir(`/inventario/${id}`, { method: 'PATCH', body: JSON.stringify(material) })
+    ),
+  archivarMaterialInventario: (id) =>
+    ejecutarConFallback(
+      () => pedir(`/inventario/${id}/archivar`, { method: 'PATCH' })
+    ),
+  restaurarMaterialInventario: (id) =>
+    ejecutarConFallback(
+      () => pedir(`/inventario/${id}/restaurar`, { method: 'PATCH' })
+    ),
+  eliminarMaterialInventario: (id) =>
+    ejecutarConFallback(
+      () => pedir(`/inventario/${id}`, { method: 'DELETE' })
+    ),
+  listarProveedores: () => consultarLista('/inventario/proveedores'),
   crearProveedor: (proveedor) =>
     ejecutarConFallback(
-      () => pedir('/inventario/proveedores', { method: 'POST', body: JSON.stringify(proveedor) }),
-      { modoMock: true, data: null }
+      () => pedir('/inventario/proveedores', { method: 'POST', body: JSON.stringify(proveedor) })
     ),
-  listarMovimientosInventario: () => consultarLista('/inventario/movimientos', mock.initialInventoryMovements || [], 'inventoryMovements'),
+  actualizarProveedor: (id, proveedor) =>
+    ejecutarConFallback(
+      () => pedir(`/inventario/proveedores/${id}`, { method: 'PATCH', body: JSON.stringify(proveedor) })
+    ),
+  archivarProveedor: (id) =>
+    ejecutarConFallback(
+      () => pedir(`/inventario/proveedores/${id}/archivar`, { method: 'PATCH' })
+    ),
+  restaurarProveedor: (id) =>
+    ejecutarConFallback(
+      () => pedir(`/inventario/proveedores/${id}/restaurar`, { method: 'PATCH' })
+    ),
+  eliminarProveedor: (id) =>
+    ejecutarConFallback(
+      () => pedir(`/inventario/proveedores/${id}`, { method: 'DELETE' })
+    ),
+  listarMovimientosInventario: () => consultarLista('/inventario/movimientos'),
   registrarMovimientoInventario: (movimiento) =>
     ejecutarConFallback(
-      () => pedir('/inventario/movimientos', { method: 'POST', body: JSON.stringify(movimiento) }),
-      { modoMock: true, data: null }
+      () => pedir('/inventario/movimientos', { method: 'POST', body: JSON.stringify(movimiento) })
     ),
 
   // Gestión de postventa (HU-18)
-  listarCasos: () => consultarLista('/casos', mock.initialCases, 'cases'),
+  listarCasos: () => consultarLista('/casos'),
   crearCasoPostventa: (caso) =>
     ejecutarConFallback(
-      () => pedir('/casos', { method: 'POST', body: JSON.stringify(caso) }),
-      { modoMock: true }
+      () => pedir('/casos', { method: 'POST', body: JSON.stringify(caso) })
     ),
   actualizarCasoPostventa: (id, cambios) =>
     ejecutarConFallback(
-      () => pedir(`/casos/${id}`, { method: 'PATCH', body: JSON.stringify(cambios) }),
-      { modoMock: true }
+      () => pedir(`/casos/${id}`, { method: 'PATCH', body: JSON.stringify(cambios) })
+    ),
+  archivarCasoPostventa: (id) =>
+    ejecutarConFallback(
+      () => pedir(`/casos/${id}/archivar`, { method: 'PATCH' })
+    ),
+  restaurarCasoPostventa: (id) =>
+    ejecutarConFallback(
+      () => pedir(`/casos/${id}/restaurar`, { method: 'PATCH' })
+    ),
+  eliminarCasoPostventa: (id) =>
+    ejecutarConFallback(
+      () => pedir(`/casos/${id}`, { method: 'DELETE' })
     ),
   resolverCasoPostventa: (id, solucion) =>
     ejecutarConFallback(
@@ -697,8 +493,7 @@ export const api = {
         pedir(`/casos/${id}/resolver`, {
           method: 'PATCH',
           body: JSON.stringify({ solucion }),
-        }),
-      { modoMock: true }
+        })
     ),
   calificarCasoPostventa: (id, calificacion) =>
     ejecutarConFallback(
@@ -706,43 +501,49 @@ export const api = {
         pedir(`/casos/${id}/calificar`, {
           method: 'PATCH',
           body: JSON.stringify({ calificacion }),
-        }),
-      { modoMock: true }
+        })
     ),
 
+  // Portal Público de Atención al Cliente (Huellas Publicidad)
+  consultarPedidoPublico: (datos) =>
+    pedir('/portal/pedidos/consultar', { method: 'POST', body: JSON.stringify(datos) }),
+  radicarPQRSFPublico: (datos) => {
+    if (typeof FormData !== 'undefined' && datos instanceof FormData) {
+      return pedir('/portal/pqrsf/radicar', { method: 'POST', body: datos })
+    }
+    return pedir('/portal/pqrsf/radicar', { method: 'POST', body: JSON.stringify(datos) })
+  },
+  consultarPQRSFPublico: (datos) =>
+    pedir('/portal/pqrsf/consultar', { method: 'POST', body: JSON.stringify(datos) }),
+
   // Usuarios y seguridad (HU-01)
-  listarUsuarios: () => consultarLista('/usuarios', mock.initialUsers, 'users'),
+  listarUsuarios: () => consultarLista('/usuarios'),
   crearUsuario: (usuario) =>
     ejecutarConFallback(
-      () => pedir('/usuarios', { method: 'POST', body: JSON.stringify(usuario) }),
-      { modoMock: true, data: usuario }
+      () => pedir('/usuarios', { method: 'POST', body: JSON.stringify(usuario) })
     ),
   actualizarUsuario: (id, cambios) =>
     ejecutarConFallback(
-      () => pedir(`/usuarios/${id}`, { method: 'PATCH', body: JSON.stringify(cambios) }),
-      { modoMock: true, data: { id, ...cambios } }
+      () => pedir(`/usuarios/${id}`, { method: 'PATCH', body: JSON.stringify(cambios) })
     ),
   cambiarEstadoUsuario: (id, estado) =>
     ejecutarConFallback(
-      () => pedir(`/usuarios/${id}/estado`, { method: 'PATCH', body: JSON.stringify({ estado }) }),
-      { modoMock: true, data: { id, estado } }
+      () => pedir(`/usuarios/${id}/estado`, { method: 'PATCH', body: JSON.stringify({ estado }) })
     ),
 
   // Comunicaciones omnicanal
-  listarComunicaciones: () => consultarLista('/comunicaciones', mock.initialComms, 'comms'),
+  listarComunicaciones: () => consultarLista('/comunicaciones'),
   enviarMensajeComunicacion: (id, mensaje) =>
     ejecutarConFallback(
       () =>
         pedir(`/comunicaciones/${id}/mensajes`, {
           method: 'POST',
           body: JSON.stringify(mensaje),
-        }),
-      { modoMock: true }
+        })
     ),
   reintentarMensajeComunicacion: (commId, mensajeId) =>
     ejecutarConFallback(
-      () => pedir(`/comunicaciones/${commId}/mensajes/${mensajeId}/reintentar`, { method: 'POST' }),
-      { modoMock: true }
+      () => pedir(`/comunicaciones/${commId}/mensajes/${mensajeId}/reintentar`, { method: 'POST' })
     ),
   enviarNuevoCorreo: (datos) =>
     ejecutarConFallback(
@@ -750,8 +551,7 @@ export const api = {
         pedir('/comunicaciones/nuevo-correo', {
           method: 'POST',
           body: JSON.stringify(datos),
-        }),
-      { modoMock: true }
+        })
     ),
   enviarNuevoWhatsApp: (datos) =>
     ejecutarConFallback(
@@ -759,23 +559,19 @@ export const api = {
         pedir('/comunicaciones/nuevo-whatsapp', {
           method: 'POST',
           body: JSON.stringify(datos),
-        }),
-      { modoMock: true }
+        })
     ),
   sincronizarComunicaciones: () =>
     ejecutarConFallback(
-      () => pedir('/comunicaciones/gmail/sincronizar', { method: 'POST' }),
-      { modoMock: true, data: { ok: true, sincronizados: 0, nuevos: 0 } }
+      () => pedir('/comunicaciones/gmail/sincronizar', { method: 'POST' })
     ),
   obtenerRevisionComunicaciones: () =>
     ejecutarConFallback(
-      () => pedir('/comunicaciones/revision'),
-      { modoMock: true, total: 0, ultimoTs: 0, version: '0' }
+      () => pedir('/comunicaciones/revision')
     ),
   marcarConversacionLeida: (id) =>
     ejecutarConFallback(
-      () => pedir(`/comunicaciones/${id}/leido`, { method: 'PATCH' }),
-      { modoMock: true }
+      () => pedir(`/comunicaciones/${id}/leido`, { method: 'PATCH' })
     ),
   API_URL,
   getAuthToken,
@@ -783,8 +579,7 @@ export const api = {
   // Integración Gmail OAuth 2.0
   obtenerEstadoGmail: () =>
     ejecutarConFallback(
-      () => pedir('/comunicaciones/gmail/estado'),
-      { modoMock: true, data: { conectado: false, email: null, diasRestantes: 0 } }
+      () => pedir('/comunicaciones/gmail/estado')
     ),
   iniciarAutorizacionGmail: () =>
     pedir('/comunicaciones/gmail/auth'),
@@ -794,8 +589,7 @@ export const api = {
   // Integración Meta WhatsApp Cloud API
   obtenerEstadoWhatsApp: () =>
     ejecutarConFallback(
-      () => pedir('/comunicaciones/whatsapp/estado'),
-      { modoMock: true, data: { conectado: false, numeroOficial: '+57 311 608 8542' } }
+      () => pedir('/comunicaciones/whatsapp/estado')
     ),
 
   // Métricas ejecutivas y consolidadas del Dashboard de Gerencia (Fase 3.2)
@@ -804,7 +598,7 @@ export const api = {
       const res = await pedir('/dashboard')
       return { ok: true, data: res }
     } catch (err) {
-      // Manejo transparente de errores sin activar el modo demo global (setModoDemoLocal)
+      // Manejo transparente de errores de métricas
       if (err.status === 401 || err.status === 403) {
         throw err // Propagar errores de autenticación y autorización
       }
@@ -819,10 +613,6 @@ export const api = {
 
   // Carga inicial de toda la información que necesita la aplicación según el rol activo
   async cargarTodo(rolParam) {
-    if (getModoDemoLocal()) {
-      return simular(leerEstadoDemo(), 40)
-    }
-
     // Resolver rol activo de manera resiliente (parámetro -> sessionStorage -> fallback)
     let rol = rolParam
     if (!rol && typeof sessionStorage !== 'undefined') {

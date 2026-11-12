@@ -28,8 +28,10 @@ import Inventory from './pages/Inventory.jsx'
 import Reports from './pages/Reports.jsx'
 import Users from './pages/Users.jsx'
 import Login from './pages/Login.jsx'
+import PublicPortal from './pages/PublicPortal.jsx'
+import { logoutFirebase } from './config/firebase.js'
 import { ROLES, normalizarRol, PAGINAS_AUTORIZADAS_POR_ROL } from './data/roles.js'
-import { api, getAuthToken, setAuthToken, DEMO_STATE_KEY, guardarEstadoDemo, leerEstadoDemo } from './services/api.js'
+import { api, getAuthToken, setAuthToken, guardarEstadoDemo } from './services/api.js'
 import { formatearFecha, formatearHora, formatearFechaBogota, formatearHoraBogota, puedeAvanzar, validarCierreOrden } from './utils/format.js'
 
 // Dashboard (opción "Inicio") que corresponde a cada rol interno
@@ -114,7 +116,13 @@ export default function App() {
   const [intento, setIntento] = useState(0)
 
   // page.name indica la pantalla actual; page.orderId la orden seleccionada
-  const [page, setPage] = useState({ name: 'inicio', orderId: null })
+  const [page, setPage] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const h = window.location.hash.replace(/^#\/?/, '').split('/')[0]
+      if (h === 'portal') return { name: 'portal', orderId: null }
+    }
+    return { name: 'inicio', orderId: null }
+  })
 
   // Usuario autenticado (HU-02)
   const [currentUser, setCurrentUser] = useState(() => {
@@ -206,56 +214,6 @@ export default function App() {
 
   useEffect(() => { window.scrollTo(0, 0) }, [page])
 
-  // Persistencia automática del estado compartido en modo demostración local
-  useEffect(() => {
-    if (!datosListos || !api.usarMock) return
-    guardarEstadoDemo({
-      orders,
-      requests,
-      tasks,
-      cases,
-      clients,
-      users,
-      comms,
-      inventory,
-      suppliers,
-      inventoryMovements,
-    })
-  }, [
-    datosListos,
-    orders,
-    requests,
-    tasks,
-    cases,
-    clients,
-    users,
-    comms,
-    inventory,
-    suppliers,
-    inventoryMovements,
-  ])
-
-  // Sincronización en tiempo real entre pestañas/perfiles abiertos simultáneamente
-  useEffect(() => {
-    function handleStorageSync(e) {
-      if (e.key && e.key !== DEMO_STATE_KEY) return
-      if (!api.usarMock) return
-      const sincronizado = leerEstadoDemo()
-      setOrders(sincronizado.orders || [])
-      setRequests(sincronizado.requests || [])
-      setTasks(sincronizado.tasks || [])
-      setCases(sincronizado.cases || [])
-      setClients(sincronizado.clients || [])
-      setUsers(sincronizado.users || [])
-      setComms(sincronizado.comms || [])
-      setInventory(sincronizado.inventory || [])
-      setSuppliers(sincronizado.suppliers || [])
-      setInventoryMovements(sincronizado.inventoryMovements || [])
-    }
-    window.addEventListener('storage', handleStorageSync)
-    return () => window.removeEventListener('storage', handleStorageSync)
-  }, [])
-
   const usuario = currentUser?.nombre || ROLES[role]?.usuario?.nombre || 'Usuario'
   const data = {
     orders,
@@ -290,6 +248,13 @@ export default function App() {
 
   // Navegación con protección estricta de rutas según rol (Regla 5 y HU-07)
   const irA = (name, orderId = null) => {
+    // El portal público de clientes es de acceso universal y no requiere rol interno
+    if (name === 'portal') {
+      setPage({ name: 'portal', orderId: null })
+      if (typeof window !== 'undefined') window.location.hash = '#/portal'
+      return
+    }
+
     const rolNormal = normalizarRol(role)
     const permitidas = PAGINAS_AUTORIZADAS_POR_ROL[rolNormal] || ['inicio']
     if (!permitidas.includes(name)) {
@@ -315,6 +280,12 @@ export default function App() {
       const partes = rawHash.split('/')
       const targetPage = partes[0] || 'inicio'
       const targetOrderId = partes[1] || null
+
+      // El portal público de clientes es de acceso universal y no requiere rol interno
+      if (targetPage === 'portal') {
+        setPage({ name: 'portal', orderId: null })
+        return
+      }
 
       const rolNormal = normalizarRol(role)
       const permitidas = PAGINAS_AUTORIZADAS_POR_ROL[rolNormal] || ['inicio']
@@ -356,10 +327,28 @@ export default function App() {
   // Cierre de sesión (HU-02)
   function handleLogout() {
     api.logout()
+    logoutFirebase()
     setCurrentUser(null)
+    setRole('coordinador')
+    setOrders([])
+    setRequests([])
+    setTasks([])
+    setCases([])
+    setClients([])
+    setUsers([])
+    setComms([])
+    setInventory([])
+    setSuppliers([])
+    setInventoryMovements([])
+    setDashboard(null)
+    setDatosListos(false)
     try {
       sessionStorage.setItem('orvex_auth_logged_out', 'true')
       sessionStorage.removeItem('orvex_auth_user')
+      sessionStorage.removeItem('orvex_auth_role')
+      localStorage.removeItem('orvex_auth_user')
+      localStorage.removeItem('orvex_auth_role')
+      localStorage.removeItem('orvex_auth_logged_out')
     } catch {}
     notify('Sesión cerrada correctamente.', 'info')
   }
@@ -431,10 +420,59 @@ export default function App() {
       }
       setClients((prev) => [...prev.filter((c) => c.id !== creado.id), creado])
       notify(`Cliente ${creado.nombre} registrado con éxito.`, 'exito')
+      refreshDashboard()
       return creado
     } catch (err) {
       notify(err.message || 'No se pudo registrar el cliente.', 'error')
       throw err
+    }
+  }
+
+  async function editClient(id, cambios) {
+    try {
+      const res = await api.actualizarCliente(id, cambios)
+      if (res?.data) {
+        setClients((prev) => prev.map((c) => (c.id === id ? { ...c, ...res.data } : c)))
+      }
+      notify('Cliente actualizado exitosamente.', 'exito')
+      refreshDashboard()
+      return res?.data
+    } catch (err) {
+      notify(err.message || 'No se pudo actualizar el cliente.', 'error')
+      throw err
+    }
+  }
+
+  async function archiveClient(id) {
+    try {
+      await api.archivarCliente(id)
+      setClients((prev) => prev.map((c) => (c.id === id ? { ...c, archivado: true } : c)))
+      notify('Cliente archivado exitosamente.', 'exito')
+      refreshDashboard()
+    } catch (err) {
+      notify(err.message || 'No se pudo archivar el cliente.', 'error')
+    }
+  }
+
+  async function restoreClient(id) {
+    try {
+      await api.restaurarCliente(id)
+      setClients((prev) => prev.map((c) => (c.id === id ? { ...c, archivado: false } : c)))
+      notify('Cliente restaurado exitosamente.', 'exito')
+      refreshDashboard()
+    } catch (err) {
+      notify(err.message || 'No se pudo restaurar el cliente.', 'error')
+    }
+  }
+
+  async function deleteClient(id) {
+    try {
+      await api.eliminarCliente(id)
+      setClients((prev) => prev.filter((c) => c.id !== id))
+      notify('Cliente eliminado permanentemente.', 'exito')
+      refreshDashboard()
+    } catch (err) {
+      notify(err.message || 'No se pudo eliminar el cliente.', 'error')
     }
   }
 
@@ -579,10 +617,59 @@ export default function App() {
         const actualizada = res?.data || { id, estado: 'Rechazada', motivoRechazo: motivo }
         updateRequest(id, actualizada)
         notify(`Solicitud ${id} rechazada formalmente.`, 'aviso')
+        refreshDashboard()
       })
       .catch((err) => {
         notify(err.message || 'No se pudo rechazar la solicitud.', 'error')
       })
+  }
+
+  async function editRequest(id, cambios) {
+    try {
+      const res = await api.actualizarSolicitud(id, cambios)
+      if (res?.data) {
+        updateRequest(id, res.data)
+      }
+      notify('Solicitud actualizada exitosamente.', 'exito')
+      refreshDashboard()
+      return res?.data
+    } catch (err) {
+      notify(err.message || 'No se pudo actualizar la solicitud.', 'error')
+      throw err
+    }
+  }
+
+  async function archiveRequest(id) {
+    try {
+      await api.archivarSolicitud(id)
+      setRequests((prev) => prev.map((r) => (r.id === id ? { ...r, archivado: true } : r)))
+      notify('Solicitud archivada.', 'exito')
+      refreshDashboard()
+    } catch (err) {
+      notify(err.message || 'No se pudo archivar la solicitud.', 'error')
+    }
+  }
+
+  async function restoreRequest(id) {
+    try {
+      await api.restaurarSolicitud(id)
+      setRequests((prev) => prev.map((r) => (r.id === id ? { ...r, archivado: false } : r)))
+      notify('Solicitud restaurada.', 'exito')
+      refreshDashboard()
+    } catch (err) {
+      notify(err.message || 'No se pudo restaurar la solicitud.', 'error')
+    }
+  }
+
+  async function deleteRequest(id) {
+    try {
+      await api.eliminarSolicitud(id)
+      setRequests((prev) => prev.filter((r) => r.id !== id))
+      notify('Solicitud eliminada.', 'exito')
+      refreshDashboard()
+    } catch (err) {
+      notify(err.message || 'No se pudo eliminar la solicitud.', 'error')
+    }
   }
 
   // Validar solicitud y generar orden de producción transfiriendo archivos de referencia (HU-06)
@@ -1903,8 +1990,209 @@ export default function App() {
       .catch(() => {})
   }
 
+  function refreshDashboard() {
+    if (role === 'gerencia' || role === 'coordinador') {
+      api.obtenerDashboard().then((res) => {
+        if (res?.ok && res?.data) {
+          setDashboard(res.data)
+        }
+      }).catch((err) => {
+        console.warn('Dashboard refresh warning:', err?.message)
+      })
+    }
+  }
+
+  async function editOrder(id, cambios) {
+    try {
+      const res = await api.actualizarOrden(id, cambios)
+      if (res?.data) replaceOrderFromServer(res.data)
+      notify('Orden actualizada exitosamente.', 'exito')
+      refreshDashboard()
+    } catch (err) {
+      notify(err.message || 'No se pudo actualizar la orden.', 'error')
+    }
+  }
+
+  async function archiveOrder(id) {
+    try {
+      const res = await api.archivarOrden(id)
+      if (res?.data) replaceOrderFromServer(res.data)
+      else setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, archivado: true } : o)))
+      notify(`Orden ${id} archivada.`, 'exito')
+      refreshDashboard()
+    } catch (err) {
+      notify(err.message || 'No se pudo archivar la orden.', 'error')
+    }
+  }
+
+  async function restoreOrder(id) {
+    try {
+      const res = await api.restaurarOrden(id)
+      if (res?.data) replaceOrderFromServer(res.data)
+      else setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, archivado: false } : o)))
+      notify(`Orden ${id} restaurada.`, 'exito')
+      refreshDashboard()
+    } catch (err) {
+      notify(err.message || 'No se pudo restaurar la orden.', 'error')
+    }
+  }
+
+  async function deleteOrder(id) {
+    try {
+      await api.eliminarOrden(id)
+      setOrders((prev) => prev.filter((o) => o.id !== id))
+      notify(`Orden ${id} eliminada permanentemente.`, 'exito')
+      refreshDashboard()
+    } catch (err) {
+      notify(err.message || 'No se pudo eliminar la orden.', 'error')
+    }
+  }
+
+  async function editInventoryMaterial(id, cambios) {
+    try {
+      const res = await api.actualizarMaterialInventario(id, cambios)
+      if (res?.data) setInventory((prev) => prev.map((m) => (m.id === id ? { ...m, ...res.data } : m)))
+      notify('Material actualizado.', 'exito')
+      refreshDashboard()
+    } catch (err) {
+      notify(err.message || 'No se pudo actualizar el material.', 'error')
+    }
+  }
+
+  async function archiveInventoryMaterial(id) {
+    try {
+      await api.archivarMaterialInventario(id)
+      setInventory((prev) => prev.map((m) => (m.id === id ? { ...m, archivado: true } : m)))
+      notify('Material archivado.', 'exito')
+      refreshDashboard()
+    } catch (err) {
+      notify(err.message || 'No se pudo archivar el material.', 'error')
+    }
+  }
+
+  async function restoreInventoryMaterial(id) {
+    try {
+      await api.restaurarMaterialInventario(id)
+      setInventory((prev) => prev.map((m) => (m.id === id ? { ...m, archivado: false } : m)))
+      notify('Material restaurado.', 'exito')
+      refreshDashboard()
+    } catch (err) {
+      notify(err.message || 'No se pudo restaurar el material.', 'error')
+    }
+  }
+
+  async function deleteInventoryMaterial(id) {
+    try {
+      await api.eliminarMaterialInventario(id)
+      setInventory((prev) => prev.filter((m) => m.id !== id))
+      notify('Material eliminado.', 'exito')
+      refreshDashboard()
+    } catch (err) {
+      notify(err.message || 'No se pudo eliminar el material.', 'error')
+    }
+  }
+
+  async function editSupplier(id, cambios) {
+    try {
+      const res = await api.actualizarProveedor(id, cambios)
+      if (res?.data) setSuppliers((prev) => prev.map((p) => (p.id === id ? { ...p, ...res.data } : p)))
+      notify('Proveedor actualizado.', 'exito')
+    } catch (err) {
+      notify(err.message || 'No se pudo actualizar el proveedor.', 'error')
+    }
+  }
+
+  async function archiveSupplier(id) {
+    try {
+      await api.archivarProveedor(id)
+      setSuppliers((prev) => prev.map((p) => (p.id === id ? { ...p, archivado: true } : p)))
+      notify('Proveedor archivado.', 'exito')
+    } catch (err) {
+      notify(err.message || 'No se pudo archivar el proveedor.', 'error')
+    }
+  }
+
+  async function restoreSupplier(id) {
+    try {
+      await api.restaurarProveedor(id)
+      setSuppliers((prev) => prev.map((p) => (p.id === id ? { ...p, archivado: false } : p)))
+      notify('Proveedor restaurado.', 'exito')
+    } catch (err) {
+      notify(err.message || 'No se pudo restaurar el proveedor.', 'error')
+    }
+  }
+
+  async function deleteSupplier(id) {
+    try {
+      await api.eliminarProveedor(id)
+      setSuppliers((prev) => prev.filter((p) => p.id !== id))
+      notify('Proveedor eliminado.', 'exito')
+    } catch (err) {
+      notify(err.message || 'No se pudo eliminar el proveedor.', 'error')
+    }
+  }
+
+  async function editTask(id, cambios) {
+    try {
+      const res = await api.actualizarActividad(id, cambios)
+      if (res?.data) updateTask(id, res.data)
+      notify('Actividad actualizada.', 'exito')
+      refreshDashboard()
+    } catch (err) {
+      notify(err.message || 'No se pudo actualizar la actividad.', 'error')
+    }
+  }
+
+  async function deleteTask(id) {
+    try {
+      await api.eliminarActividad(id)
+      setTasks((prev) => prev.filter((t) => t.id !== id))
+      notify('Actividad eliminada.', 'exito')
+      refreshDashboard()
+    } catch (err) {
+      notify(err.message || 'No se pudo eliminar la actividad.', 'error')
+    }
+  }
+
+  async function archiveCase(id) {
+    try {
+      await api.archivarCasoPostventa(id)
+      setCases((prev) => prev.map((c) => (c.id === id ? { ...c, archivado: true } : c)))
+      notify('Caso archivado.', 'exito')
+      refreshDashboard()
+    } catch (err) {
+      notify(err.message || 'No se pudo archivar el caso.', 'error')
+    }
+  }
+
+  async function restoreCase(id) {
+    try {
+      await api.restaurarCasoPostventa(id)
+      setCases((prev) => prev.map((c) => (c.id === id ? { ...c, archivado: false } : c)))
+      notify('Caso restaurado.', 'exito')
+      refreshDashboard()
+    } catch (err) {
+      notify(err.message || 'No se pudo restaurar el caso.', 'error')
+    }
+  }
+
+  async function deleteCase(id) {
+    try {
+      await api.eliminarCasoPostventa(id)
+      setCases((prev) => prev.filter((c) => c.id !== id))
+      notify('Caso eliminado.', 'exito')
+      refreshDashboard()
+    } catch (err) {
+      notify(err.message || 'No se pudo eliminar el caso.', 'error')
+    }
+  }
+
   const actions = {
     addRequest,
+    editRequest,
+    archiveRequest,
+    restoreRequest,
+    deleteRequest,
     sendToValidation,
     correctRequest,
     returnRequest,
@@ -1912,6 +2200,10 @@ export default function App() {
     validateRequest,
     advanceStage,
     assignOrderTeam,
+    editOrder,
+    archiveOrder,
+    restoreOrder,
+    deleteOrder,
     registerDelivery,
     designNewVersion,
     designSend,
@@ -1920,13 +2212,23 @@ export default function App() {
     designApprove,
     designReject,
     createTask,
+    editTask,
+    deleteTask,
     taskAction,
     addTaskNote,
     resolveTaskIncident,
     assignTask,
     updateTaskProgress,
     addInventoryMaterial,
+    editInventoryMaterial,
+    archiveInventoryMaterial,
+    restoreInventoryMaterial,
+    deleteInventoryMaterial,
     addSupplier,
+    editSupplier,
+    archiveSupplier,
+    restoreSupplier,
+    deleteSupplier,
     registerInventoryMovement,
     sendCommMessage,
     retryCommMessage,
@@ -1937,6 +2239,9 @@ export default function App() {
     markCommAsRead,
     createCase,
     updateCase,
+    archiveCase,
+    restoreCase,
+    deleteCase,
     closeOrder,
     reopenOrder,
     cloneOrder,
@@ -1944,6 +2249,11 @@ export default function App() {
     updateUser,
     toggleUserStatus,
     addClient,
+    editClient,
+    archiveClient,
+    restoreClient,
+    deleteClient,
+    refreshDashboard,
     notify,
   }
 
@@ -1995,16 +2305,40 @@ export default function App() {
         return <Reports {...props} />
       case 'usuarios':
         return <Users {...props} />
+      case 'portal':
+        return <PublicPortal onVolverLogin={() => {
+          if (typeof window !== 'undefined') window.location.hash = ''
+          setPage({ name: 'inicio', orderId: null })
+        }} />
       default:
         return <EnConstruccion titulo={tituloMenu} />
     }
+  }
+
+  // Si la ruta activa es el portal público de clientes (#/portal), renderizarlo directamente
+  if (page.name === 'portal' || (typeof window !== 'undefined' && window.location.hash.replace(/^#\/?/, '').split('/')[0] === 'portal')) {
+    return (
+      <>
+        <PublicPortal onVolverLogin={() => {
+          if (typeof window !== 'undefined') window.location.hash = '#/inicio'
+          setPage({ name: 'inicio', orderId: null })
+        }} />
+        <ToastStack toasts={toasts} onClose={cerrarToast} />
+      </>
+    )
   }
 
   // Pantalla de inicio de sesión si no hay usuario autenticado (HU-02)
   if (!currentUser) {
     return (
       <>
-        <Login onLogin={handleLogin} />
+        <Login
+          onLogin={handleLogin}
+          onIrAlPortal={() => {
+            if (typeof window !== 'undefined') window.location.hash = '#/portal'
+            setPage({ name: 'portal', orderId: null })
+          }}
+        />
         <ToastStack toasts={toasts} onClose={cerrarToast} />
       </>
     )

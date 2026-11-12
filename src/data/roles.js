@@ -10,18 +10,15 @@ export const ROLES = {
   cliente: {
     id: 'cliente',
     nombre: 'Cliente',
-    clienteId: 'C1', // el usuario cliente simulado pertenece a "Empresa ABC"
-    usuario: { nombre: 'Laura Gómez', cargo: 'Empresa ABC' },
+    clienteId: null,
+    usuario: { nombre: 'Cliente', cargo: 'Cliente' },
     ordenPage: 'detalle',
     buscador: true,
     menu: [
       { grupo: 'Seguimiento', page: 'inicio', label: 'Mis pedidos', icono: 'clipboard' },
       { grupo: 'Atención', page: 'postventa', label: 'Postventa', icono: 'life-buoy' },
     ],
-    notificaciones: [
-      { texto: 'Tu diseño de OP-2026-0003 está listo para aprobación.', page: 'aprobacion', orderId: 'OP-2026-0003', tipo: 'aviso' },
-      { texto: 'Tu pedido OP-2026-0001 pasó a impresión.', page: 'detalle', orderId: 'OP-2026-0001', tipo: 'info' },
-    ],
+    notificaciones: [],
   },
   comercial: {
     id: 'comercial',
@@ -38,10 +35,7 @@ export const ROLES = {
       { grupo: 'Comercial', page: 'comunicaciones', label: 'Comunicaciones', icono: 'message' },
       { grupo: 'Seguimiento', page: 'pedidos', label: 'Órdenes en curso', icono: 'clipboard' },
     ],
-    notificaciones: [
-      { texto: '2 solicitudes están pendientes de enviar a validación.', page: 'solicitudes', tipo: 'aviso' },
-      { texto: 'Una solicitud fue rechazada por el coordinador.', page: 'solicitudes', tipo: 'error' },
-    ],
+    notificaciones: [],
   },
   coordinador: {
     id: 'coordinador',
@@ -55,10 +49,7 @@ export const ROLES = {
       { grupo: 'Ejecución', page: 'tareas', label: 'Asignación de actividades', icono: 'list' },
       { grupo: 'Recursos', page: 'inventario', label: 'Inventario y materiales', icono: 'package' },
     ],
-    notificaciones: [
-      { texto: '2 órdenes requieren atención por fecha comprometida.', page: 'pedidos', tipo: 'error' },
-      { texto: 'Supervisa las actividades en curso y la carga de taller.', page: 'tareas', tipo: 'info' },
-    ],
+    notificaciones: [],
   },
   disenador: {
     id: 'disenador',
@@ -69,10 +60,7 @@ export const ROLES = {
     menu: [
       { grupo: 'Diseño', page: 'inicio', label: 'Mesa de diseño', icono: 'pen' },
     ],
-    notificaciones: [
-      { texto: 'El cliente solicitó cambios en OP-2026-0004.', page: 'disenos', orderId: 'OP-2026-0004', tipo: 'error' },
-      { texto: 'Nueva orden asignada: OP-2026-0007.', page: 'disenos', orderId: 'OP-2026-0007', tipo: 'info' },
-    ],
+    notificaciones: [],
   },
   operario: {
     id: 'operario',
@@ -81,7 +69,7 @@ export const ROLES = {
     ordenPage: null,
     buscador: false,
     menu: [{ grupo: 'Taller', page: 'inicio', label: 'Mis actividades', icono: 'list' }],
-    notificaciones: [{ texto: 'Tienes actividades asignadas en estación de trabajo.', page: 'inicio', tipo: 'aviso' }],
+    notificaciones: [],
   },
   postventa: {
     id: 'postventa',
@@ -94,7 +82,7 @@ export const ROLES = {
       { grupo: 'Atención', page: 'comunicaciones', label: 'Comunicaciones', icono: 'message' },
       { grupo: 'Consulta', page: 'pedidos', label: 'Órdenes entregadas', icono: 'package' },
     ],
-    notificaciones: [{ texto: 'Hay 2 casos abiertos sin responsable.', page: 'inicio', tipo: 'aviso' }],
+    notificaciones: [],
   },
   gerencia: {
     id: 'gerencia',
@@ -108,19 +96,20 @@ export const ROLES = {
       { grupo: 'Análisis', page: 'inventario', label: 'Inventario y costos', icono: 'package' },
       { grupo: 'Análisis', page: 'reportes', label: 'Reportes e indicadores', icono: 'bar-chart' },
     ],
-    notificaciones: [{ texto: 'Diseño es la etapa que concentra más órdenes.', page: 'reportes', tipo: 'info' }],
+    notificaciones: [],
   },
 }
 
 // Lista blanca estricta de páginas autorizadas por rol para control de rutas y URL directa (Regla 5)
+// El portal público de clientes ('portal') es accesible para cualquier usuario o visitante
 export const PAGINAS_AUTORIZADAS_POR_ROL = {
-  comercial: ['inicio', 'clientes', 'nuevo', 'solicitudes', 'aprobacion', 'aprobacion_disenos', 'comunicaciones', 'pedidos', 'entregas', 'detalle', 'historial'],
-  coordinador: ['inicio', 'pedidos', 'tareas', 'inventario', 'detalle', 'historial'],
-  disenador: ['inicio', 'disenos', 'aprobacion'],
-  operario: ['inicio'],
-  postventa: ['inicio', 'comunicaciones', 'pedidos', 'detalle', 'historial'],
-  gerencia: ['inicio', 'pedidos', 'inventario', 'reportes', 'detalle', 'historial'],
-  cliente: ['inicio', 'postventa', 'detalle', 'historial', 'aprobacion'],
+  comercial: ['inicio', 'clientes', 'nuevo', 'solicitudes', 'aprobacion', 'aprobacion_disenos', 'comunicaciones', 'pedidos', 'entregas', 'detalle', 'historial', 'portal'],
+  coordinador: ['inicio', 'pedidos', 'tareas', 'inventario', 'detalle', 'historial', 'portal'],
+  disenador: ['inicio', 'disenos', 'aprobacion', 'portal'],
+  operario: ['inicio', 'portal'],
+  postventa: ['inicio', 'comunicaciones', 'pedidos', 'detalle', 'historial', 'portal'],
+  gerencia: ['inicio', 'pedidos', 'inventario', 'reportes', 'detalle', 'historial', 'portal'],
+  cliente: ['inicio', 'postventa', 'detalle', 'historial', 'aprobacion', 'portal'],
 }
 
 // Mapa de compatibilidad entre el ENUM de PostgreSQL (rol_usuario), etiquetas de interfaz y claves de ROLES
@@ -191,7 +180,7 @@ export const LISTA_ROLES = [
 ]
 
 export const CLIENTE_ACTUAL = {
-  id: ROLES.cliente.clienteId || 'C1',
-  empresa: ROLES.cliente.usuario.cargo || 'Empresa ABC',
-  nombre: ROLES.cliente.usuario.nombre || 'Laura Gómez',
+  id: ROLES.cliente.clienteId || null,
+  empresa: ROLES.cliente.usuario.cargo || '',
+  nombre: ROLES.cliente.usuario.nombre || 'Cliente',
 }

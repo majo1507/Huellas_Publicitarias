@@ -63,20 +63,35 @@ const FORM_MOVIMIENTO_VACIO = {
 
 export default function Inventory({ data, actions, irA, role }) {
   // Coordinación opera el inventario; Gerencia lo consulta y descarga el informe.
-  const puedeOperar = role === 'coordinador'
+  const puedeOperar = role === 'coordinador' || role === 'gerencia'
   const puedeInforme = role === 'coordinador' || role === 'gerencia'
   const [tab, setTab] = useState('materiales') // 'materiales' | 'proveedores' | 'movimientos'
   const [modalMaterial, setModalMaterial] = useState(false)
   const [modalProveedor, setModalProveedor] = useState(false)
   const [modalMovimiento, setModalMovimiento] = useState(false)
+  const [materialEnEdicion, setMaterialEnEdicion] = useState(null)
+  const [proveedorEnEdicion, setProveedorEnEdicion] = useState(null)
+  const [filtroEstado, setFiltroEstado] = useState('activos') // 'activos' | 'archivados' | 'todos'
 
   const [formMaterial, setFormMaterial] = useState(FORM_MATERIAL_VACIO)
   const [formProveedor, setFormProveedor] = useState(FORM_PROVEEDOR_VACIO)
   const [formMovimiento, setFormMovimiento] = useState(FORM_MOVIMIENTO_VACIO)
   const [errores, setErrores] = useState({})
 
-  const materiales = data.inventory || []
-  const proveedores = data.suppliers || []
+  const todosMateriales = data.inventory || []
+  const materiales = todosMateriales.filter((m) => {
+    if (filtroEstado === 'activos') return !m.archivado
+    if (filtroEstado === 'archivados') return Boolean(m.archivado)
+    return true
+  })
+
+  const todosProveedores = data.suppliers || []
+  const proveedores = todosProveedores.filter((p) => {
+    if (filtroEstado === 'activos') return !p.archivado
+    if (filtroEstado === 'archivados') return Boolean(p.archivado)
+    return true
+  })
+
   const movimientos = data.inventoryMovements || []
 
   const enAlerta = materiales.filter((m) => Number(m.stockActual) <= Number(m.stockMinimo))
@@ -132,6 +147,42 @@ export default function Inventory({ data, actions, irA, role }) {
     setModalMovimiento(true)
   }
 
+  function abrirModalEditarMaterial(m) {
+    setMaterialEnEdicion(m)
+    setFormMaterial({
+      nombre: m.nombre || '',
+      descripcion: m.descripcion || '',
+      categoria: m.categoria || CATEGORIAS_MATERIAL[0],
+      unidad: m.unidad || 'm²',
+      stockActual: String(m.stockActual ?? ''),
+      cantidadUtilizada: String(m.cantidadUtilizada ?? '0'),
+      stockMinimo: String(m.stockMinimo ?? ''),
+      costoUnitario: String(m.costoUnitario ?? ''),
+      proveedorId: m.proveedorId || '',
+    })
+    setErrores({})
+    setModalMaterial(true)
+  }
+
+  function abrirModalEditarProveedor(p) {
+    setProveedorEnEdicion(p)
+    setFormProveedor({
+      nombre: p.nombre || '',
+      tipoDocumento: p.tipoDocumento || 'NIT',
+      nit: p.nit || '',
+      contacto: p.contacto || '',
+      telefono: p.telefono || '',
+      correo: p.correo || '',
+      pais: p.pais || 'Colombia',
+      departamento: p.departamento || 'Antioquia',
+      municipio: p.municipio || p.ciudad || 'Medellín',
+      ciudad: p.ciudad || p.municipio || 'Medellín',
+      productos: typeof p.productos === 'string' ? p.productos : (Array.isArray(p.productos) ? p.productos.join(', ') : ''),
+    })
+    setErrores({})
+    setModalProveedor(true)
+  }
+
   function handleGuardarMaterial(e) {
     e.preventDefault()
     const err = {}
@@ -144,7 +195,7 @@ export default function Inventory({ data, actions, irA, role }) {
     if (Object.keys(err).length > 0) return
 
     const provObj = proveedores.find((p) => p.id === formMaterial.proveedorId) || proveedores[0]
-    actions.addInventoryMaterial({
+    const payload = {
       nombre: formMaterial.nombre.trim(),
       descripcion: formMaterial.descripcion.trim(),
       categoria: formMaterial.categoria,
@@ -155,8 +206,15 @@ export default function Inventory({ data, actions, irA, role }) {
       costoUnitario: Number(formMaterial.costoUnitario),
       proveedorId: provObj?.id || 'PROV-001',
       proveedor: provObj?.nombre || 'Proveedor general',
-    })
+    }
+
+    if (materialEnEdicion && actions?.editInventoryMaterial) {
+      actions.editInventoryMaterial(materialEnEdicion.id, payload)
+    } else {
+      actions.addInventoryMaterial(payload)
+    }
     setModalMaterial(false)
+    setMaterialEnEdicion(null)
     setFormMaterial(FORM_MATERIAL_VACIO)
   }
 
@@ -171,7 +229,7 @@ export default function Inventory({ data, actions, irA, role }) {
     setErrores(err)
     if (Object.keys(err).length > 0) return
 
-    actions.addSupplier({
+    const payload = {
       nombre: formProveedor.nombre.trim(),
       tipoDocumento: formProveedor.tipoDocumento || 'NIT',
       nit: formProveedor.nit?.trim() || '',
@@ -183,8 +241,15 @@ export default function Inventory({ data, actions, irA, role }) {
       municipio: formProveedor.municipio || formProveedor.ciudad || 'Medellín',
       ciudad: formProveedor.municipio || formProveedor.ciudad || 'Medellín',
       productos: formProveedor.productos.trim(),
-    })
+    }
+
+    if (proveedorEnEdicion && actions?.editSupplier) {
+      actions.editSupplier(proveedorEnEdicion.id, payload)
+    } else {
+      actions.addSupplier(payload)
+    }
     setModalProveedor(false)
+    setProveedorEnEdicion(null)
     setFormProveedor(FORM_PROVEEDOR_VACIO)
   }
 
@@ -305,10 +370,10 @@ export default function Inventory({ data, actions, irA, role }) {
     },
     {
       clave: 'acciones',
-      titulo: 'Movimientos',
-      ancho: '140px',
+      titulo: 'Acciones',
+      ancho: '210px',
       render: (m) => (
-        <div className="row-actions" style={{ gap: '4px' }}>
+        <div className="row-actions" style={{ gap: '4px', flexWrap: 'wrap' }}>
           <button
             className="btn btn-soft btn-xs"
             onClick={() => abrirMovimientoRapido(m, 'Entrada')}
@@ -323,6 +388,50 @@ export default function Inventory({ data, actions, irA, role }) {
           >
             <Icon nombre="arrow-right" tamano={11} /> Salida
           </button>
+          {puedeOperar && (
+            <>
+              <button
+                className="btn btn-outline btn-xs"
+                onClick={() => abrirModalEditarMaterial(m)}
+                title="Editar datos del material"
+              >
+                <Icon nombre="edit" tamano={11} />
+              </button>
+              {m.archivado ? (
+                <button
+                  className="btn btn-outline btn-xs"
+                  onClick={() => actions?.restoreInventoryMaterial && actions.restoreInventoryMaterial(m.id)}
+                  title="Restaurar material"
+                >
+                  <Icon nombre="refresh-cw" tamano={11} />
+                </button>
+              ) : (
+                <button
+                  className="btn btn-outline btn-xs"
+                  onClick={() => actions?.archiveInventoryMaterial && actions.archiveInventoryMaterial(m.id)}
+                  title="Archivar material"
+                >
+                  <Icon nombre="archive" tamano={11} />
+                </button>
+              )}
+              <button
+                className="btn btn-outline btn-xs"
+                style={{ color: '#ef4444', borderColor: '#fca5a5' }}
+                onClick={() => {
+                  if (Number(m.stockActual || 0) > 0) {
+                    alert(`No es posible eliminar "${m.nombre}" porque tiene un saldo de stock de ${m.stockActual} ${m.unidad}. Archívelo en su lugar.`)
+                    return
+                  }
+                  if (window.confirm(`¿Está seguro de eliminar permanentemente el material "${m.nombre}"? Si tiene movimientos contables registrados, la base de datos lo bloqueará para proteger la consistencia.`)) {
+                    actions?.deleteInventoryMaterial && actions.deleteInventoryMaterial(m.id)
+                  }
+                }}
+                title="Eliminar material"
+              >
+                <Icon nombre="trash-2" tamano={11} />
+              </button>
+            </>
+          )}
         </div>
       ),
     },
@@ -365,6 +474,53 @@ export default function Inventory({ data, actions, irA, role }) {
       clave: 'productos',
       titulo: 'Insumos y materiales que suministra',
       render: (p) => <span className="sm" style={{ fontSize: '12px' }}>{p.productos}</span>,
+    },
+    {
+      clave: 'acciones',
+      titulo: 'Acciones',
+      ancho: '130px',
+      render: (p) => (
+        puedeOperar && (
+          <div className="row-actions" style={{ gap: '4px' }}>
+            <button
+              className="btn btn-outline btn-xs"
+              onClick={() => abrirModalEditarProveedor(p)}
+              title="Editar proveedor"
+            >
+              <Icon nombre="edit" tamano={11} />
+            </button>
+            {p.archivado ? (
+              <button
+                className="btn btn-outline btn-xs"
+                onClick={() => actions?.restoreSupplier && actions.restoreSupplier(p.id)}
+                title="Restaurar proveedor"
+              >
+                <Icon nombre="refresh-cw" tamano={11} />
+              </button>
+            ) : (
+              <button
+                className="btn btn-outline btn-xs"
+                onClick={() => actions?.archiveSupplier && actions.archiveSupplier(p.id)}
+                title="Archivar proveedor"
+              >
+                <Icon nombre="archive" tamano={11} />
+              </button>
+            )}
+            <button
+              className="btn btn-outline btn-xs"
+              style={{ color: '#ef4444', borderColor: '#fca5a5' }}
+              onClick={() => {
+                if (window.confirm(`¿Está seguro de eliminar permanentemente el proveedor "${p.nombre}"? Si tiene materiales asociados, el sistema bloqueará la acción.`)) {
+                  actions?.deleteSupplier && actions.deleteSupplier(p.id)
+                }
+              }}
+              title="Eliminar proveedor"
+            >
+              <Icon nombre="trash-2" tamano={11} />
+            </button>
+          </div>
+        )
+      ),
     },
   ]
 
@@ -576,6 +732,29 @@ export default function Inventory({ data, actions, irA, role }) {
           <Icon nombre="clock" tamano={14} /> Entradas y salidas <span className="pill">{movimientos.length}</span>
         </button>
       </div>
+
+      {(tab === 'materiales' || tab === 'proveedores') && (
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
+          <button
+            className={`btn btn-sm ${filtroEstado === 'activos' ? 'btn-primary' : 'btn-outline'}`}
+            onClick={() => setFiltroEstado('activos')}
+          >
+            Activos
+          </button>
+          <button
+            className={`btn btn-sm ${filtroEstado === 'archivados' ? 'btn-primary' : 'btn-outline'}`}
+            onClick={() => setFiltroEstado('archivados')}
+          >
+            Archivados
+          </button>
+          <button
+            className={`btn btn-sm ${filtroEstado === 'todos' ? 'btn-primary' : 'btn-outline'}`}
+            onClick={() => setFiltroEstado('todos')}
+          >
+            Todos
+          </button>
+        </div>
+      )}
 
       {tab === 'materiales' && (
         <DataTable

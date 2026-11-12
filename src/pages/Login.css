@@ -948,3 +948,246 @@
     transition: none !important;
   }
 }
+
+/* ==========================================================================
+   ELEMENTOS DE AUTENTICACIÓN FIREBASE: GOOGLE Y RECUPERACIÓN
+   ========================================================================== */
+
+.orvex-input-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.orvex-forgot-btn {
+  background: transparent;
+  border: none;
+  color: #38bdf8;
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.2s ease, text-decoration 0.2s ease;
+}
+
+.orvex-forgot-btn:hover {
+  color: #7dd3fc;
+  text-decoration: underline;
+}
+
+.orvex-login-divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  margin: 14px 0 6px;
+  color: var(--orvex-text-dim);
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.orvex-login-divider::before,
+.orvex-login-divider::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.orvex-login-divider span {
+  padding: 0 12px;
+}
+
+/* Botón Google Sign-In */
+.orvex-google-btn {
+  width: 100%;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #f8fafc;
+  font-size: 0.92rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+
+.orvex-google-btn:hover:not(:disabled) {
+  background: rgba(30, 41, 59, 0.9);
+  border-color: rgba(56, 189, 248, 0.4);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35), 0 0 12px rgba(56, 189, 248, 0.15);
+}
+
+.orvex-google-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.orvex-google-icon {
+  flex-shrink: 0;
+}
+
+/* Modal de Recuperación de Contraseña */
+.orvex-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 9, 19, 0.82);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: orvexFadeIn 0.25s ease-out;
+}
+
+@keyframes orvexFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.orvex-modal-card {
+  width: 100%;
+  max-width: 440px;
+  background: #0f172a;
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 20px;
+  padding: 28px 26px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8), 0 0 25px rgba(56, 189, 248, 0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  animation: orvexZoomIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes orvexZoomIn {
+  from { transform: scale(0.94); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.orvex-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.orvex-modal-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #38bdf8;
+}
+
+.orvex-modal-title-row h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.orvex-modal-close {
+  background: transparent;
+  border: none;
+  color: var(--orvex-text-dim);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.orvex-modal-close:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.orvex-modal-desc {
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: var(--orvex-text-sub);
+  margin: 0;
+}
+
+.orvex-modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.orvex-modal-alert {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.orvex-modal-alert.is-success {
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: #6ee7b7;
+}
+
+.orvex-modal-alert.is-error {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
+}
+
+.orvex-modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.orvex-modal-cancel-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--orvex-text-sub);
+  padding: 9px 16px;
+  border-radius: 10px;
+  font-size: 0.88rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.orvex-modal-cancel-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #ffffff;
+}
+
+.orvex-modal-submit-btn {
+  background: linear-gradient(135deg, #2563eb, #0284c7);
+  border: none;
+  color: #ffffff;
+  padding: 9px 20px;
+  border-radius: 10px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
+}
+
+.orvex-modal-submit-btn:hover:not(:disabled) {
+  opacity: 0.92;
+  transform: translateY(-1px);
+}
+
+.orvex-modal-submit-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

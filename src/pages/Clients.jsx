@@ -28,13 +28,21 @@ const FORM_INICIAL = {
 
 // Lista de clientes (la administra Comercial / Recepción; Gerencia supervisa)
 export default function Clients({ data, actions, irA, role }) {
-  const puedeAdministrarClientes = role === 'comercial'
+  const puedeAdministrarClientes = role === 'comercial' || role === 'gerencia'
   const [modalAbierto, setModalAbierto] = useState(false)
+  const [clienteEnEdicion, setClienteEnEdicion] = useState(null)
+  const [filtroEstado, setFiltroEstado] = useState('activos') // 'activos' | 'archivados' | 'todos'
   const [form, setForm] = useState(FORM_INICIAL)
   const [errores, setErrores] = useState({})
   const [guardando, setGuardando] = useState(false)
 
-  const filas = data.clients.map((c) => ({
+  const clientesFiltrados = data.clients.filter((c) => {
+    if (filtroEstado === 'activos') return !c.archivado
+    if (filtroEstado === 'archivados') return Boolean(c.archivado)
+    return true
+  })
+
+  const filas = clientesFiltrados.map((c) => ({
     ...c,
     tipoDocumento: c.tipoDocumento || 'NIT',
     tipoCliente: c.tipoCliente || 'Persona Jurídica (Empresa)',
@@ -55,7 +63,14 @@ export default function Clients({ data, actions, irA, role }) {
         <span className="person">
           <Avatar nombre={c.nombre} tamano="sm" />
           <div>
-            <strong>{c.nombre}</strong>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <strong>{c.nombre}</strong>
+              {c.archivado && (
+                <span style={{ fontSize: '10px', padding: '1px 6px', backgroundColor: '#f1f5f9', color: '#64748b', borderRadius: '4px', fontWeight: 600 }}>
+                  Archivado
+                </span>
+              )}
+            </div>
             <small className="cell-sub">
               {c.tipoDocumento || 'NIT'}: {c.nit || '—'} · {c.tipoCliente || 'Empresa'}
             </small>
@@ -94,9 +109,49 @@ export default function Clients({ data, actions, irA, role }) {
       titulo: 'Acciones',
       render: (c) => (
         puedeAdministrarClientes ? (
-          <button className="btn btn-soft btn-sm" onClick={() => irA('nuevo', c.id)}>
-            <Icon nombre="file-plus" tamano={14} /> Nueva solicitud
-          </button>
+          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+            {!c.archivado && (
+              <button className="btn btn-soft btn-sm" onClick={() => irA('nuevo', c.id)} title="Crear nueva solicitud comercial">
+                <Icon nombre="file-plus" tamano={13} /> Solicitud
+              </button>
+            )}
+            <button
+              className="btn btn-outline btn-sm"
+              onClick={() => abrirModalEditar(c)}
+              title="Editar información del cliente"
+            >
+              <Icon nombre="edit" tamano={13} /> Editar
+            </button>
+            {c.archivado ? (
+              <button
+                className="btn btn-outline btn-sm"
+                onClick={() => actions?.restoreClient && actions.restoreClient(c.id)}
+                title="Restaurar a la lista activa"
+              >
+                <Icon nombre="refresh-cw" tamano={13} /> Restaurar
+              </button>
+            ) : (
+              <button
+                className="btn btn-outline btn-sm"
+                onClick={() => actions?.archiveClient && actions.archiveClient(c.id)}
+                title="Archivar cliente"
+              >
+                <Icon nombre="archive" tamano={13} /> Archivar
+              </button>
+            )}
+            <button
+              className="btn btn-outline btn-sm"
+              style={{ color: '#ef4444', borderColor: '#fca5a5' }}
+              onClick={() => {
+                if (window.confirm(`¿Está seguro de eliminar permanentemente a "${c.nombre}"? Si tiene órdenes o cotizaciones registradas, el sistema bloqueará la eliminación para proteger la integridad.`)) {
+                  actions?.deleteClient && actions.deleteClient(c.id)
+                }
+              }}
+              title="Eliminar permanentemente"
+            >
+              <Icon nombre="trash-2" tamano={13} />
+            </button>
+          </div>
         ) : (
           <span className="sm mut">Supervisión</span>
         )
@@ -105,7 +160,29 @@ export default function Clients({ data, actions, irA, role }) {
   ]
 
   function abrirModalNuevo() {
+    setClienteEnEdicion(null)
     setForm(FORM_INICIAL)
+    setErrores({})
+    setGuardando(false)
+    setModalAbierto(true)
+  }
+
+  function abrirModalEditar(c) {
+    setClienteEnEdicion(c)
+    setForm({
+      nombre: c.nombre || c.empresa || '',
+      tipoCliente: c.tipoCliente || TIPOS_CLIENTE[0],
+      tipoDocumento: c.tipoDocumento || 'NIT',
+      nit: c.nit || '',
+      contacto: c.contacto || c.contacto_principal || '',
+      correo: c.correo || '',
+      telefono: c.telefono || '',
+      pais: c.pais || 'Colombia',
+      departamento: c.departamento || 'Antioquia',
+      municipio: c.municipio || c.ciudad || 'Medellín',
+      ciudad: c.ciudad || c.municipio || 'Medellín',
+      direccion: c.direccion || '',
+    })
     setErrores({})
     setGuardando(false)
     setModalAbierto(true)
@@ -210,11 +287,11 @@ export default function Clients({ data, actions, irA, role }) {
 
   async function handleGuardar(e) {
     e.preventDefault()
-    if (!validar() || !actions?.addClient) return
+    if (!validar()) return
 
     setGuardando(true)
     try {
-      await actions.addClient({
+      const payload = {
         nombre: form.nombre.trim(),
         empresa: form.nombre.trim(),
         tipoCliente: form.tipoCliente,
@@ -229,11 +306,18 @@ export default function Clients({ data, actions, irA, role }) {
         municipio: form.municipio,
         ciudad: form.municipio,
         direccion: form.direccion.trim(),
-      })
+      }
+
+      if (clienteEnEdicion && actions?.editClient) {
+        await actions.editClient(clienteEnEdicion.id, payload)
+      } else if (actions?.addClient) {
+        await actions.addClient(payload)
+      }
       setModalAbierto(false)
+      setClienteEnEdicion(null)
       setForm(FORM_INICIAL)
     } catch {
-      // El toast de error ya lo muestra actions.addClient
+      // El toast de error ya lo muestra actions
     } finally {
       setGuardando(false)
     }
@@ -256,6 +340,28 @@ export default function Clients({ data, actions, irA, role }) {
           )
         }
       />
+
+      {/* Selector de estado (Activos / Archivados / Todos) */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+        <button
+          className={`btn btn-sm ${filtroEstado === 'activos' ? 'btn-primary' : 'btn-outline'}`}
+          onClick={() => setFiltroEstado('activos')}
+        >
+          Activos ({data.clients.filter((c) => !c.archivado).length})
+        </button>
+        <button
+          className={`btn btn-sm ${filtroEstado === 'archivados' ? 'btn-primary' : 'btn-outline'}`}
+          onClick={() => setFiltroEstado('archivados')}
+        >
+          Archivados ({data.clients.filter((c) => c.archivado).length})
+        </button>
+        <button
+          className={`btn btn-sm ${filtroEstado === 'todos' ? 'btn-primary' : 'btn-outline'}`}
+          onClick={() => setFiltroEstado('todos')}
+        >
+          Todos ({data.clients.length})
+        </button>
+      </div>
       <DataTable
         columnas={columnas}
         filas={filas}
@@ -290,8 +396,8 @@ export default function Clients({ data, actions, irA, role }) {
                 <Icon nombre="users" tamano={20} />
               </span>
               <div>
-                <h2>Registrar nuevo cliente</h2>
-                <p>Ingresa la identificación, ubicación geográfica y datos de contacto comercial.</p>
+                <h2>{clienteEnEdicion ? `Editar cliente: ${clienteEnEdicion.nombre}` : 'Registrar nuevo cliente'}</h2>
+                <p>{clienteEnEdicion ? 'Actualiza la identificación, ubicación geográfica y datos de contacto.' : 'Ingresa la identificación, ubicación geográfica y datos de contacto comercial.'}</p>
               </div>
               <button className="icon-btn" onClick={cerrarModal} aria-label="Cerrar">
                 <Icon nombre="x" />
@@ -482,7 +588,7 @@ export default function Clients({ data, actions, irA, role }) {
                   Cancelar
                 </button>
                 <button type="submit" className="btn btn-primary" disabled={guardando}>
-                  <Icon nombre="check" tamano={15} /> {guardando ? 'Registrando...' : 'Registrar cliente'}
+                  <Icon nombre="check" tamano={15} /> {guardando ? 'Guardando...' : (clienteEnEdicion ? 'Guardar cambios' : 'Registrar cliente')}
                 </button>
               </div>
             </form>
